@@ -1,7 +1,7 @@
-import { getEnemy, getItem, getStage, REGIONS, SKILLS, STAGES_PER_REGION, stageId, type QuestDef } from '../data';
+import { CLASSES, getClass, getEnemy, getItem, getStage, REGIONS, STAGES_PER_REGION, stageId, type QuestDef } from '../data';
 import type { Sfx } from '../engine/audio';
 import type { Music } from '../engine/music';
-import { drawSpriteH, hasSprite } from '../engine/sprites';
+import { drawSprite, drawSpriteH, hasSprite, spritesReady } from '../engine/sprites';
 import { rewardText, type QuestBook } from './quests';
 import { countStars, DAMAGE_LIMIT, drawStar, drawStars, formatTime, type StageResult } from './stars';
 import type { Input, TouchButton } from '../engine/input';
@@ -25,12 +25,14 @@ export interface GameApi {
   heal(): void;
   returnToTown(): void;
   travel(stageId: string): void;
+  chooseClass(id: string): void;
 }
 
 type Modal =
   | { kind: 'dialog'; npc: NpcDef; lines: string[]; line: number; after: () => void }
   | { kind: 'offer'; npc: NpcDef; quest: QuestDef; sel: number }
   | { kind: 'quests' }
+  | { kind: 'classes'; sel: number; first: boolean }
   | { kind: 'result'; r: StageResult; t: number; shown: number }
   | { kind: 'shop'; npc: NpcDef; sel: number; scroll: number }
   | { kind: 'menu'; sel: number; scroll: number }
@@ -180,6 +182,12 @@ export class Ui {
     }
   }
 
+  /** Tela de escolha de classe. `first` = primeiro jogo (não dá para fechar sem escolher). */
+  openClasses(first = false): void {
+    const cur = CLASSES.findIndex((c) => c.id === this.game.progress.classId);
+    this.modal = { kind: 'classes', sel: Math.max(0, cur), first };
+  }
+
   showResult(r: StageResult): void {
     this.modal = { kind: 'result', r, t: 0, shown: 0 };
   }
@@ -250,6 +258,12 @@ export class Ui {
       case 'quests':
         if (confirm || back) this.close();
         break;
+      case 'classes':
+        if (left) m.sel = (m.sel + CLASSES.length - 1) % CLASSES.length;
+        if (right) m.sel = (m.sel + 1) % CLASSES.length;
+        if (confirm) { this.game.chooseClass(CLASSES[m.sel].id); this.close(); }
+        else if (back && !m.first) this.close();
+        break;
       case 'result': {
         m.t += dt;
         // as estrelas aparecem uma a uma, com som
@@ -300,6 +314,7 @@ export class Ui {
       case 'map': return this.drawMap(ctx, m);
       case 'offer': return this.drawOffer(ctx, m);
       case 'quests': return this.drawQuests(ctx);
+      case 'classes': return this.drawClasses(ctx, m);
       case 'result': return this.drawResult(ctx, m);
       case 'dead': return this.drawDead(ctx);
     }
@@ -370,7 +385,7 @@ export class Ui {
     for (const b of BUTTONS) {
       if (b.action === 'menu') continue;
       const skillIdx = b.action.startsWith('skill') ? Number(b.action.slice(5)) - 1 : -1;
-      const skill = SKILLS[skillIdx];
+      const skill = world.cls.skills[skillIdx];
       if (skillIdx >= 0 && !skill) continue;
       const active = b.action !== 'interact' || !!world.nearby();
       ctx.globalAlpha = active ? 0.55 : 0.25;
@@ -478,7 +493,7 @@ export class Ui {
     const { progress, world } = this.game;
     const s = world.stats;
     const x = 20, y = 16, w = VIEW_W - 40, h = VIEW_H - 32;
-    this.panel(ctx, x, y, w, h, 'Personagem');
+    this.panel(ctx, x, y, w, h, `Personagem · ${getClass(progress.classId).name}`);
     const lx = x + 14;
     const rows: [string, string][] = [
       ['Nível', `${progress.level}`],
@@ -495,7 +510,7 @@ export class Ui {
       text(ctx, v, lx + 190, y + 42 + i * 17, { size: 11, align: 'right', outline: false });
     });
     text(ctx, 'Poderes', lx, y + 192, { size: 12, color: '#ffe9a8' });
-    SKILLS.forEach((sk, i) => {
+    world.cls.skills.forEach((sk, i) => {
       const locked = progress.level < sk.unlockLevel;
       const yy = y + 212 + i * 30;
       text(ctx, `${i + 1}. ${sk.name}`, lx, yy, { size: 11, color: locked ? '#777' : sk.color, outline: false });
@@ -515,6 +530,10 @@ export class Ui {
     button(lx, 64, sfx.muted ? '🔇 Som' : '🔊 Som', !sfx.muted, () => { sfx.setMuted(!sfx.muted); sfx.play('ui'); });
     button(lx + 70, 70, music.muted ? '🎵 Música ✕' : '🎵 Música', !music.muted, () => { music.setMuted(!music.muted); sfx.play('ui'); });
     button(lx + 146, 74, `📜 Missões`, true, () => { this.modal = { kind: 'quests' }; sfx.play('ui'); });
+    const inTown = world.stage.id === 'lumen';
+    button(lx + 226, 92, `⚔ Classe`, inTown, () => {
+      if (inTown) { this.openClasses(); sfx.play('ui'); } else { this.toast('Troque de classe na vila'); sfx.play('nomp'); }
+    });
 
     const rx = x + 240, rw = w - 252;
     text(ctx, 'Equipamentos (toque para equipar)', rx, y + 42, { size: 11, color: '#ffe9a8' });
@@ -627,6 +646,47 @@ export class Ui {
     ctx.fillRect(bx, by, bw, 32);
     text(ctx, open ? 'Entrar ▶' : 'Bloqueada', bx + bw / 2, by + 16, { size: 13, align: 'center', color: open ? '#ffffff' : '#888' });
     this.regions.push({ x: bx, y: by, w: bw, h: 32, fn: () => this.mapEnter(m) });
+  }
+
+  private drawClasses(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'classes' }>): void {
+    const x = 16, y = 12, w = VIEW_W - 32, h = VIEW_H - 24;
+    this.panel(ctx, x, y, w, h, m.first ? 'Escolha sua classe' : 'Trocar de classe', !m.first);
+    const n = CLASSES.length, gap = 6;
+    const cw = (w - 24 - gap * (n - 1)) / n, ch = 150;
+    const t = performance.now() / 1000;
+    CLASSES.forEach((c, i) => {
+      const cx = x + 12 + i * (cw + gap), cy = y + 36;
+      const sel = i === m.sel;
+      ctx.fillStyle = sel ? '#34406a' : '#252e45';
+      ctx.fillRect(cx, cy, cw, ch);
+      ctx.strokeStyle = sel ? '#ffd36b' : '#3a4560';
+      ctx.lineWidth = sel ? 2 : 1;
+      ctx.strokeRect(cx, cy, cw, ch);
+      if (spritesReady()) {
+        // a classe escolhida mostra o ataque; as outras ficam paradas
+        const anim = sel ? `${c.sprite}_atk0` : `${c.sprite}_idle`;
+        const fr = sel ? (t * 3) % 3 : t * 2;
+        drawSprite(ctx, anim, fr, cx + cw / 2 - (sel ? 10 : 0), cy + 96, 1, { scale: 1.3 });
+      }
+      text(ctx, c.name, cx + cw / 2, cy + 116, { size: 13, align: 'center', color: sel ? '#ffe9a8' : '#ffffff' });
+      text(ctx, c.basic.kind === 'shot' ? 'Ataque à distância' : 'Corpo a corpo', cx + cw / 2, cy + 134, { size: 9, align: 'center', outline: false, color: '#aab4cc' });
+      this.regions.push({ x: cx, y: cy, w: cw, h: ch, fn: () => {
+        if (m.sel === i) { this.game.chooseClass(c.id); this.close(); } else { m.sel = i; this.game.sfx.play('ui'); }
+      } });
+    });
+    const c = CLASSES[m.sel];
+    const iy = y + 36 + ch + 12;
+    wrapText(ctx, c.description, w - 160, 11).forEach((l, i) => text(ctx, l, x + 16, iy + 6 + i * 15, { size: 11, outline: false }));
+    const mods = c.mods;
+    const stat = (v: number) => (v > 1.05 ? '▲' : v < 0.95 ? '▼' : '•');
+    text(ctx, `Vida ${stat(mods.hp)}  MP ${stat(mods.mp)}  Ataque ${stat(mods.atk)}  Defesa ${stat(mods.def)}  Crítico ${stat(mods.crit)}`,
+      x + 16, iy + 42, { size: 10, outline: false, color: '#9cc4ff' });
+    text(ctx, `Poderes: ${c.skills.map((s) => s.name).join(' · ')}`, x + 16, iy + 60, { size: 10, outline: false, color: '#ffd36b', bold: false });
+    const bw = 130, bx = x + w - bw - 14, by = iy;
+    ctx.fillStyle = '#3f8a45';
+    ctx.fillRect(bx, by, bw, 34);
+    text(ctx, 'Escolher ▶', bx + bw / 2, by + 17, { size: 13, align: 'center' });
+    this.regions.push({ x: bx, y: by, w: bw, h: 34, fn: () => { this.game.chooseClass(c.id); this.close(); } });
   }
 
   private drawOffer(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'offer' }>): void {

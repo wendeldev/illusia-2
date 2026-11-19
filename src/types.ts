@@ -81,6 +81,8 @@ export interface SkillDef {
   knockback: number;
   unlockLevel: number;
   color: string;
+  /** desenho do projétil (atlas) */
+  fx?: string;
 }
 
 export interface DropDef {

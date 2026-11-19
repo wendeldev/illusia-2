@@ -22,6 +22,16 @@ SRC = os.path.join(ROOT, 'assets-src', 'sheet-hero.png')
 
 if not os.path.exists(os.path.join(TMP, 'labels-map.png')):
     subprocess.check_call([sys.executable, '-I', os.path.join(ROOT, 'tools', 'segment.py'), SRC, TMP])
+# segunda prancha: personagens das classes jogáveis
+TMP2 = os.path.join(ROOT, 'node_modules', '.sprite-cache-classes')
+SRC2 = os.path.join(ROOT, 'assets-src', 'sheet-classes.png')
+if not os.path.exists(os.path.join(TMP2, 'labels-map.png')):
+    subprocess.check_call([sys.executable, '-I', os.path.join(ROOT, 'tools', 'segment.py'), SRC2, TMP2])
+cut2 = Image.open(os.path.join(TMP2, 'cutout.png')).convert('RGBA')
+comps2 = {c['k']: c for c in json.load(open(os.path.join(TMP2, 'comps.json')))}
+labmap2 = Image.open(os.path.join(TMP2, 'labels-map.png')).convert('RGB')
+assert len(comps2) == 326, f'segmentação da prancha de classes mudou ({len(comps2)})'
+
 cut = Image.open(os.path.join(TMP, 'cutout.png')).convert('RGBA')
 comps = {c['k']: c for c in json.load(open(os.path.join(TMP, 'comps.json')))}
 labmap = Image.open(os.path.join(TMP, 'labels-map.png')).convert('RGB')
@@ -61,6 +71,31 @@ SINGLE = {
     'fx_slash': (158, 22, 1), 'fx_tornado': (163, 40, 1), 'fx_fireball': (169, 20, 1),
 }
 HERO_H = 52  # altura do herói parado no jogo
+
+# classes jogáveis (prancha 2): animação -> quadros; um quadro pode juntar vários recortes (tupla)
+CLASS_FRAMES = {
+    'archer': {
+        'idle': [106, 107], 'walk': [106, 107, 108, 107], 'jump': [109], 'fall': [110],
+        'atk0': [109, 110, 111], 'atk1': [110, 111], 'atk2': [109, 111], 'wind': [110, 111],
+        'whirl': [113, 114], 'thunder': [113, 114], 'hurt': [109], 'dead': [115],
+    },
+    'mage': {
+        'idle': [133, 134], 'walk': [133, 134, 135, 134], 'jump': [136], 'fall': [136],
+        'atk0': [136, 137], 'atk1': [137, 141], 'atk2': [141, 142], 'wind': [137, 138],
+        'whirl': [141, 142], 'thunder': [137, 142], 'hurt': [138], 'dead': [143],
+    },
+    'monk': {
+        'idle': [147, 148], 'walk': [147, 148, 149, 148], 'jump': [150], 'fall': [150],
+        'atk0': [150, 151], 'atk1': [150, 152], 'atk2': [153], 'wind': [151],
+        'whirl': [153], 'thunder': [152], 'hurt': [154], 'dead': [(166, 167)],
+    },
+    'lancer': {
+        'idle': [188, 189], 'walk': [188, 189, 190, 189], 'jump': [191], 'fall': [191],
+        'atk0': [191, 192], 'atk1': [192, 191], 'atk2': [193], 'wind': [192, 193],
+        'whirl': [194, 195], 'thunder': [193], 'hurt': [195], 'dead': [203],
+    },
+}
+CLASS_FX = {'fx_arrow': 112, 'fx_orb': 139}
 
 # ícones dos equipamentos (id do item -> recorte), altura 28
 ICONS = {
@@ -146,6 +181,23 @@ def crop(k):
         for x in range(im.size[0]):
             r, g, _ = lm[x, y]
             if r + (g << 8) != c['id']:
+                px[x, y] = (0, 0, 0, 0)
+    return im
+
+def crop2(k):
+    """Recorte na prancha de classes; k pode ser uma tupla (junta vários recortes)."""
+    ids = k if isinstance(k, tuple) else (k,)
+    cs = [comps2[i] for i in ids]
+    x0 = min(c['x'] for c in cs); y0 = min(c['y'] for c in cs)
+    x1 = max(c['x'] + c['w'] for c in cs); y1 = max(c['y'] + c['h'] for c in cs)
+    im = cut2.crop((x0, y0, x1, y1))
+    want = {c['id'] for c in cs}
+    lm = labmap2.crop((x0, y0, x1, y1)).load()
+    px = im.load()
+    for y in range(im.size[1]):
+        for x in range(im.size[0]):
+            r, g, _ = lm[x, y]
+            if r + (g << 8) not in want:
                 px[x, y] = (0, 0, 0, 0)
     return im
 
@@ -240,6 +292,23 @@ for name, (k, h, faces) in SINGLE.items():
     im = clean(crop(k))
     frames[name] = [(im, *feet(im))]
     meta[name] = {'scale': h / im.size[1], 'faces': faces}
+for cls, anims in CLASS_FRAMES.items():
+    ref = clean(crop2(anims['walk'][0]))
+    ref_ax = feet(ref)[0]
+    scale = HERO_H / ref.size[1]
+    for anim, ks in anims.items():
+        imgs = [clean(crop2(k)) for k in ks]
+        name = f'{cls}_{anim}'
+        if anim in ('idle', 'walk', 'dead'):
+            frames[name] = [(im, *feet(im)) for im in imgs]
+        else:
+            # ataques: o personagem fica à esquerda do quadro e o efeito à direita
+            frames[name] = [(im, min(ref_ax, im.size[0] - 1), im.size[1]) for im in imgs]
+        meta[name] = {'scale': scale, 'faces': 1}
+for name, k in CLASS_FX.items():
+    im = clean(crop2(k))
+    frames[name] = [(im, im.size[0] // 2, im.size[1] // 2)]
+    meta[name] = {'scale': 22 / im.size[1] if name == 'fx_orb' else 1.0, 'faces': 1}
 for name, k in ICONS.items():
     im = clean(crop(k))
     frames['icon_' + name] = [(im, *feet(im))]

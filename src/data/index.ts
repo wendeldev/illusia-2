@@ -7,6 +7,7 @@ import { MAP_PORTAL, STAGES, START_STAGE } from './stages';
 
 export { ENEMIES, EQUIPMENT, MAP_PORTAL, NPCS, QUESTS, SKILLS, STAGES, START_STAGE };
 export type { QuestDef, QuestGoal, QuestReward } from './quests';
+export { CLASSES, DEFAULT_CLASS, getClass, type ClassDef } from './classes';
 export { LEGACY_STAGE_IDS, REGIONS, STAGES_PER_REGION, stageId } from './campaign';
 
 function index<T extends { id: string }>(list: T[], kind: string) {

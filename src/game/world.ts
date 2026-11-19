@@ -1,4 +1,4 @@
-import { getEnemy, getItem, getNpc, MAP_PORTAL, SKILLS } from '../data';
+import { getClass, getEnemy, getItem, getNpc, MAP_PORTAL, type ClassDef } from '../data';
 import type { SoundName } from '../engine/audio';
 import type { Input } from '../engine/input';
 import { VIEW_W, VIEW_H } from '../engine/view';
@@ -318,6 +318,11 @@ export class World {
     this.texts.push({ x: x + (Math.random() - 0.5) * 10, y, text: str, color, life, maxLife: life, size });
   }
 
+  /** classe do jogador */
+  get cls(): ClassDef {
+    return getClass(this.progress.classId);
+  }
+
   get boss(): Enemy | undefined {
     return this.enemies.find((e) => e.def.boss && !e.dead);
   }
@@ -470,7 +475,7 @@ export class World {
       p.buffered = { kind: 'attack', count: Math.min(2, queued + 1) };
       p.bufferT = 0.35;
     }
-    SKILLS.forEach((skill, i) => {
+    this.cls.skills.forEach((skill, i) => {
       if (input.consume(`skill${i + 1}` as 'skill1')) { p.buffered = { kind: 'skill', skill }; p.bufferT = 0.35; }
     });
   }
@@ -480,12 +485,26 @@ export class World {
     const step = COMBO[p.comboStep % COMBO.length];
     p.comboStep = (p.comboStep + 1) % COMBO.length;
     p.comboWindow = 0.55;
-    p.attackTimer = step.time;
-    this.startAnim((['combo0', 'combo1', 'combo2'] as const)[COMBO.indexOf(step)], step.time + 0.06);
-    p.vx = p.facing * 40;
+    const basic = this.cls.basic;
+    const time = step.time * basic.speed;
+    p.attackTimer = time;
+    this.startAnim((['combo0', 'combo1', 'combo2'] as const)[COMBO.indexOf(step)], time + 0.06);
     const finisher = step === COMBO[COMBO.length - 1];
     this.sound('swing');
-    const hits = this.hitFront(step.range, step.mul, step.knock, 22, finisher);
+    if (basic.kind === 'shot') {
+      // classes de longe: cada golpe do combo é um disparo (o 3º mais forte)
+      this.projectiles.push({
+        x: p.x + p.facing * 18, y: p.y - 24, dir: p.facing, dist: 0, hit: new Set(),
+        skill: {
+          id: 'basic', name: '', description: '', kind: 'projectile', mpCost: 0, cooldown: 0, unlockLevel: 1,
+          damageMul: step.mul * 0.9, range: basic.range, radius: finisher ? 12 : 9, speed: basic.speed,
+          pierce: finisher, knockback: step.knock * 0.6, color: basic.color, fx: basic.fx,
+        },
+      });
+      return;
+    }
+    p.vx = p.facing * 40;
+    const hits = this.hitFront(step.range * basic.range, step.mul, step.knock, 22, finisher);
     if (hits > 0) {
       this.freeze(finisher ? 0.09 : 0.045);
       if (finisher) { this.shake(4, 0.18); this.sound('heavy'); }
@@ -649,7 +668,7 @@ export class World {
           vx: 0, vy: 0, vz: 60 + Math.random() * 60, life: 0.9, maxLife: 0.9, size: 2.5, color: '#ffe9a8', gravity: -40,
         });
       }
-      const unlocked = SKILLS.find((s) => s.unlockLevel > startLevel && s.unlockLevel <= pr.level);
+      const unlocked = this.cls.skills.find((s) => s.unlockLevel > startLevel && s.unlockLevel <= pr.level);
       if (unlocked) this.hooks.toast(`Novo poder: ${unlocked.name}`);
     }
     if (save) this.hooks.save();
@@ -1109,7 +1128,9 @@ export class World {
           life: 0.2, maxLife: 0.2, size: 2.5, color: pr.skill.color, gravity: 0 });
       }
       if (spritesReady()) {
-        drawSprite(ctx, 'fx_slash', 0, pr.x, y + 11, pr.dir);
+        const fx = pr.skill.fx ?? 'fx_slash';
+        if (fx === 'fx_slash') drawSprite(ctx, fx, 0, pr.x, y + 11, pr.dir);
+        else drawSprite(ctx, fx, 0, pr.x, y, pr.dir, { scale: pr.skill.radius >= 14 ? 1.4 : 1 });
       } else {
         ctx.fillStyle = pr.skill.color;
         ctx.beginPath();
@@ -1287,16 +1308,18 @@ export class World {
   /** Jogador em pixel art: escolhe a animação pelo estado. */
   private drawPlayerSprite(ctx: CanvasRenderingContext2D): void {
     const p = this.player;
+    const pre = this.cls.sprite;
     const ANIM: Record<ActionAnim, string> = {
-      combo0: 'hero_atk0', combo1: 'hero_atk1', combo2: 'hero_atk2', wind: 'hero_wind', whirl: 'hero_whirl', thunder: 'hero_thunder',
+      combo0: 'atk0', combo1: 'atk1', combo2: 'atk2', wind: 'wind', whirl: 'whirl', thunder: 'thunder',
     };
-    let name: string, frame: number;
-    if (p.dead) { name = 'hero_dead'; frame = Math.min(3, p.deadAnim / 0.12); }
-    else if (p.anim) { name = ANIM[p.anim]; frame = (p.animT / p.animDur) * frameCount(name); }
-    else if (p.hitStun > 0) { name = 'hero_hurt'; frame = this.time * 10; }
-    else if (!p.onGround) { name = p.vy < 0 ? 'hero_jump' : 'hero_fall'; frame = 0; }
-    else if (p.moving) { name = 'hero_walk'; frame = p.walk * 0.9; }
-    else { name = 'hero_idle'; frame = this.time * 4; }
+    let anim: string, frame: number;
+    if (p.dead) { anim = 'dead'; frame = Math.min(3, p.deadAnim / 0.12); }
+    else if (p.anim) { anim = ANIM[p.anim]; frame = (p.animT / p.animDur) * frameCount(`${pre}_${anim}`); }
+    else if (p.hitStun > 0) { anim = 'hurt'; frame = this.time * 10; }
+    else if (!p.onGround) { anim = p.vy < 0 ? 'jump' : 'fall'; frame = 0; }
+    else if (p.moving) { anim = 'walk'; frame = p.walk * (pre === 'hero' ? 0.9 : 0.6); }
+    else { anim = 'idle'; frame = this.time * (pre === 'hero' ? 4 : 2); }
+    const name = `${pre}_${anim}`;
     // sombra na superfície embaixo (mesmo pulando)
     const below = this.terrain.surfacesAt(p.x).find((y) => y >= p.y - 1) ?? p.y;
     const lift = below - p.y;

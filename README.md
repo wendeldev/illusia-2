@@ -39,6 +39,13 @@ remove o fundo, gera variações de cor e monta o atlas `public/sprites/atlas.pn
 Para trocar ou acrescentar sprites: edite as listas `HERO`, `SINGLE` e `VARIANTS` no script e rode
 `python3 -I tools/build_sprites.py`. Qual sprite cada inimigo usa fica em `SPRITES` (`src/data/enemies.ts`).
 
+## Classes
+
+5 classes jogáveis, escolhidas no primeiro jogo e trocáveis na vila (☰ → ⚔ Classe):
+Guerreiro (equilibrado), Arqueiro (flechas de longe), Maga (orbes, muito MP), Lutador (socos rápidos,
+muita vida) e Lanceiro (alcance longo). Cada uma tem atributos, ataque básico e 3 poderes próprios
+em `src/data/classes.ts`; as animações vêm de `assets-src/sheet-classes.png` (`CLASS_FRAMES` no script).
+
 ## Campanha
 
 90 fases em 9 regiões (10 fases cada): Bosque Sussurrante, Pântano Nebuloso, Ruínas de Ferro,

@@ -1,4 +1,4 @@
-import { getItem } from '../data';
+import { getClass, getItem } from '../data';
 import type { EquipmentDef, Slot } from '../types';
 import type { Progress } from './progress';
 
@@ -38,6 +38,8 @@ export function computeStats(p: Progress): Stats {
     maxHp: Math.round(100 + 11 * lv), maxMp: Math.round(40 + 4 * lv),
     atk: Math.round(10 + 1.5 * lv), def: Math.round(3 + 0.5 * lv), crit: 0.05,
   };
+  const m = getClass(p.classId).mods;
+  s.maxHp *= m.hp; s.maxMp *= m.mp; s.atk *= m.atk; s.def *= m.def; s.crit *= m.crit;
   for (const id of Object.values(p.equipped)) {
     if (!id) continue;
     const e = getItem(id);
@@ -47,6 +49,7 @@ export function computeStats(p: Progress): Stats {
     s.def += e.def ?? 0;
     s.crit += e.crit ?? 0;
   }
+  s.maxHp = Math.round(s.maxHp); s.maxMp = Math.round(s.maxMp); s.atk = Math.round(s.atk); s.def = Math.round(s.def);
   return s;
 }
 

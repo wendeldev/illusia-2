@@ -15,6 +15,8 @@ export interface Progress {
   quests: Record<string, QuestState>;
   /** estrelas por fase (bits: 1 = vencer, 2 = rapidez, 4 = pouco dano) */
   stars: Record<string, number>;
+  /** classe escolhida (vazio = ainda não escolheu) */
+  classId?: string;
   /** versão do save (2 = nova curva de níveis) */
   version: number;
 }

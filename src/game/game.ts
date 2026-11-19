@@ -1,4 +1,4 @@
-import { getItem, getStage, START_STAGE, type QuestDef } from '../data';
+import { getClass, getItem, getStage, START_STAGE, type QuestDef } from '../data';
 import { TRACKS } from '../data/music';
 import { Sfx, vibrate } from '../engine/audio';
 import type { Input } from '../engine/input';
@@ -59,6 +59,17 @@ export class Game implements GameApi {
   constructor(private input: Input) {
     this.ui = new Ui(this, input);
     this.world = this.makeWorld(START_STAGE);
+    // primeiro jogo (ou save de antes das classes): escolher a classe
+    if (!this.progress.classId) this.ui.openClasses(true);
+  }
+
+  chooseClass(id: string): void {
+    const changed = this.progress.classId !== id;
+    this.progress.classId = id;
+    this.world.refreshStats(true);
+    saveProgress(this.progress);
+    this.sfx.play('levelup');
+    if (changed) this.ui.toast(`Classe: ${getClass(id).name}`);
   }
 
   private makeWorld(id: string, keep?: { hp: number; mp: number }): World {

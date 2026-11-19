@@ -17,6 +17,7 @@ export const SKILLS: SkillDef[] = [
     knockback: 90,
     unlockLevel: 1,
     color: '#7fe3ff',
+    fx: 'fx_slash',
   },
   {
     id: 'whirl',
