@@ -5,6 +5,7 @@
 // Tudo é gerado de forma determinística a partir do id da fase.
 import { VIEW_H, VIEW_W } from '../../engine/view';
 import type { LandmarkDef, StageDef } from '../../types';
+import { BASE_GROUND, type Terrain } from '../terrain';
 import {
   alpha, BACK_ROW_Y, ellipse, glow, HORIZON, mix, poly, rnd, seedOf, tone, type Ctx, type Pt,
 } from './scene3d';
@@ -16,6 +17,8 @@ import {
 } from './structures';
 
 const GROUND_TOP = 200;
+/** posição vertical da câmera em que o fundo fica na altura original */
+const CAM_REST = 160;
 
 export type PropKind =
   | 'barrel' | 'crate' | 'lamp' | 'well' | 'stump' | 'log' | 'mushrooms' | 'rock'
@@ -56,7 +59,10 @@ export class Scenery {
   private seed: number;
   private lights: Light[] = [];
 
-  constructor(private stage: StageDef) {
+  /** deslocamento vertical do fundo (paralaxe vertical quando a câmera sobe) */
+  private bgOff = 0;
+
+  constructor(private stage: StageDef, private terrain: Terrain) {
     this.seed = seedOf(stage.id);
     this.makeProps();
   }
@@ -73,21 +79,25 @@ export class Scenery {
     for (let i = 0; i * spacing < s.width; i++) {
       const x = i * spacing + rnd(this.seed, i, 1) * spacing * 0.7;
       if (blocked(x) || rnd(this.seed, i, 2) < 0.25) continue;
-      // fica nas bordas do caminho (perto do fundo ou da frente) para não atrapalhar a luta
-      const edge = rnd(this.seed, i, 3) < 0.6;
-      const y = edge ? 4 + rnd(this.seed, i, 4) * 14 : s.depth - 6 - rnd(this.seed, i, 4) * 10;
+      // em cima do chão ou de uma plataforma que passe por ali
+      const tops = this.terrain.surfacesAt(x);
+      const y = tops.length > 1 && rnd(this.seed, i, 3) < 0.45 ? tops[0] : tops[tops.length - 1];
       this.props.push({ x, y, kind: kinds[Math.floor(rnd(this.seed, i, 5) * kinds.length)], seed: i });
     }
   }
 
   // ───────────────────────── fundo ─────────────────────────
 
-  drawBackground(ctx: Ctx, camX: number, t: number): void {
+  drawBackground(ctx: Ctx, camX: number, camY: number, t: number): void {
     this.lights = [];
+    // o fundo desce um pouco quando a câmera sobe (paralaxe vertical)
+    this.bgOff = -(camY - CAM_REST) * 0.35;
+    ctx.save();
+    ctx.translate(0, this.bgOff);
     switch (this.stage.theme) {
-      case 'village': return this.village(ctx, camX, t);
-      case 'forest': return this.forest(ctx, camX, t);
-      case 'ruins': return this.ruins(ctx, camX, t);
+      case 'village': this.village(ctx, camX, t); break;
+      case 'forest': this.forest(ctx, camX, t); break;
+      case 'ruins': this.ruins(ctx, camX, t); break;
       case 'cave': this.cave(ctx, camX, t); break;
       case 'swamp': this.swamp(ctx, camX, t); break;
       case 'desert': this.desert(ctx, camX, t); break;
@@ -96,7 +106,13 @@ export class Scenery {
       case 'castle': this.castle(ctx, camX, t); break;
       case 'sky': this.skyIslands(ctx, camX, t); break;
     }
+    ctx.restore();
     this.moodLight(ctx, t);
+  }
+
+  /** Construções fixas (vila) em pé no chão de verdade. */
+  drawLandmarks(ctx: Ctx, camX: number, camY: number, t: number): void {
+    this.landmarks(ctx, camX, t, BASE_GROUND - camY + 4);
   }
 
   /** Entardecer e noite: tingem o fundo (os personagens continuam bem visíveis). */
@@ -143,7 +159,7 @@ export class Scenery {
     const g = ctx.createLinearGradient(0, 0, 0, HORIZON + 10);
     for (const [o, c] of stops) g.addColorStop(o, c);
     ctx.fillStyle = g;
-    ctx.fillRect(-20, -20, VIEW_W + 40, HORIZON + 40);
+    ctx.fillRect(-20, -240, VIEW_W + 40, HORIZON + 260);
   }
 
   private sun(ctx: Ctx, x: number, y: number, r: number, color: string): void {
@@ -236,16 +252,16 @@ export class Scenery {
 
   // ── fileira de construções/objetos do fundo (paralaxe 1, base em BACK_ROW_Y) ──
 
-  private landmarks(ctx: Ctx, camX: number, t: number): void {
+  private landmarks(ctx: Ctx, camX: number, t: number, yb: number): void {
     for (const lm of this.stage.landmarks ?? []) {
       const sx = lm.x - camX;
       if (sx > VIEW_W + 40 || sx + LANDMARK_W[lm.kind] < -40) continue;
       switch (lm.kind) {
-        case 'house': house(ctx, sx, BACK_ROW_Y, lm.variant ?? 0, t); break;
-        case 'clinic': house(ctx, sx, BACK_ROW_Y, 1, t, true); break;
-        case 'forge': forge(ctx, sx, BACK_ROW_Y, t); break;
-        case 'tower': tower(ctx, sx, BACK_ROW_Y, t); break;
-        case 'gate': gate(ctx, sx, BACK_ROW_Y, t); break;
+        case 'house': house(ctx, sx, yb, lm.variant ?? 0, t); break;
+        case 'clinic': house(ctx, sx, yb, 1, t, true); break;
+        case 'forge': forge(ctx, sx, yb, t); break;
+        case 'tower': tower(ctx, sx, yb, t); break;
+        case 'gate': gate(ctx, sx, yb, t); break;
       }
     }
   }
@@ -274,7 +290,6 @@ export class Scenery {
     this.hills(ctx, camX, 0.5, HORIZON + 14, 18, '#7aae5e', 3);
     this.groundBase(ctx, '#8cbf6a', '#6aa048');
     // caminho de terra
-    this.path(ctx, camX, '#c9a878', 48, 98);
     // cerca, árvores e arbustos entre as construções
     this.each(camX, 1, 70, 120, (i, sx) => {
       const wx = sx + camX;
@@ -284,7 +299,6 @@ export class Scenery {
       else if (r < 0.75) bush(ctx, sx + 20, BACK_ROW_Y, 1, '#6aa84f', i);
       else fence(ctx, sx, BACK_ROW_Y + 2, 48);
     });
-    this.landmarks(ctx, camX, t);
     this.decals(camX, 30, (x, y, r, s) => {
       if (r(3) < 0.55) this.tuft(ctx, x, y, s, '#4f8a3a');
       else if (r(3) < 0.8) {
@@ -392,7 +406,7 @@ export class Scenery {
     g.addColorStop(0, '#0e0c16');
     g.addColorStop(1, '#2a2638');
     ctx.fillStyle = g;
-    ctx.fillRect(-20, -20, VIEW_W + 40, HORIZON + 50);
+    ctx.fillRect(-20, -240, VIEW_W + 40, HORIZON + 270);
     // parede do fundo com formações e brilhos
     this.each(camX, 0.15, 60, 80, (i, sx) => {
       const h = 50 + rnd(this.seed, i, 10) * 70;
@@ -418,11 +432,11 @@ export class Scenery {
       else if (r < 0.75) {
         const c = rnd(this.seed, i, 34) < 0.5 ? '#5ff0e0' : '#c49bff';
         crystal(ctx, x, BACK_ROW_Y, 1.3, c, t, i);
-        this.lights.push({ x, y: BACK_ROW_Y - 14, r: 70, color: c });
+        this.lights.push({ x, y: BACK_ROW_Y - 14 + this.bgOff, r: 70, color: c });
       } else {
         rockWall(ctx, x - 30, BACK_ROW_Y, 80, i, this.seed);
         torch(ctx, x + 10, BACK_ROW_Y - 46, t, i);
-        this.lights.push({ x: x + 10, y: BACK_ROW_Y - 50, r: 120 + Math.sin(t * 12 + i) * 6, color: '#ff9a3c' });
+        this.lights.push({ x: x + 10, y: BACK_ROW_Y - 50 + this.bgOff, r: 120 + Math.sin(t * 12 + i) * 6, color: '#ff9a3c' });
       }
     });
     // poças refletindo a luz
@@ -450,22 +464,6 @@ export class Scenery {
     ctx.stroke();
   }
 
-  /** Faixa de caminho de terra no meio da área jogável. */
-  private path(ctx: Ctx, camX: number, color: string, y0: number, y1: number): void {
-    // bordas irregulares presas ao mundo: um ponto a cada 16px do mapa
-    const top: Pt[] = [], bot: Pt[] = [];
-    for (let wx = Math.floor((camX - 32) / 16) * 16; wx <= camX + VIEW_W + 32; wx += 16) {
-      const k = wx / 16;
-      top.push([wx - camX, GROUND_TOP + y0 + (rnd(this.seed, k, 50) - 0.5) * 6]);
-      bot.push([wx - camX, GROUND_TOP + y1 + (rnd(this.seed, k, 51) - 0.5) * 6]);
-    }
-    poly(ctx, [...top, ...bot.reverse()], alpha(color, 0.85), null);
-    this.each(camX, 1, 22, 20, (i, sx) => {
-      const y = GROUND_TOP + y0 + 6 + rnd(this.seed, i, 52) * (y1 - y0 - 12);
-      ellipse(ctx, sx + rnd(this.seed, i, 53) * 20, y, 2.4, 1.4, tone(color, -0.2));
-    });
-  }
-
   /** Piso de pedra em perspectiva (linhas convergem para o ponto de fuga). */
   private tiles(ctx: Ctx, camX: number, colA = '#c8b490', colB = '#b09a76', line = 'rgba(90,70,50,0.35)'): void {
     const y0 = GROUND_TOP + 30, y1 = VIEW_H;
@@ -488,8 +486,8 @@ export class Scenery {
   // ───────────────────────── objetos do caminho ─────────────────────────
 
   /** Desenha um objeto do caminho em coordenadas de tela. */
-  drawProp(ctx: Ctx, p: SceneProp, camX: number, t: number): void {
-    const x = p.x - camX, y = GROUND_TOP + p.y;
+  drawProp(ctx: Ctx, p: SceneProp, camX: number, camY: number, t: number): void {
+    const x = p.x - camX, y = p.y - camY + 1;
     if (x < -60 || x > VIEW_W + 60) return;
     switch (p.kind) {
       case 'barrel': barrel(ctx, x, y); break;
@@ -525,6 +523,7 @@ export class Scenery {
 
   // ───────────────────────── primeiro plano e luz ─────────────────────────
 
+  /** `player` em coordenadas de tela (pés). */
   drawForeground(ctx: Ctx, camX: number, t: number, player: { x: number; y: number }): void {
     switch (this.stage.theme) {
       case 'village': {
@@ -564,7 +563,7 @@ export class Scenery {
       }
       case 'cave': {
         // escuridão com a luz em volta do jogador, das tochas e dos cristais
-        const px = player.x - camX, py = GROUND_TOP + player.y - 20;
+        const px = player.x, py = player.y - 20;
         const g = ctx.createRadialGradient(px, py, 60, px, py, 380);
         g.addColorStop(0, 'rgba(6,5,14,0)');
         g.addColorStop(1, 'rgba(6,5,14,0.72)');
@@ -613,7 +612,7 @@ export class Scenery {
         break;
       }
       case 'castle': {
-        const px = player.x - camX, py = GROUND_TOP + player.y - 20;
+        const px = player.x, py = player.y - 20;
         const g = ctx.createRadialGradient(px, py, 120, px, py, 520);
         g.addColorStop(0, 'rgba(10,8,24,0)');
         g.addColorStop(1, 'rgba(10,8,24,0.5)');

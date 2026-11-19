@@ -12,6 +12,10 @@ export interface PlayerAnimState {
   actionT: number;
   actionDur: number;
   moving: boolean;
+  /** no ar (pulando/caindo) */
+  air: boolean;
+  /** velocidade vertical (subindo < 0) */
+  vy: number;
   walk: number;
   hurt: boolean;
   dead: boolean;
@@ -62,6 +66,18 @@ export function playerPose(s: PlayerAnimState, time: number): Pose {
     p.weapon = 2.5 - w * 0.2;
     p.bodyY = -Math.abs(Math.cos(s.walk)) * 1.6;
     p.lean = 0.08;
+  }
+
+  if (s.air && !s.action) {
+    // pulo: pernas dobradas; caindo: braços abertos
+    const rising = s.vy < 0;
+    p.legFront = rising ? 1.1 : 0.5;
+    p.legBack = rising ? -0.2 : -0.6;
+    p.armBack = rising ? 2.4 : 1.6;
+    p.armFront = rising ? 1.2 : 1.9;
+    p.weapon = rising ? 2.3 : 2.6;
+    p.lean = rising ? 0.1 : -0.1;
+    p.bodyY = 0;
   }
 
   if (s.action) {

@@ -6,16 +6,18 @@ import type { EnemyDef, HumanLook, NpcDef, PortalDef, SkillDef, StageDef } from 
 import { drawHuman, OUTLINE } from './art/human';
 import { drawMonster } from './art/monsters';
 import { glow } from './art/scene3d';
+import { drawTerrain } from './art/ground';
 import { Scenery } from './art/scenery';
 import { npcLook, npcPose, playerLook, playerPose, type ActionAnim } from './art/poses';
 import { bar, text } from './draw';
 import type { Progress } from './progress';
 import { DAMAGE_LIMIT, type StageResult } from './stars';
 import { calcDamage, computeStats, expToNext, levelPower, type Stats } from './stats';
+import { BASE_GROUND, JUMP_SPEED, moveBody, Terrain, WORLD_H, type PhysBody } from './terrain';
 
-/** Y da tela onde começa o chão; y do mundo (0..depth) é somado a isto. */
-export const GROUND_TOP = 200;
-const PLAYER_SPEED = 130;
+const PLAYER_SPEED = 140;
+/** altura do corpo do jogador (para acertos) */
+const PLAYER_H = 44;
 
 // Combo do ataque básico: 3 golpes
 const COMBO = [
@@ -43,10 +45,7 @@ export interface WorldHooks {
   vibrate(ms: number): void;
 }
 
-interface Body {
-  x: number;
-  y: number;
-  vx: number;
+interface Body extends PhysBody {
   facing: number;
   radius: number;
   hp: number;
@@ -77,6 +76,9 @@ export interface Player extends Body {
   /** comando apertado durante uma ação, executado assim que possível (deixa o combo fluido) */
   buffered: { kind: 'attack'; count: number } | { kind: 'skill'; skill: SkillDef } | null;
   bufferT: number;
+  /** pulo "guardado" e tempo extra para pular logo após sair da beirada */
+  jumpBuffer: number;
+  coyote: number;
 }
 
 export interface Enemy extends Body {
@@ -108,6 +110,7 @@ export interface Enemy extends Body {
   /** 1→0 logo após golpear (animação de bote) */
   strike: number;
   moving: boolean;
+  jumpCd: number;
 }
 
 interface Projectile {
@@ -176,10 +179,25 @@ export function levelColor(monster: number, player: number): string {
   return '#ff5f5f';
 }
 
+/** Caixa vertical do corpo do monstro (topo/base), para acertos. */
+function enemyBox(e: { y: number; radius: number; def: EnemyDef }): { top: number; bottom: number } {
+  const r = e.radius;
+  switch (e.def.shape) {
+    case 'flyer': return { top: e.y - 3.4 * r, bottom: e.y - 1.8 * r };
+    case 'golem': return { top: e.y - 2.3 * r, bottom: e.y };
+    case 'mushroom': return { top: e.y - 2.6 * r, bottom: e.y };
+    case 'beast': return { top: e.y - 1.7 * r, bottom: e.y };
+    default: return { top: e.y - 1.8 * r, bottom: e.y };
+  }
+}
+
 export class World {
   player: Player;
   stats: Stats;
   scenery: Scenery;
+  terrain: Terrain;
+  camY = 0;
+  private prevUp = false;
   npcs: { def: NpcDef; x: number; y: number; look: HumanLook; seed: number }[];
   playerLook: HumanLook;
   enemies: Enemy[] = [];
@@ -213,21 +231,28 @@ export class World {
   ) {
     this.stats = computeStats(progress);
     this.cleared = stage.waves.length === 0;
-    this.scenery = new Scenery(stage);
+    this.terrain = new Terrain(stage.terrain, stage.width);
+    this.scenery = new Scenery(stage, this.terrain);
     this.npcs = stage.npcs.map((n, i) => {
       const def = getNpc(n.npcId);
-      return { def, x: n.x, y: n.y, look: npcLook(def.look), seed: i * 1.7 };
+      return { def, x: n.x, y: this.terrain.groundAt(n.x), look: npcLook(def.look), seed: i * 1.7 };
     });
     this.playerLook = playerLook(progress);
     this.player = {
-      x: stage.spawn.x, y: stage.spawn.y, vx: 0, facing: 1, radius: 14,
+      x: stage.spawn.x, y: this.terrain.groundAt(stage.spawn.x), vx: 0, vy: 0, onGround: true, dropT: 0, facing: 1, radius: 14,
       hp: Math.min(keep?.hp ?? this.stats.maxHp, this.stats.maxHp), maxHp: this.stats.maxHp,
       mp: Math.min(keep?.mp ?? this.stats.maxMp, this.stats.maxMp), maxMp: this.stats.maxMp,
       hitStun: 0, flash: 0, attackTimer: 0, comboStep: 0, comboWindow: 0,
       anim: null, animT: 0, animDur: 1, moving: false, deadAnim: 0, pending: null,
-      cooldowns: {}, invuln: 0, dead: false, deadTimer: 0, walk: 0, buffered: null, bufferT: 0,
+      cooldowns: {}, invuln: 0, dead: false, deadTimer: 0, walk: 0, buffered: null, bufferT: 0, jumpBuffer: 0, coyote: 0,
     };
     this.camX = this.cameraTarget();
+    this.camY = this.cameraTargetY();
+  }
+
+  /** Posição de um portal (em cima do chão). */
+  portalY(portal: PortalDef): number {
+    return this.terrain.groundAt(portal.x);
   }
 
   /** Recalcula atributos depois de trocar equipamento ou subir de nível. */
@@ -310,6 +335,8 @@ export class World {
     p.invuln = Math.max(0, p.invuln - dt);
 
     if (p.dead) {
+      moveBody(p, p.vx * dt, dt, this.terrain, 0, this.stage.width);
+      p.vx *= Math.pow(0.01, dt);
       p.deadAnim += dt;
       p.deadTimer -= dt;
       if (p.deadTimer <= 0 && p.deadTimer > -1) {
@@ -341,10 +368,16 @@ export class World {
 
     this.updateWaves();
     if (!this.waveActive) this.camX += (this.cameraTarget() - this.camX) * Math.min(1, dt * 8);
+    this.camY += (this.cameraTargetY() - this.camY) * Math.min(1, dt * 5);
   }
 
   private cameraTarget(): number {
     return Math.max(0, Math.min(this.stage.width - VIEW_W, this.player.x - VIEW_W / 2));
+  }
+
+  private cameraTargetY(): number {
+    // o chão base fica sempre à vista, mesmo em cima das plataformas mais altas
+    return Math.max(BASE_GROUND - VIEW_H + 10, Math.min(WORLD_H - VIEW_H, this.player.y - 250));
   }
 
   private updatePlayer(dt: number, input: Input): void {
@@ -352,21 +385,45 @@ export class World {
     p.comboWindow -= dt;
     if (p.comboWindow <= 0) p.comboStep = 0;
 
-    if (p.hitStun > 0) {
-      p.hitStun -= dt;
-    } else if (p.attackTimer > 0) {
-      p.attackTimer -= dt;
-    } else {
-      const ax = input.axis;
-      p.x += ax.x * PLAYER_SPEED * dt;
-      p.y += ax.y * PLAYER_SPEED * 0.7 * dt;
-      if (Math.abs(ax.x) > 0.15) p.facing = Math.sign(ax.x);
-      p.moving = ax.x !== 0 || ax.y !== 0;
-      if (p.moving) p.walk += dt * 11;
+    const ax = input.axis;
+    const free = p.hitStun <= 0 && p.attackTimer <= 0;
+    if (p.hitStun > 0) p.hitStun -= dt;
+    else if (p.attackTimer > 0) p.attackTimer -= dt;
+    const move = free ? ax.x : 0;
+    if (free && Math.abs(ax.x) > 0.15) p.facing = Math.sign(ax.x);
+
+    // pulo (com um pouco de tolerância: apertar pouco antes de pousar ou logo após sair da beirada)
+    p.coyote = p.onGround ? 0.1 : Math.max(0, p.coyote - dt);
+    const up = ax.y < -0.75;
+    const upEdge = up && !this.prevUp;
+    this.prevUp = up;
+    let jump = input.consume('jump');
+    if (upEdge) {
+      if (this.nearby()) this.interact();
+      else jump = true;
     }
-    if (p.hitStun > 0 || p.attackTimer > 0) p.moving = false;
-    p.x += p.vx * dt;
+    if (jump) p.jumpBuffer = 0.14;
+    p.jumpBuffer -= dt;
+    if (p.jumpBuffer > 0 && p.coyote > 0 && p.hitStun <= 0) {
+      p.jumpBuffer = 0;
+      p.coyote = 0;
+      if (ax.y > 0.6 && this.terrain.platformAt(p.x, p.y)) {
+        p.dropT = 0.3; // baixo + pulo: desce da plataforma
+      } else {
+        p.vy = -JUMP_SPEED;
+        this.sound('jump');
+      }
+      p.onGround = false;
+    }
+
+    const minX = this.waveActive ? this.camX + 16 : 16;
+    const maxX = this.waveActive ? this.camX + VIEW_W - 16 : this.stage.width - 16;
+    const wasAir = !p.onGround;
+    moveBody(p, (move * PLAYER_SPEED + p.vx) * dt, dt, this.terrain, minX, maxX);
+    if (wasAir && p.onGround) this.sound('land');
     p.vx *= Math.pow(0.002, dt);
+    p.moving = move !== 0 && p.onGround;
+    if (p.moving) p.walk += dt * 11;
     if (p.anim) {
       p.animT += dt;
       if (p.animT >= p.animDur) p.anim = null;
@@ -380,10 +437,6 @@ export class World {
       }
     }
 
-    const minX = this.waveActive ? this.camX + 16 : 16;
-    const maxX = this.waveActive ? this.camX + VIEW_W - 16 : this.stage.width - 16;
-    p.x = Math.max(minX, Math.min(maxX, p.x));
-    p.y = Math.max(0, Math.min(this.stage.depth, p.y));
 
     this.readCommands(input);
     p.bufferT -= dt;
@@ -451,14 +504,15 @@ export class World {
       case 'projectile':
         this.startAnim('wind', 0.3);
         this.sound('wind');
-        this.projectiles.push({ x: p.x + p.facing * 20, y: p.y, dir: p.facing, dist: 0, skill, hit: new Set() });
+        this.projectiles.push({ x: p.x + p.facing * 20, y: p.y - 22, dir: p.facing, dist: 0, skill, hit: new Set() });
         break;
       case 'aoe':
         this.startAnim('whirl', 0.4);
         p.attackTimer = 0.4;
         for (const e of this.enemies) {
           if (e.dead) continue;
-          const dx = e.x - p.x, dy = (e.y - p.y) * 2;
+          const b = enemyBox(e);
+          const dx = e.x - p.x, dy = (b.top + b.bottom) / 2 - (p.y - PLAYER_H / 2);
           if (dx * dx + dy * dy <= (skill.radius + e.radius) ** 2) {
             this.damageEnemy(e, skill.damageMul, skill.knockback * (Math.sign(dx) || p.facing), true);
           }
@@ -479,6 +533,7 @@ export class World {
         // pula e o golpe acerta ao aterrissar
         this.startAnim('thunder', 0.55);
         p.attackTimer = 0.55;
+        if (p.onGround) { p.vy = -380; p.onGround = false; }
         p.invuln = Math.max(p.invuln, 0.4);
         this.sound('swing');
         p.pending = {
@@ -505,13 +560,15 @@ export class World {
   }
 
   /** Golpe à frente do jogador. Retorna quantos inimigos acertou. */
-  private hitFront(range: number, mul: number, knock: number, depth = 22, heavy = false): number {
+  private hitFront(range: number, mul: number, knock: number, reach = 22, heavy = false): number {
     const p = this.player;
     let hits = 0;
+    const top = p.y - PLAYER_H - reach * 0.5, bottom = p.y + 8;
     for (const e of this.enemies) {
       if (e.dead) continue;
       const dx = (e.x - p.x) * p.facing;
-      if (dx > -12 && dx < range + e.radius && Math.abs(e.y - p.y) < depth + e.radius * 0.5) {
+      const b = enemyBox(e);
+      if (dx > -12 && dx < range + e.radius && b.top < bottom && b.bottom > top) {
         this.damageEnemy(e, mul, knock * p.facing, heavy);
         hits++;
       }
@@ -530,7 +587,7 @@ export class World {
     // golpe interrompe o preparo de inimigos comuns (não de chefes)
     if (!e.def.boss && (e.state === 'windup' || e.state === 'ability')) { e.state = 'recover'; e.timer = 0.4; }
     const bodyZ = e.def.shape === 'flyer' ? e.radius * 2.6 : e.radius * 1.2;
-    this.floatText(e.x, GROUND_TOP + e.y - e.radius * 2.6, crit ? `${dmg}!` : `${dmg}`, crit ? '#ffd36b' : '#fff', crit ? 19 : heavy ? 16 : 13);
+    this.floatText(e.x, e.y - e.radius * 2.6, crit ? `${dmg}!` : `${dmg}`, crit ? '#ffd36b' : '#fff', crit ? 19 : heavy ? 16 : 13);
     this.burst(e.x - Math.sign(knock) * e.radius * 0.4, e.y, bodyZ, crit ? 12 : 6, crit ? '#ffd36b' : '#ffffff', crit ? 240 : 170, 2.2);
     if (crit) { this.sound('crit'); this.shake(3, 0.12); this.freeze(0.07); }
     else this.sound('hit');
@@ -543,7 +600,7 @@ export class World {
     const pr = this.progress;
     pr.gold += e.gold;
     const recent = this.texts.filter((t) => t.color === '#9ff0a0' && t.life > 0.5).length;
-    this.floatText(e.x, GROUND_TOP + e.y - 10 + recent * 12, `+${e.exp} EXP  +${e.gold} G`, '#9ff0a0', 10, 0.9);
+    this.floatText(e.x, e.y - 10 + recent * 12, `+${e.exp} EXP  +${e.gold} G`, '#9ff0a0', 10, 0.9);
     this.burst(e.x, e.y, e.radius, e.def.boss ? 60 : 16, e.def.color, e.def.boss ? 320 : 180, e.def.boss ? 4 : 3, 260);
     this.sound('kill');
     this.sound('coin');
@@ -595,10 +652,8 @@ export class World {
     e.flash = Math.max(0, e.flash - dt);
     e.strike = Math.max(0, e.strike - dt * 4);
     e.moving = false;
-    e.x += e.vx * dt;
     e.vx *= Math.pow(0.003, dt);
-    e.x = Math.max(0, Math.min(this.stage.width, e.x));
-    if (e.dead) { e.deadTimer -= dt; return; }
+    if (e.dead) { e.deadTimer -= dt; this.enemyPhysics(e, 0, dt); return; }
     for (let i = 0; i < e.abilityCd.length; i++) e.abilityCd[i] -= dt;
     if (e.def.enrage && !e.enraged && e.hp < e.maxHp / 2) {
       e.enraged = true;
@@ -608,59 +663,107 @@ export class World {
       this.sound('wave');
       this.burst(e.x, e.y, e.radius, 30, '#ff4040', 220, 3);
     }
-    if (e.hitStun > 0) { e.hitStun -= dt; return; }
+    const walk = this.enemyBrain(e, dt);
+    this.enemyPhysics(e, walk, dt);
+  }
 
+  /** Move o inimigo: andarilhos têm gravidade e pulam degraus; voadores voam livres. */
+  private enemyPhysics(e: Enemy, walk: number, dt: number): void {
+    e.jumpCd -= dt;
+    if (e.def.shape === 'flyer') {
+      e.x = Math.max(0, Math.min(this.stage.width, e.x + (walk + e.vx) * dt));
+      e.y = Math.max(60, Math.min(this.terrain.groundAt(e.x) - 10, e.y + e.vy * dt));
+      return;
+    }
+    const blocked = moveBody(e, (walk + e.vx) * dt, dt, this.terrain, 0, this.stage.width);
+    if (blocked && e.onGround && walk !== 0 && e.jumpCd <= 0) {
+      e.vy = -JUMP_SPEED * 0.85;
+      e.onGround = false;
+      e.jumpCd = 0.8;
+    }
+  }
+
+  /** Decide o que o inimigo faz neste quadro. Retorna a velocidade horizontal desejada. */
+  private enemyBrain(e: Enemy, dt: number): number {
+    if (e.def.shape === 'flyer') e.vy = 0;
+    if (e.hitStun > 0) { e.hitStun -= dt; return 0; }
     const p = this.player;
     const dx = p.x - e.x, dy = p.y - e.y;
     const d = e.def;
     const locked = e.state === 'windup' || e.state === 'ability' || e.state === 'charging';
     if (!locked) e.facing = Math.sign(dx) || e.facing;
+    const sameLevel = this.overlapsPlayer(e, 6);
 
     if (e.state === 'windup') {
       e.timer -= dt;
       if (e.timer <= 0) {
         const reach = d.attackRange + p.radius;
-        if (!p.dead && Math.abs(dx) < reach && Math.sign(dx) === e.facing && Math.abs(dy) < 18 + d.radius * 0.3) {
+        if (!p.dead && Math.abs(dx) < reach && Math.sign(dx) === e.facing && this.overlapsPlayer(e, 10)) {
           this.hitPlayer(e);
         }
         e.state = 'recover';
         e.timer = d.attackCooldown * (e.enraged ? 0.6 : 1);
         e.strike = 1;
       }
-      return;
+      return 0;
     }
     if (e.state === 'ability') {
       e.timer -= dt;
       if (e.timer <= 0) this.executeAbility(e);
-      return;
+      return 0;
     }
-    if (e.state === 'charging') {
-      this.updateCharge(e, dt);
-      return;
-    }
+    if (e.state === 'charging') return this.updateCharge(e, dt);
     if (e.state === 'recover') {
       e.timer -= dt;
       if (e.timer <= 0) e.state = 'chase';
     }
-    if (p.dead) return;
-    if (e.state === 'chase' && this.tryAbility(e, dx, dy)) return;
+    if (p.dead) return 0;
+    if (e.state === 'chase' && this.tryAbility(e, dx, dy)) return 0;
 
-    // persegue: tenta ficar ao lado do jogador, na mesma "linha"
-    const wobble = Math.sin(this.time * 1.5 + e.seed) * 10;
-    const tx = p.x - Math.sign(dx || 1) * (d.attackRange * 0.7 + p.radius);
-    const ty = p.y + wobble;
-    const mx = tx - e.x, my = ty - e.y, ml = Math.hypot(mx, my);
     const speed = e.speed * (e.state === 'recover' ? 0.35 : 1);
-    if (ml > 2) {
-      e.x += (mx / ml) * speed * dt;
-      e.y += (my / ml) * speed * 0.7 * dt;
-      e.moving = true;
+    const reach = d.attackRange * 0.7 + p.radius;
+    if (d.shape === 'flyer') {
+      // voa até ficar ao lado do jogador, na altura do peito
+      const side = Math.sign(dx || 1);
+      const tx = p.x - side * reach, ty = p.y + e.radius * 2.6 - 26 + Math.sin(this.time * 2 + e.seed) * 8;
+      const mx = tx - e.x, my = ty - e.y, ml = Math.hypot(mx, my);
+      if (ml > 3) {
+        e.vy = (my / ml) * speed * 0.8;
+        e.moving = true;
+        if (e.state === 'chase' && Math.abs(dx) < d.attackRange + p.radius && sameLevel) { e.state = 'windup'; e.timer = d.windup * (e.enraged ? 0.75 : 1); }
+        return (mx / ml) * speed;
+      }
+    } else {
+      let walk = Math.abs(dx) > reach ? Math.sign(dx) * speed : 0;
+      const plat = this.terrain.platformAt(e.x, e.y);
+      // não cai da plataforma à toa (só se o jogador estiver mais embaixo)
+      if (plat && walk !== 0 && dy <= 20) {
+        const nx = e.x + Math.sign(walk) * e.radius;
+        if (nx < plat.x0 || nx > plat.x1) walk = 0;
+      }
+      // jogador mais alto e perto: pula atrás dele
+      if (e.onGround && dy < -40 && Math.abs(dx) < 130 && e.jumpCd <= 0) {
+        e.vy = -JUMP_SPEED * (0.9 + Math.random() * 0.1);
+        e.onGround = false;
+        e.jumpCd = 1.3 + Math.random();
+      }
+      // jogador mais embaixo: desce da plataforma
+      if (plat && dy > 40 && Math.abs(dx) < 70) e.dropT = 0.3;
+      e.moving = walk !== 0 && e.onGround;
+      if (e.state === 'chase' && Math.abs(dx) < d.attackRange + p.radius && sameLevel && e.onGround) {
+        e.state = 'windup';
+        e.timer = d.windup * (e.enraged ? 0.75 : 1);
+        return 0;
+      }
+      return walk;
     }
-    e.y = Math.max(0, Math.min(this.stage.depth, e.y));
-    if (e.state === 'chase' && Math.abs(dx) < d.attackRange + p.radius && Math.abs(dy) < 14) {
-      e.state = 'windup';
-      e.timer = d.windup * (e.enraged ? 0.75 : 1);
-    }
+    return 0;
+  }
+
+  /** O corpo do inimigo está na mesma altura que o do jogador? */
+  private overlapsPlayer(e: Enemy, pad: number): boolean {
+    const b = enemyBox(e), p = this.player;
+    return b.top < p.y + pad && b.bottom > p.y - PLAYER_H - pad;
   }
 
   /** Começa um ataque especial se algum estiver pronto e fizer sentido agora. */
@@ -675,7 +778,7 @@ export class World {
       if (e.abilityCd[i] > 0) continue;
       let ok = false;
       switch (a.kind) {
-        case 'slam': ok = adx < a.radius * 0.8 && Math.abs(dy) < 45; break;
+        case 'slam': ok = adx < a.radius * 0.8 && Math.abs(dy) < 50; break;
         case 'charge': ok = adx > 110 && adx < 460; break;
         case 'shoot': ok = adx > 70 && adx < a.range; break;
         case 'summon': ok = this.enemies.filter((o) => !o.dead && !o.def.boss).length < 5; break;
@@ -701,8 +804,8 @@ export class World {
     e.strike = 1;
     switch (a.kind) {
       case 'slam': {
-        const dx = p.x - e.x, dy = (p.y - e.y) * 2;
-        if (!p.dead && dx * dx + dy * dy <= (a.radius + p.radius) ** 2) this.hitPlayer(e, a.damageMul);
+        // onda de choque pelo chão: pega quem estiver perto e na mesma altura (pular desvia!)
+        if (!p.dead && Math.abs(p.x - e.x) < a.radius + p.radius && Math.abs(p.y - e.y) < 24) this.hitPlayer(e, a.damageMul);
         this.shake(7, 0.3);
         this.sound('thunder');
         this.effects.push({ kind: 'ring', x: e.x, y: e.y, dir: 1, radius: a.radius, color: '#ff8060', life: 0.4, maxLife: 0.4 });
@@ -715,7 +818,7 @@ export class World {
         const dist = Math.abs(t.x - e.x) + 140;
         e.facing = dir;
         e.chargeVx = dir * a.speed;
-        e.chargeVy = Math.max(-90, Math.min(90, (t.y - e.y) / (dist / a.speed)));
+        e.chargeVy = 0;
         e.chargeHit = false;
         e.state = 'charging';
         e.timer = Math.min(1.5, dist / a.speed);
@@ -723,13 +826,14 @@ export class World {
         break;
       }
       case 'shoot': {
-        const t = e.target ?? { x: p.x, y: p.y };
-        const base = Math.atan2(t.y - e.y, t.x - e.x);
+        const b = enemyBox(e);
+        const oy = (b.top + b.bottom) / 2;
+        const base = Math.atan2(p.y - PLAYER_H / 2 - oy, p.x - e.x);
         for (let i = 0; i < a.count; i++) {
           const off = a.count > 1 ? (i / (a.count - 1) - 0.5) * a.spread * 2 : 0;
           const ang = base + off;
           this.enemyShots.push({
-            x: e.x + e.facing * e.radius * 0.7, y: e.y, vx: Math.cos(ang) * a.speed, vy: Math.sin(ang) * a.speed * 0.5,
+            x: e.x + e.facing * e.radius * 0.7, y: oy, vx: Math.cos(ang) * a.speed, vy: Math.sin(ang) * a.speed,
             dist: 0, range: a.range, atk: e.atk * a.damageMul, color: a.color, r: 6,
           });
         }
@@ -740,7 +844,7 @@ export class World {
         const def = getEnemy(a.enemyId);
         for (let i = 0; i < a.count; i++) {
           const side = i % 2 === 0 ? 1 : -1;
-          const m = this.spawnEnemy(def, e.x + side * (50 + Math.random() * 30), Math.max(0, Math.min(this.stage.depth, e.y + (Math.random() - 0.5) * 70)), -side, true);
+          const m = this.spawnEnemy(def, e.x + side * (50 + Math.random() * 30), e.y - 30, -side, true);
           this.burst(m.x, m.y, 10, 14, '#c49bff', 140, 2.5);
         }
         this.sound('wave');
@@ -749,15 +853,13 @@ export class World {
     }
   }
 
-  private updateCharge(e: Enemy, dt: number): void {
+  private updateCharge(e: Enemy, dt: number): number {
     const p = this.player;
     const a = e.def.abilities![e.ability];
-    e.x += e.chargeVx * dt;
-    e.y = Math.max(0, Math.min(this.stage.depth, e.y + e.chargeVy * dt));
     e.moving = true;
     e.timer -= dt;
     if (Math.random() < 0.5) this.burst(e.x - e.facing * e.radius, e.y, 2, 1, '#c8b090', 60, 3, 100);
-    if (!e.chargeHit && !p.dead && Math.abs(p.x - e.x) < e.radius + p.radius && Math.abs(p.y - e.y) < 20 + e.radius * 0.3) {
+    if (!e.chargeHit && !p.dead && Math.abs(p.x - e.x) < e.radius + p.radius && this.overlapsPlayer(e, 4)) {
       e.chargeHit = true;
       this.hitPlayer(e, a.kind === 'charge' ? a.damageMul : 1);
     }
@@ -768,7 +870,9 @@ export class World {
       e.state = 'recover';
       e.timer = e.enraged ? 0.7 : 1.1;
       this.shake(3, 0.15);
+      return 0;
     }
+    return e.chargeVx;
   }
 
   private updateEnemyShots(dt: number): void {
@@ -777,13 +881,13 @@ export class World {
       sh.x += sh.vx * dt;
       sh.y += sh.vy * dt;
       sh.dist += Math.hypot(sh.vx, sh.vy) * dt;
-      if (!p.dead && Math.abs(sh.x - p.x) < sh.r + p.radius * 0.8 && Math.abs(sh.y - p.y) < 14) {
+      if (!p.dead && Math.abs(sh.x - p.x) < sh.r + p.radius * 0.8 && sh.y > p.y - PLAYER_H - sh.r && sh.y < p.y + sh.r) {
         this.damagePlayer(sh.atk, Math.sign(sh.vx) || 1, false);
         this.burst(sh.x, sh.y, 16, 10, sh.color, 150, 2.5);
         sh.dist = Infinity;
       }
     }
-    this.enemyShots = this.enemyShots.filter((sh) => sh.dist < sh.range && sh.y > -30 && sh.y < this.stage.depth + 30);
+    this.enemyShots = this.enemyShots.filter((sh) => sh.dist < sh.range && sh.y > -30 && sh.y < this.terrain.groundAt(sh.x) + 4);
   }
 
   /** Cria um inimigo com atributos ajustados à força da fase. */
@@ -795,7 +899,7 @@ export class World {
     // a vida e o ataque crescem um pouco mais rápido que a força, para acompanhar o nível do jogador
     const hp = Math.round(def.hp * Math.pow(pw, 1.4));
     const e: Enemy = {
-      def, level, x, y, vx: 0, facing, radius: def.radius, hp, maxHp: hp,
+      def, level, x, y, vx: 0, vy: 0, onGround: false, dropT: 0, jumpCd: 0, facing, radius: def.radius, hp, maxHp: hp,
       atk: def.atk * Math.pow(pw, 1.3), armor: def.def * Math.sqrt(pw),
       exp: Math.round(def.exp * pw * 1.2), gold: Math.round(def.gold * pw),
       speed: def.speed * (1 + Math.min(0.3, (pw - 1) * 0.03)),
@@ -822,7 +926,8 @@ export class World {
     p.attackTimer = 0;
     p.invuln = 0.6;
     p.vx = dir * (heavy ? 260 : 150);
-    this.floatText(p.x, GROUND_TOP + p.y - 44, `-${dmg}`, '#ff6b6b', 15, 0.8);
+    if (p.onGround) { p.vy = heavy ? -260 : -160; p.onGround = false; }
+    this.floatText(p.x, p.y - 44, `-${dmg}`, '#ff6b6b', 15, 0.8);
     this.burst(p.x, p.y, 18, 8, '#ff6b6b', 160, 2.5);
     this.sound('hurt');
     this.hooks.vibrate(heavy ? 90 : 40);
@@ -841,13 +946,12 @@ export class World {
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
         const a = list[i], b = list[j];
-        const dx = b.x - a.x, dy = (b.y - a.y) * 1.5;
-        const min = (a.radius + b.radius) * 0.8;
-        const d = Math.hypot(dx, dy);
-        if (d > 0 && d < min) {
-          const push = (min - d) / 2;
-          a.x -= (dx / d) * push; b.x += (dx / d) * push;
-          a.y -= (dy / d) * push * 0.5; b.y += (dy / d) * push * 0.5;
+        if (Math.abs(b.y - a.y) > 20) continue;
+        const dx = b.x - a.x;
+        const min = (a.radius + b.radius) * 0.7;
+        if (Math.abs(dx) < min) {
+          const push = (min - Math.abs(dx)) / 2 * (Math.sign(dx) || 1);
+          a.x -= push; b.x += push;
         }
       }
     }
@@ -860,7 +964,8 @@ export class World {
       pr.dist += step;
       for (const e of this.enemies) {
         if (e.dead || pr.hit.has(e)) continue;
-        if (Math.abs(e.x - pr.x) < pr.skill.radius + e.radius && Math.abs(e.y - pr.y) < 20 + e.radius * 0.4) {
+        const b = enemyBox(e);
+        if (Math.abs(e.x - pr.x) < pr.skill.radius + e.radius && pr.y > b.top - 10 && pr.y < b.bottom + 10) {
           pr.hit.add(e);
           this.damageEnemy(e, pr.skill.damageMul, pr.skill.knockback * pr.dir);
           this.freeze(0.03);
@@ -911,7 +1016,11 @@ export class World {
       for (let i = 0; i < group.count; i++, n++) {
         const fromLeft = n % 3 === 2 && this.camX > 60;
         const x = fromLeft ? this.camX - 30 - Math.random() * 40 : this.camX + VIEW_W + 30 + Math.random() * 60;
-        this.spawnEnemy(def, x, Math.random() * this.stage.depth, fromLeft ? 1 : -1);
+        // aparece no chão ou em cima de uma plataforma; voadores no ar
+        const tops = this.terrain.surfacesAt(x);
+        let y = Math.random() < 0.3 ? tops[Math.floor(Math.random() * tops.length)] : tops[tops.length - 1];
+        if (def.shape === 'flyer') y = this.terrain.groundAt(x) - 70 - Math.random() * 60;
+        this.spawnEnemy(def, x, y, fromLeft ? 1 : -1);
       }
     }
     this.sound('wave');
@@ -927,9 +1036,12 @@ export class World {
   /** O que está perto o bastante para interagir (NPC ou portal). */
   nearby(): { kind: 'npc'; npc: NpcDef; x: number; y: number } | { kind: 'portal'; portal: PortalDef; x: number; y: number } | null {
     const p = this.player;
-    const close = (x: number, y: number) => Math.hypot(x - p.x, (y - p.y) * 1.6) < 44;
+    const close = (x: number, y: number) => Math.abs(x - p.x) < 40 && Math.abs(y - p.y) < 40;
     for (const n of this.npcs) if (close(n.x, n.y)) return { kind: 'npc', npc: n.def, x: n.x, y: n.y };
-    for (const portal of this.stage.portals) if (close(portal.x, portal.y)) return { kind: 'portal', portal, x: portal.x, y: portal.y };
+    for (const portal of this.stage.portals) {
+      const py = this.portalY(portal);
+      if (close(portal.x, py)) return { kind: 'portal', portal, x: portal.x, y: py };
+    }
     return null;
   }
 
@@ -963,34 +1075,30 @@ export class World {
       const m = this.shakeMag * (this.shakeT / this.shakeDur);
       ctx.translate((Math.random() * 2 - 1) * m, (Math.random() * 2 - 1) * m);
     }
-    this.scenery.drawBackground(ctx, camX, this.time);
+    const camY = Math.round(this.camY);
+    this.scenery.drawBackground(ctx, camX, camY, this.time);
+    this.scenery.drawLandmarks(ctx, camX, camY, this.time);
+    drawTerrain(ctx, this.terrain, s.theme, camX, camY, this.time, this.scenery.props.length + s.width);
 
     ctx.save();
-    ctx.translate(-camX, 0);
+    ctx.translate(-camX, -camY);
 
     for (const portal of s.portals) this.drawPortal(ctx, portal);
     for (const e of this.enemies) if (!e.dead && (e.state === 'ability' || e.state === 'charging')) this.drawTelegraph(ctx, e);
 
-    // ordena por profundidade
-    type D = { y: number; draw: () => void };
-    const list: D[] = [];
-    for (const n of this.npcs) list.push({ y: n.y, draw: () => this.drawNpc(ctx, n) });
-    for (const prop of this.scenery.props) {
-      list.push({ y: prop.y, draw: () => {
-        ctx.save();
-        ctx.translate(camX, 0);
-        this.scenery.drawProp(ctx, prop, camX, this.time);
-        ctx.restore();
-      } });
-    }
-    for (const e of this.enemies) list.push({ y: e.y, draw: () => this.drawEnemy(ctx, e) });
-    list.push({ y: this.player.y, draw: () => this.drawPlayer(ctx) });
-    list.sort((a, b) => a.y - b.y).forEach((d) => d.draw());
+    // objetos do cenário, NPCs, inimigos e por último o jogador
+    ctx.save();
+    ctx.translate(camX, camY);
+    for (const prop of this.scenery.props) this.scenery.drawProp(ctx, prop, camX, camY, this.time);
+    ctx.restore();
+    for (const n of this.npcs) this.drawNpc(ctx, n);
+    for (const e of this.enemies) this.drawEnemy(ctx, e);
+    this.drawPlayer(ctx);
 
     for (const pr of this.projectiles) {
-      const y = GROUND_TOP + pr.y - 22;
+      const y = pr.y;
       if (Math.random() < 0.6) {
-        this.particles.push({ x: pr.x - pr.dir * 8, y: pr.y, z: 22, vx: -pr.dir * 40, vy: 0, vz: (Math.random() - 0.5) * 60,
+        this.particles.push({ x: pr.x - pr.dir * 8, y: pr.y, z: 0, vx: -pr.dir * 40, vy: 0, vz: (Math.random() - 0.5) * 60,
           life: 0.2, maxLife: 0.2, size: 2.5, color: pr.skill.color, gravity: 0 });
       }
       ctx.fillStyle = pr.skill.color;
@@ -999,11 +1107,7 @@ export class World {
       ctx.fill();
     }
     for (const sh of this.enemyShots) {
-      const sy = GROUND_TOP + sh.y;
-      ctx.fillStyle = 'rgba(0,0,0,0.2)';
-      ctx.beginPath();
-      ctx.ellipse(sh.x, sy, sh.r, sh.r * 0.35, 0, 0, Math.PI * 2);
-      ctx.fill();
+      const sy = sh.y + 16;
       glow(ctx, sh.x, sy - 16, sh.r * 3, sh.color, 0.5);
       ctx.fillStyle = sh.color;
       ctx.strokeStyle = OUTLINE;
@@ -1021,7 +1125,7 @@ export class World {
       ctx.globalAlpha = Math.min(1, (pt.life / pt.maxLife) * 1.5);
       ctx.fillStyle = pt.color;
       const sz = pt.size * (0.5 + 0.5 * pt.life / pt.maxLife);
-      ctx.fillRect(pt.x - sz / 2, GROUND_TOP + pt.y - pt.z - sz / 2, sz, sz);
+      ctx.fillRect(pt.x - sz / 2, pt.y - pt.z - sz / 2, sz, sz);
     }
     ctx.globalAlpha = 1;
     for (const fx of this.effects) {
@@ -1031,9 +1135,9 @@ export class World {
       ctx.lineWidth = fx.kind === 'ring' ? 5 : 4;
       ctx.beginPath();
       if (fx.kind === 'ring') {
-        ctx.ellipse(fx.x, GROUND_TOP + fx.y, fx.radius * (1.2 - a * 0.4), fx.radius * 0.5 * (1.2 - a * 0.4), 0, 0, Math.PI * 2);
+        ctx.ellipse(fx.x, fx.y, fx.radius * (1.2 - a * 0.4), fx.radius * 0.35 * (1.2 - a * 0.4), 0, 0, Math.PI * 2);
       } else {
-        const cy = GROUND_TOP + fx.y - 22;
+        const cy = fx.y - 22;
         const start = fx.dir > 0 ? -1.2 : Math.PI - 0.6;
         ctx.arc(fx.x, cy, fx.radius * 0.8, start, start + 1.8);
       }
@@ -1043,14 +1147,14 @@ export class World {
     ctx.restore();
 
     // primeiro plano, luz e atmosfera (por cima dos personagens, por baixo dos textos)
-    this.scenery.drawForeground(ctx, camX, this.time, this.player);
+    this.scenery.drawForeground(ctx, camX, this.time, { x: this.player.x - camX, y: this.player.y - camY });
 
     ctx.save();
-    ctx.translate(-camX, 0);
+    ctx.translate(-camX, -camY);
     const near = this.nearby();
     if (near && !this.player.dead) {
       const label = near.kind === 'npc' ? `Falar com ${near.npc.name}` : (this.portalLock(near.portal) ? '🔒 ' : '→ ') + near.portal.label;
-      text(ctx, label, near.x, GROUND_TOP + near.y - 58, { size: 11, align: 'center', color: '#ffe9a8' });
+      text(ctx, label, near.x, near.y - 58, { size: 11, align: 'center', color: '#ffe9a8' });
     }
     for (const t of this.texts) {
       const age = t.maxLife - t.life;
@@ -1073,7 +1177,7 @@ export class World {
 
   private drawPortal(ctx: CanvasRenderingContext2D, portal: PortalDef): void {
     const locked = !!this.portalLock(portal);
-    const x = portal.x, y = GROUND_TOP + portal.y;
+    const x = portal.x, y = this.portalY(portal);
     const c = locked ? '#8a8a9a' : '#8fd8ff';
     // base de pedra
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -1116,7 +1220,7 @@ export class World {
   }
 
   private drawNpc(ctx: CanvasRenderingContext2D, n: World['npcs'][number]): void {
-    const gy = GROUND_TOP + n.y;
+    const gy = n.y;
     const p = this.player;
     const near = Math.abs(p.x - n.x) < 90 && Math.abs(p.y - n.y) < 50;
     const working = n.def.idle === 'hammer' && !near;
@@ -1165,7 +1269,7 @@ export class World {
     const a = e.def.abilities?.[e.ability];
     if (!a) return;
     const k = e.state === 'ability' ? Math.min(1, 1 - Math.max(0, e.timer) / a.windup) : 1;
-    const gy = GROUND_TOP + e.y;
+    const gy = e.y;
     ctx.save();
     switch (a.kind) {
       case 'slam': {
@@ -1173,24 +1277,24 @@ export class World {
         ctx.strokeStyle = 'rgba(255,80,60,0.9)';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.ellipse(e.x, gy, a.radius, a.radius * 0.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(e.x, gy, a.radius, a.radius * 0.22, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = 'rgba(255,60,40,0.3)';
         ctx.beginPath();
-        ctx.ellipse(e.x, gy, a.radius * k, a.radius * 0.5 * k, 0, 0, Math.PI * 2);
+        ctx.ellipse(e.x, gy, a.radius * k, a.radius * 0.22 * k, 0, 0, Math.PI * 2);
         ctx.fill();
         break;
       }
       case 'charge': {
         if (e.state !== 'ability' || !e.target) break;
         const dir = Math.sign(e.target.x - e.x) || e.facing;
-        const ex = e.target.x + dir * 140, ey = GROUND_TOP + e.target.y;
+        const ex = e.target.x + dir * 140, ey = gy;
         ctx.fillStyle = `rgba(255,60,40,${0.1 + 0.2 * k})`;
         ctx.strokeStyle = 'rgba(255,80,60,0.8)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(e.x, gy - 12); ctx.lineTo(ex, ey - 12); ctx.lineTo(ex, ey + 12); ctx.lineTo(e.x, gy + 12);
+        ctx.moveTo(e.x, gy - 26); ctx.lineTo(ex, ey - 26); ctx.lineTo(ex, ey + 2); ctx.lineTo(e.x, gy + 2);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
@@ -1198,7 +1302,7 @@ export class World {
         ctx.fillStyle = 'rgba(255,90,70,0.8)';
         for (let i = 1; i <= 3; i++) {
           const t = ((i / 4 + this.time * 1.5) % 1);
-          const ax = e.x + (ex - e.x) * t, ay = gy + (ey - gy) * t;
+          const ax = e.x + (ex - e.x) * t, ay = gy - 12;
           ctx.beginPath();
           ctx.moveTo(ax + dir * 8, ay); ctx.lineTo(ax - dir * 4, ay - 6); ctx.lineTo(ax - dir * 4, ay + 6);
           ctx.fill();
@@ -1225,7 +1329,7 @@ export class World {
   }
 
   private drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
-    const gy = GROUND_TOP + e.y;
+    const gy = e.y;
     if (!e.dead && e.def.aura) {
       const pulse = 0.8 + Math.sin(this.time * 3 + e.seed) * 0.2;
       const lift = e.def.shape === 'flyer' ? e.radius * 2.6 : e.radius;
@@ -1254,9 +1358,12 @@ export class World {
     const blink = !p.dead && p.invuln > 0 && p.anim !== 'thunder' && Math.floor(this.time * 20) % 2 === 0;
     if (blink) return;
     const pose = playerPose({
-      action: p.anim, actionT: p.animT, actionDur: p.animDur, moving: p.moving, walk: p.walk,
+      action: p.anim, actionT: p.animT, actionDur: p.animDur, moving: p.moving, walk: p.walk, air: !p.onGround && !p.dead, vy: p.vy,
       hurt: p.hitStun > 0, dead: p.dead, deadAnim: p.deadAnim,
     }, this.time);
-    drawHuman(ctx, p.x, GROUND_TOP + p.y, p.facing, this.playerLook, pose, p.flash > 0);
+    // sombra na superfície embaixo do jogador (mesmo pulando)
+    const below = this.terrain.surfacesAt(p.x).find((y) => y >= p.y - 1) ?? p.y;
+    pose.bodyY += p.y - below;
+    drawHuman(ctx, p.x, below, p.facing, this.playerLook, pose, p.flash > 0);
   }
 }

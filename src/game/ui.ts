@@ -46,11 +46,12 @@ interface Region {
 
 // x é medido a partir da borda DIREITA da tela (a largura varia por aparelho)
 const BUTTON_LAYOUT: TouchButton[] = [
-  { action: 'attack', x: 62, y: 300, r: 34, label: '⚔' },
-  { action: 'skill1', x: 140, y: 320, r: 22, label: '1' },
-  { action: 'skill2', x: 126, y: 250, r: 22, label: '2' },
-  { action: 'skill3', x: 56, y: 222, r: 22, label: '3' },
-  { action: 'interact', x: 208, y: 330, r: 18, label: '✋' },
+  { action: 'attack', x: 60, y: 298, r: 34, label: '⚔' },
+  { action: 'jump', x: 142, y: 320, r: 27, label: '▲' },
+  { action: 'skill1', x: 128, y: 242, r: 21, label: '1' },
+  { action: 'skill2', x: 58, y: 212, r: 21, label: '2' },
+  { action: 'skill3', x: 196, y: 266, r: 20, label: '3' },
+  { action: 'interact', x: 214, y: 330, r: 16, label: '✋' },
   { action: 'menu', x: 26, y: 24, r: 16, label: '☰' },
 ];
 const BUTTONS: TouchButton[] = BUTTON_LAYOUT.map((b) => ({ ...b }));
@@ -213,7 +214,7 @@ export class Ui {
     const right = ax > 0.5 && this.prevAxisX <= 0.5;
     this.prevAxisY = ay;
     this.prevAxisX = ax;
-    const confirm = input.consume('attack') || input.consume('interact');
+    const confirm = input.consume('attack') || input.consume('interact') || input.consume('jump');
     const back = input.consume('menu');
 
     switch (m.kind) {
@@ -354,7 +355,7 @@ export class Ui {
     const input = this.input;
     const { world, progress } = this.game;
     if (!input.touchMode) {
-      text(ctx, 'Mover: WASD/Setas · Atacar: J · Poderes: K L I · Falar/Entrar: E · Menu: M', VIEW_W / 2, VIEW_H - 10,
+      text(ctx, 'Andar: A/D ←→ · Pular: Espaço/W · Descer: S+Espaço · Atacar: J · Poderes: K L I · Falar/Entrar: E ou ↑ · Menu: M', VIEW_W / 2, VIEW_H - 10,
         { size: 10, align: 'center', color: 'rgba(255,255,255,0.85)' });
       return;
     }

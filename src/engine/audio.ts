@@ -3,7 +3,7 @@
 
 export type SoundName =
   | 'swing' | 'hit' | 'heavy' | 'crit' | 'kill' | 'hurt'
-  | 'wind' | 'whirl' | 'thunder' | 'levelup' | 'coin' | 'ui' | 'wave' | 'nomp';
+  | 'wind' | 'whirl' | 'thunder' | 'levelup' | 'coin' | 'ui' | 'wave' | 'nomp' | 'jump' | 'land';
 
 const MUTE_KEY = 'lumen-muted';
 
@@ -125,6 +125,8 @@ export class Sfx {
         this.tone(1319, 1319, 0.12, 'square', 0.08, 0.06);
         break;
       case 'ui': this.tone(660, 700, 0.05, 'triangle', 0.15); break;
+      case 'jump': this.tone(300 * v, 620, 0.12, 'triangle', 0.12); break;
+      case 'land': this.noise(0.06, 0.18, 'lowpass', 900, 200); break;
       case 'wave': this.tone(110, 70, 0.5, 'sawtooth', 0.18); break;
       case 'nomp': this.tone(220, 160, 0.12, 'square', 0.12); break;
     }

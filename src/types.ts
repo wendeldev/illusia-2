@@ -176,6 +176,20 @@ export interface LandmarkDef {
   variant?: number;
 }
 
+/** Trecho de chão ou plataforma: de x0 a x1, com o topo na altura y. */
+export interface TerrainSeg {
+  x0: number;
+  x1: number;
+  y: number;
+}
+
+export interface TerrainDef {
+  /** chão contínuo (degraus = trechos com alturas diferentes) */
+  ground: TerrainSeg[];
+  /** plataformas flutuantes (sobe-se por baixo, pousa-se em cima) */
+  platforms: TerrainSeg[];
+}
+
 export interface StageDef {
   id: string;
   name: string;
@@ -197,6 +211,8 @@ export interface StageDef {
   /** região e número da fase (mapa do mundo) */
   region?: number;
   index?: number;
+  /** chão e plataformas (sem isso, chão plano) */
+  terrain?: TerrainDef;
   /** nível base dos monstros desta fase */
   level?: number;
   /** tempo-limite (segundos) para a estrela de rapidez */

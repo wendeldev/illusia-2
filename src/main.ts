@@ -15,13 +15,20 @@ if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { _
 
 let last = performance.now();
 function frame(now: number) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  // o primeiro carimbo de tempo pode vir antes de `last`: nunca deixa o passo ser negativo
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
-  game.update(dt);
-  view.begin();
-  game.render(view.ctx);
-  view.end();
-  requestAnimationFrame(frame);
+  // um erro num quadro não pode congelar o jogo: registra e segue para o próximo
+  try {
+    game.update(dt);
+    view.begin();
+    game.render(view.ctx);
+  } catch (err) {
+    console.error(err);
+  } finally {
+    view.end();
+    requestAnimationFrame(frame);
+  }
 }
 requestAnimationFrame(frame);
 

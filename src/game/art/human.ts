@@ -84,7 +84,8 @@ export function drawHuman(
   const lift = Math.max(0, -pose.bodyY);
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.beginPath();
-  ctx.ellipse(x, groundY, 13 * (1 - lift / 60) + (pose.lying * 10), 4.5 * (1 - lift / 60), 0, 0, Math.PI * 2);
+  const shrink = Math.max(0.35, 1 - lift / 160);
+  ctx.ellipse(x, groundY, 13 * shrink + pose.lying * 10, 4.5 * shrink, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.save();

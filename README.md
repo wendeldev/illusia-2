@@ -17,11 +17,17 @@ Para depurar, abra com `?debug` e use `window.__game` no console.
 
 | | PC | Celular |
 |---|---|---|
-| Mover | WASD / setas | direcional virtual (metade esquerda da tela) |
+| Andar | A/D ou ←/→ | direcional virtual (metade esquerda da tela) |
+| Pular | Espaço, W ou ↑ | botão ▲ |
+| Descer de uma plataforma | S + Espaço | direcional para baixo + ▲ |
 | Atacar (combo de 3 golpes) | J | ⚔ |
 | Poderes 1, 2, 3 | K, L, I | botões coloridos |
-| Falar / entrar no portal | E | ✋ |
+| Falar / entrar no portal | E (ou ↑ perto) | ✋ |
 | Menu (atributos e equipamentos) | M | ☰ |
+
+O jogo é de **plataforma lateral**: chão com degraus de alturas diferentes e plataformas flutuantes
+(sobe-se por baixo e pousa-se em cima). O terreno de cada fase é gerado em `src/game/terrain.ts`
+e desenhado em `src/game/art/ground.ts` (um estilo por região).
 
 No celular dá para "Adicionar à tela inicial": o jogo abre em tela cheia e funciona offline (PWA).
 O progresso é salvo automaticamente no navegador.
