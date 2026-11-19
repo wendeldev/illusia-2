@@ -151,6 +151,8 @@ export interface EnemyDef {
   /** desenho em pixel art (nome no atlas) e escala extra */
   sprite?: string;
   spriteScale?: number;
+  /** chefe com animação completa da prancha de chefes */
+  bossAnim?: string;
 }
 
 export type NpcAction = 'talk' | 'shop' | 'heal';

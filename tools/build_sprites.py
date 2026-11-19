@@ -568,3 +568,60 @@ allmeta = json.load(open(os.path.join(ROOT, 'src', 'data', 'atlas.json')))
 allmeta.update(meta4)
 json.dump(allmeta, open(os.path.join(ROOT, 'src', 'data', 'atlas.json'), 'w'), separators=(',', ':'))
 print(f'poderes: {atlas4.size[0]}x{atlas4.size[1]}, {len(meta4)} peças')
+
+# ═══════════════════ prancha 5: chefes (animações completas e efeitos) ═══════════════════
+import boss_cells as BC
+B_DATA = BC.load()
+# altura de cada chefe no jogo (px) e variações de cor (nome novo: base, matiz, saturação, brilho)
+BOSS_H = {'dragon': 96, 'skeleton_king': 96, 'golem_elder': 96, 'demoness': 92, 'dark_knight': 96, 'hydra': 100, 'dark_god': 110}
+BOSS_VARIANTS = {'crystal_golem': ('golem_elder', 0.55, 0.8, 1.05), 'red_dragon2': ('dragon', 0.12, 1.1, 1.05)}
+boss_extra = {}
+
+def add_boss(name, anims, fxs, recol=None):
+    ref = anims['idle'][0] if anims['idle'] else anims['walk'][0]
+    scale = BOSS_H[recol[0] if recol else name] / ref.size[1]
+    rax = feet(ref)[0]
+    rw = ref.size[0]
+    for k, frs in anims.items():
+        if not frs:
+            frs = anims['idle']
+        lst = []
+        for im in frs:
+            if recol:
+                im = recolor(im, *recol[1:])
+            # quadros com efeito ao lado: o corpo fica à esquerda, âncora alinhada ao parado
+            ax = feet(im)[0] if im.size[0] <= rw * 1.25 else min(rax, im.size[0] - 1)
+            lst.append((im, ax, im.size[1]))
+        boss_extra[f'boss_{name}_{k}'] = (lst, scale)
+    for i, im in enumerate(fxs):
+        if recol:
+            im = recolor(im, *recol[1:])
+        boss_extra[f'bfx_{name}_{i}'] = ([(im, im.size[0] // 2, im.size[1] // 2)], scale)
+
+for name, (anims, fxs) in B_DATA.items():
+    add_boss(name, anims, fxs)
+for name, (base, dh, sat, val) in BOSS_VARIANTS.items():
+    anims, fxs = B_DATA[base]
+    add_boss(name, anims, fxs, (base, dh, sat, val))
+
+items5 = [(n, i, im, ax, ay) for n, (lst, _) in boss_extra.items() for i, (im, ax, ay) in enumerate(lst)]
+items5.sort(key=lambda t: -t[2].size[1])
+x = y = row_h = 0
+pl5 = []
+for n, i, im, ax, ay in items5:
+    w, h = im.size
+    if x + w + 2 > 2048:
+        x, y, row_h = 0, y + row_h + 2, 0
+    pl5.append((n, i, im, ax, ay, x, y))
+    x += w + 2
+    row_h = max(row_h, h)
+atlas5 = _I.new('RGBA', (2048, y + row_h), (0, 0, 0, 0))
+meta5 = {n: {'scale': round(sc, 4), 'faces': 1, 'frames': [None] * len(lst), 'sheet': 3} for n, (lst, sc) in boss_extra.items()}
+for n, i, im, ax, ay, px_, py_ in pl5:
+    atlas5.paste(im, (px_, py_))
+    meta5[n]['frames'][i] = [px_, py_, im.size[0], im.size[1], ax, ay]
+atlas5.save(os.path.join(ROOT, 'public', 'sprites', 'bosses.png'), optimize=True)
+allmeta = json.load(open(os.path.join(ROOT, 'src', 'data', 'atlas.json')))
+allmeta.update(meta5)
+json.dump(allmeta, open(os.path.join(ROOT, 'src', 'data', 'atlas.json'), 'w'), separators=(',', ':'))
+print(f'chefes: {atlas5.size[0]}x{atlas5.size[1]}, {len(meta5)} peças')

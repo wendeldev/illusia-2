@@ -126,3 +126,20 @@ for (const e of ENEMIES) {
   const s = SPRITES[e.id];
   if (s) { e.sprite = s[0]; e.spriteScale = s[1] ?? 1; }
 }
+
+// Chefes da prancha de chefes: animação completa (boss_<nome>_idle/walk/atk1/atk2/atk3/hit/death) e efeitos (bfx_<nome>_N).
+const BOSS_ANIMS: Record<string, [string, string]> = {
+  moss_guardian: ['golem_elder', 'Golem Ancião'],
+  plague_shroom: ['skeleton_king', 'Rei Esqueleto'],
+  iron_colossus: ['dark_knight', 'Cavaleiro Sombrio'],
+  golden_jackal: ['demoness', 'Demonessa Carmesim'],
+  fungus_king: ['crystal_golem', 'Golem de Cristal'],
+  frost_ancient: ['hydra', 'Hidra das Profundezas'],
+  lava_lord: ['red_dragon2', 'Dragão Rubro'],
+  shadow_beast: ['dragon', 'Dragão Negro'],
+  storm_emperor: ['dark_god', 'Deus das Trevas'],
+};
+for (const e of ENEMIES) {
+  const b = BOSS_ANIMS[e.id];
+  if (b) { e.bossAnim = b[0]; e.name = b[1]; e.sprite = `boss_${b[0]}_idle`; e.spriteScale = 1; }
+}

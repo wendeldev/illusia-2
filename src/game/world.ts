@@ -117,6 +117,7 @@ interface Spell {
   /** dano contínuo (nuvem) */
   tick: number;
   tickT: number;
+  scale?: number;
 }
 
 export interface Enemy extends Body {
@@ -149,6 +150,8 @@ export interface Enemy extends Body {
   strike: number;
   moving: boolean;
   jumpCd: number;
+  /** alterna ataque 1 / ataque 2 dos chefes animados */
+  atkAlt: number;
 }
 
 interface Projectile {
@@ -170,6 +173,8 @@ interface EnemyShot {
   atk: number;
   color: string;
   r: number;
+  /** desenho do disparo (efeito do chefe) */
+  fx?: string;
 }
 
 interface FloatText {
@@ -222,7 +227,7 @@ function enemyBox(e: { y: number; radius: number; def: EnemyDef }): { top: numbe
   const r = e.radius;
   if (hasSprite(e.def.sprite)) {
     // com sprite: a caixa acompanha o tamanho do desenho
-    const h = spriteHeight(e.def.sprite, e.def.spriteScale) * 0.9;
+    const h = spriteHeight(e.def.sprite, e.def.spriteScale) * (e.def.bossAnim ? 0.8 : 0.9);
     const bottom = e.def.shape === 'flyer' ? e.y - 1.8 * r : e.y;
     return { top: bottom - h, bottom };
   }
@@ -233,6 +238,19 @@ function enemyBox(e: { y: number; radius: number; def: EnemyDef }): { top: numbe
     case 'beast': return { top: e.y - 1.7 * r, bottom: e.y };
     default: return { top: e.y - 1.8 * r, bottom: e.y };
   }
+}
+
+/** Efeito do chefe animado para cada tipo de ataque especial (índice em bfx_<nome>_N). */
+const BOSS_FX: Record<string, { shot: number; slam: number; summon: number }> = {
+  dragon: { shot: 1, slam: 2, summon: 3 }, red_dragon2: { shot: 1, slam: 2, summon: 3 },
+  skeleton_king: { shot: 0, slam: 1, summon: 2 }, golem_elder: { shot: 0, slam: 1, summon: 3 },
+  crystal_golem: { shot: 2, slam: 1, summon: 3 }, demoness: { shot: 0, slam: 3, summon: 2 },
+  dark_knight: { shot: 1, slam: 3, summon: 2 }, hydra: { shot: 0, slam: 1, summon: 3 }, dark_god: { shot: 0, slam: 3, summon: 1 },
+};
+function bossFx(def: EnemyDef, kind: 'shot' | 'slam' | 'summon'): string | undefined {
+  const m = def.bossAnim && BOSS_FX[def.bossAnim];
+  const name = m ? `bfx_${def.bossAnim}_${m[kind]}` : '';
+  return name && hasSprite(name) ? name : undefined;
 }
 
 export class World {
@@ -786,6 +804,14 @@ export class World {
     }
   }
 
+  /** Efeito visual de chefe parado num ponto (sem dano: o dano é do ataque). */
+  private bossEffect(name: string, x: number, y: number, dur: number, dir: number, scale = 1): void {
+    this.spells.push({
+      name, x, y, ground: y, dir, t: 0, dur, hits: [], hitIdx: 0, radius: 0, mul: 0, knock: 0, color: '#c49bff',
+      falling: false, landed: false, tick: 0, tickT: 0, scale,
+    });
+  }
+
   private updateDash(dt: number): void {
     const p = this.player, d = p.dash!;
     d.t -= dt;
@@ -849,7 +875,7 @@ export class World {
       if (!s.name) continue;
       const n = frameCount(s.name);
       const h = spriteHeight(s.name);
-      let frame: number, alpha = 1, rot = 0, scale = 1;
+      let frame: number, alpha = 1, rot = 0, scale = s.scale ?? 1;
       if (s.falling && !s.landed) {
         if (s.t < 0 && s.y === s.ground - 0) continue;
         frame = 0;
@@ -917,7 +943,7 @@ export class World {
 
   private killEnemy(e: Enemy): void {
     e.dead = true;
-    e.deadTimer = 0.5;
+    e.deadTimer = e.def.bossAnim ? 1.1 : 0.5;
     const pr = this.progress;
     pr.gold += e.gold;
     const recent = this.texts.filter((t) => t.color === '#9ff0a0' && t.life > 0.5).length;
@@ -1025,6 +1051,7 @@ export class World {
         e.state = 'recover';
         e.timer = d.attackCooldown * (e.enraged ? 0.6 : 1);
         e.strike = 1;
+        e.atkAlt++;
       }
       return 0;
     }
@@ -1131,6 +1158,8 @@ export class World {
         this.sound('thunder');
         this.effects.push({ kind: 'ring', x: e.x, y: e.y, dir: 1, radius: a.radius, color: '#ff8060', life: 0.4, maxLife: 0.4 });
         this.burst(e.x, e.y, 4, 26, '#c8b090', 240, 3, 260);
+        const sfx = bossFx(e.def, 'slam');
+        if (sfx) for (const k of [-1, -0.45, 0.45, 1]) this.bossEffect(sfx, e.x + k * a.radius * 0.8, e.y, 0.55, e.facing, Math.abs(k) < 0.5 ? 0.9 : 0.7);
         break;
       }
       case 'charge': {
@@ -1155,7 +1184,7 @@ export class World {
           const ang = base + off;
           this.enemyShots.push({
             x: e.x + e.facing * e.radius * 0.7, y: oy, vx: Math.cos(ang) * a.speed, vy: Math.sin(ang) * a.speed,
-            dist: 0, range: a.range, atk: e.atk * a.damageMul, color: a.color, r: 6,
+            dist: 0, range: a.range, atk: e.atk * a.damageMul, color: a.color, r: 6, fx: bossFx(e.def, 'shot'),
           });
         }
         this.sound('wind');
@@ -1167,6 +1196,8 @@ export class World {
           const side = i % 2 === 0 ? 1 : -1;
           const m = this.spawnEnemy(def, e.x + side * (50 + Math.random() * 30), e.y - 30, -side, true);
           this.burst(m.x, m.y, 10, 14, '#c49bff', 140, 2.5);
+          const zfx = bossFx(e.def, 'summon');
+          if (zfx) this.bossEffect(zfx, m.x, m.y + 30, 0.7, -side, 0.6);
         }
         this.sound('wave');
         break;
@@ -1220,7 +1251,7 @@ export class World {
     // a vida e o ataque crescem um pouco mais rápido que a força, para acompanhar o nível do jogador
     const hp = Math.round(def.hp * Math.pow(pw, 1.4));
     const e: Enemy = {
-      def, level, x, y, vx: 0, vy: 0, onGround: false, dropT: 0, jumpCd: 0, facing, radius: def.radius, hp, maxHp: hp,
+      def, level, x, y, vx: 0, vy: 0, onGround: false, dropT: 0, jumpCd: 0, atkAlt: 0, facing, radius: def.radius, hp, maxHp: hp,
       atk: def.atk * Math.pow(pw, 1.3), armor: def.def * Math.sqrt(pw),
       exp: Math.round(def.exp * pw * 1.2), gold: Math.round(def.gold * pw),
       speed: def.speed * (1 + Math.min(0.3, (pw - 1) * 0.03)),
@@ -1445,6 +1476,11 @@ export class World {
     }
     for (const sh of this.enemyShots) {
       const sy = sh.y + 16;
+      if (sh.fx && spritesReady()) {
+        glow(ctx, sh.x, sh.y, 26, sh.color, 0.45);
+        drawSprite(ctx, sh.fx, 0, sh.x, sh.y, Math.sign(sh.vx) || 1, { scale: 0.55, rot: Math.atan2(sh.vy, Math.abs(sh.vx)) * (Math.sign(sh.vx) || 1) });
+        continue;
+      }
       glow(ctx, sh.x, sy - 16, sh.r * 3, sh.color, 0.5);
       ctx.fillStyle = sh.color;
       ctx.strokeStyle = OUTLINE;
@@ -1656,6 +1692,39 @@ export class World {
   }
 
   /** Inimigo em pixel art: um quadro só, animado com quique, preparo, bote e queda. */
+  /** Chefe com animação completa: parado, andar/avançar, ataque 1/2/3, dano e morte. */
+  private drawBossSprite(ctx: CanvasRenderingContext2D, e: Enemy, windup: number): void {
+    const pre = `boss_${e.def.bossAnim}_`;
+    const t = this.time + e.seed;
+    let anim = 'idle', frame = t * 2, sy = 1 + Math.sin(t * 2.5) * 0.015, ox = 0, alpha = 1;
+    if (e.dead) {
+      anim = 'death';
+      const k = 1 - Math.max(0, e.deadTimer) / 1.1;
+      frame = Math.min(frameCount(pre + anim) - 1e-3, k * frameCount(pre + anim) * 1.4);
+      alpha = Math.min(1, (1 - k) * 2.5);
+    } else if (e.hitStun > 0 || e.flash > 0.05) {
+      anim = 'hit'; frame = 0;
+    } else if (e.state === 'ability' || e.strike > 0.5 && e.state === 'recover' && e.ability >= 0 && e.timer > 0.5) {
+      anim = 'atk3';
+      frame = Math.min(frameCount(pre + anim) - 1e-3, windup * frameCount(pre + anim));
+    } else if (e.state === 'charging') {
+      anim = 'walk'; frame = t * 12; ox = e.facing * 3;
+    } else if (e.state === 'windup' || e.strike > 0) {
+      anim = e.atkAlt % 2 ? 'atk2' : 'atk1';
+      const n = frameCount(pre + anim);
+      frame = e.state === 'windup' ? Math.min(n - 1, windup * n * 0.6) : n - 1e-3;
+      if (e.strike > 0) ox = e.facing * e.strike * 8;
+    } else if (e.moving) {
+      anim = 'walk'; frame = t * 4;
+    }
+    const name = pre + anim;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(e.x, e.y, e.radius * 1.6, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawSprite(ctx, hasSprite(name) ? name : pre + 'idle', frame, e.x + ox, e.y + 2, e.facing, { sy, alpha, flash: e.flash > 0 && !e.dead });
+  }
+
   private drawEnemySprite(ctx: CanvasRenderingContext2D, e: Enemy, windup: number): void {
     const d = e.def;
     const name = d.sprite!;
@@ -1764,7 +1833,8 @@ export class World {
     }
     const abilityK = e.state === 'ability' && e.ability >= 0 ? 1 - Math.max(0, e.timer) / e.def.abilities![e.ability].windup : 0;
     const windupK = e.state === 'windup' ? 1 - Math.max(0, e.timer) / e.def.windup : Math.min(1, abilityK);
-    if (spritesReady() && hasSprite(e.def.sprite)) this.drawEnemySprite(ctx, e, windupK);
+    if (spritesReady() && e.def.bossAnim && hasSprite(`boss_${e.def.bossAnim}_idle`)) this.drawBossSprite(ctx, e, windupK);
+    else if (spritesReady() && hasSprite(e.def.sprite)) this.drawEnemySprite(ctx, e, windupK);
     else drawMonster(ctx, e.def.shape, e.x, gy, e.radius, e.def.color, e.facing, {
       t: this.time + e.seed,
       windup: windupK,

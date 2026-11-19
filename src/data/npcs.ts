@@ -23,7 +23,7 @@ export const NPCS: NpcDef[] = [
       'Monstros estão saindo de todos os cantos do reino.',
       'Use o portal no portão leste: ele abre o mapa do mundo.',
       'São 9 regiões, cada uma com um chefe no fim. Vença uma fase para liberar a próxima.',
-      'Cuidado com o Imperador da Tempestade, lá nas Ilhas Celestes...',
+      'Cuidado com o Deus das Trevas, lá nas Ilhas Celestes...',
     ],
   },
 ];

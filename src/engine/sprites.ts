@@ -24,8 +24,10 @@ let white: HTMLCanvasElement | null = null;
 let scenery: HTMLImageElement | null = null;
 let powers: HTMLImageElement | null = null;
 let powersWhite: HTMLCanvasElement | null = null;
+let bosses: HTMLImageElement | null = null;
+let bossesWhite: HTMLCanvasElement | null = null;
 
-const sheetOf = (d: SpriteDef): HTMLImageElement | null => (d.sheet === 1 ? scenery : d.sheet === 2 ? powers : img);
+const sheetOf = (d: SpriteDef): HTMLImageElement | null => (d.sheet === 1 ? scenery : d.sheet === 2 ? powers : d.sheet === 3 ? bosses : img);
 
 function whiteCopy(im: HTMLImageElement): HTMLCanvasElement | null {
   const c = document.createElement('canvas');
@@ -53,6 +55,9 @@ export function loadSprites(): Promise<void> {
   const pw = new Image();
   pw.onload = () => { powers = pw; powersWhite = whiteCopy(pw); };
   pw.src = './sprites/powers.png';
+  const bs = new Image();
+  bs.onload = () => { bosses = bs; bossesWhite = whiteCopy(bs); };
+  bs.src = './sprites/bosses.png';
   return new Promise((resolve) => {
     const im = new Image();
     im.onload = () => {
@@ -121,7 +126,7 @@ export function drawSprite(ctx: CanvasRenderingContext2D, name: string, frame: n
   // pixel art ampliado fica nítido sem suavização; reduzido fica melhor suavizado
   ctx.imageSmoothingEnabled = Math.abs(s) < 1;
   ctx.drawImage(sheet, f[0], f[1], f[2], f[3], -f[4], -f[5], f[2], f[3]);
-  const wh = d.sheet === 2 ? powersWhite : d.sheet === 1 ? null : white;
+  const wh = d.sheet === 2 ? powersWhite : d.sheet === 3 ? bossesWhite : d.sheet === 1 ? null : white;
   if (o.flash && wh) {
     ctx.globalAlpha *= 0.85;
     ctx.drawImage(wh, f[0], f[1], f[2], f[3], -f[4], -f[5], f[2], f[3]);

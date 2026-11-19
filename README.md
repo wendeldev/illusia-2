@@ -53,6 +53,14 @@ Guerreiro, Maga e Assassino têm 8 poderes cada (prancha `assets-src/sheet-power
 `tools/powers_cells.py`), com animação do personagem, efeito próprio e ícone. 4 vão nos botões; troque em
 ☰ → ✦ Trocar poderes (alguns desbloqueiam com o nível). Teclado: K, L, I, O. Dados em `src/data/classes.ts`.
 
+## Chefes
+
+O chefe final de cada região usa a prancha `assets-src/sheet-bosses.png` (recortada por `tools/boss_cells.py`):
+parado, andar/avançar, ataques 1 e 2 (alternados), ataque 3 (especial), dano e morte, e os efeitos nos
+disparos, pancadas e invocações. Bosque: Golem Ancião · Pântano: Rei Esqueleto · Ruínas: Cavaleiro Sombrio ·
+Dunas: Demonessa Carmesim · Caverna: Golem de Cristal · Neve: Hidra das Profundezas · Vulcão: Dragão Rubro ·
+Cidadela: Dragão Negro · Ilhas Celestes: Deus das Trevas. Mapa em `BOSS_ANIMS` (`src/data/enemies.ts`).
+
 ## Campanha
 
 90 fases em 9 regiões (10 fases cada): Bosque Sussurrante, Pântano Nebuloso, Ruínas de Ferro,
