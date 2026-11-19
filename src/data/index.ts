@@ -1,10 +1,12 @@
 import { ENEMIES } from './enemies';
 import { EQUIPMENT } from './equipment';
 import { NPCS } from './npcs';
+import { QUESTS } from './quests';
 import { SKILLS } from './skills';
 import { MAP_PORTAL, STAGES, START_STAGE } from './stages';
 
-export { ENEMIES, EQUIPMENT, MAP_PORTAL, NPCS, SKILLS, STAGES, START_STAGE };
+export { ENEMIES, EQUIPMENT, MAP_PORTAL, NPCS, QUESTS, SKILLS, STAGES, START_STAGE };
+export type { QuestDef, QuestGoal, QuestReward } from './quests';
 export { LEGACY_STAGE_IDS, REGIONS, STAGES_PER_REGION, stageId } from './campaign';
 
 function index<T extends { id: string }>(list: T[], kind: string) {
@@ -39,6 +41,16 @@ export function validateContent(): void {
   for (const e of ENEMIES) {
     e.drops?.forEach((d) => getItem(d.itemId));
     e.abilities?.forEach((a) => { if (a.kind === 'summon') getEnemy(a.enemyId); });
+  }
+  const questIds = new Set<string>();
+  for (const q of QUESTS) {
+    if (questIds.has(q.id)) throw new Error(`Missão duplicada: ${q.id}`);
+    questIds.add(q.id);
+    getNpc(q.giver);
+    if (q.reward.item) getItem(q.reward.item);
+    if (q.requiresStage) getStage(q.requiresStage);
+    if (q.goal.kind === 'clear') getStage(q.goal.stageId);
+    else q.goal.enemyIds?.forEach(getEnemy);
   }
   if (SKILLS.length > 3) throw new Error('No máximo 3 poderes (3 botões).');
 }

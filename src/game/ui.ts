@@ -1,5 +1,7 @@
-import { getEnemy, getItem, getStage, REGIONS, SKILLS, STAGES_PER_REGION, stageId } from '../data';
+import { getEnemy, getItem, getStage, REGIONS, SKILLS, STAGES_PER_REGION, stageId, type QuestDef } from '../data';
 import type { Sfx } from '../engine/audio';
+import type { Music } from '../engine/music';
+import { rewardText, type QuestBook } from './quests';
 import type { Input, TouchButton } from '../engine/input';
 import { VIEW_H, VIEW_W } from '../engine/view';
 import type { NpcDef, SceneryTheme } from '../types';
@@ -12,6 +14,10 @@ export interface GameApi {
   progress: Progress;
   world: World;
   sfx: Sfx;
+  music: Music;
+  quests: QuestBook;
+  acceptQuest(q: QuestDef): void;
+  completeQuest(q: QuestDef): void;
   buy(itemId: string): void;
   equip(itemId: string): void;
   heal(): void;
@@ -20,7 +26,9 @@ export interface GameApi {
 }
 
 type Modal =
-  | { kind: 'dialog'; npc: NpcDef; line: number }
+  | { kind: 'dialog'; npc: NpcDef; lines: string[]; line: number; after: () => void }
+  | { kind: 'offer'; npc: NpcDef; quest: QuestDef; sel: number }
+  | { kind: 'quests' }
   | { kind: 'shop'; npc: NpcDef; sel: number; scroll: number }
   | { kind: 'menu'; sel: number; scroll: number }
   | { kind: 'map'; region: number; sel: number }
@@ -114,8 +122,58 @@ export class Ui {
   }
 
   openNpc(npc: NpcDef): void {
-    this.modal = { kind: 'dialog', npc, line: 0 };
     this.game.sfx.play('ui');
+    const after = () => this.npcAction(npc);
+    const cur = this.game.quests.current(npc.id);
+    if (!cur) return this.dialog(npc, npc.dialog, after);
+    const q = cur.quest;
+    switch (cur.status) {
+      case 'ready':
+        return this.dialog(npc, [q.thanks, `Recompensa: ${rewardText(q.reward)}`], () => {
+          this.game.completeQuest(q);
+          // se houver outra missão em seguida, já oferece
+          const next = this.game.quests.current(npc.id);
+          if (next?.status === 'offer') this.dialog(npc, next.quest.intro, () => this.offer(npc, next.quest));
+          else after();
+        });
+      case 'active': {
+        const qb = this.game.quests;
+        return this.dialog(npc, [`${q.title}: ${q.goal.label} (${qb.count(q)}/${qb.target(q)}).`, 'Volte quando terminar!'], after);
+      }
+      case 'offer':
+        return this.dialog(npc, q.intro, () => this.offer(npc, q));
+    }
+  }
+
+  private dialog(npc: NpcDef, lines: string[], after: () => void): void {
+    this.modal = { kind: 'dialog', npc, lines, line: 0, after };
+  }
+
+  private offer(npc: NpcDef, quest: QuestDef): void {
+    this.modal = { kind: 'offer', npc, quest, sel: 0 };
+  }
+
+  private answerOffer(m: Extract<Modal, { kind: 'offer' }>, accept: boolean): void {
+    if (accept) this.game.acceptQuest(m.quest);
+    else this.game.sfx.play('ui');
+    this.npcAction(m.npc);
+  }
+
+  /** O que o NPC faz depois da conversa: loja, cura ou nada. */
+  private npcAction(npc: NpcDef): void {
+    switch (npc.action) {
+      case 'shop':
+        this.modal = { kind: 'shop', npc, sel: 0, scroll: 0 };
+        break;
+      case 'heal':
+        this.game.heal();
+        this.toast('HP e MP restaurados');
+        this.close();
+        break;
+      case 'talk':
+        this.close();
+        break;
+    }
   }
 
   showDead(): void {
@@ -175,6 +233,15 @@ export class Ui {
         if (confirm) this.mapEnter(m);
         if (back) this.close();
         break;
+      case 'offer':
+        if (left || up) m.sel = 0;
+        if (right || down) m.sel = 1;
+        if (confirm) this.answerOffer(m, m.sel === 0);
+        else if (back) this.answerOffer(m, false);
+        break;
+      case 'quests':
+        if (confirm || back) this.close();
+        break;
       case 'dead':
         if (confirm) this.game.returnToTown();
         break;
@@ -185,20 +252,7 @@ export class Ui {
   private advanceDialog(m: Extract<Modal, { kind: 'dialog' }>): void {
     m.line++;
     this.game.sfx.play('ui');
-    if (m.line < m.npc.dialog.length) return;
-    switch (m.npc.action) {
-      case 'shop':
-        this.modal = { kind: 'shop', npc: m.npc, sel: 0, scroll: 0 };
-        break;
-      case 'heal':
-        this.game.heal();
-        this.toast('HP e MP restaurados');
-        this.close();
-        break;
-      case 'talk':
-        this.close();
-        break;
-    }
+    if (m.line >= m.lines.length) m.after();
   }
 
   private itemAction(itemId: string): void {
@@ -215,7 +269,7 @@ export class Ui {
     if (!this.modal) this.drawControls(ctx);
     this.toasts.forEach((t, i) => {
       ctx.globalAlpha = Math.min(1, t.life * 2);
-      text(ctx, t.text, VIEW_W / 2, 70 + i * 18, { size: 13, align: 'center', color: '#ffe9a8' });
+      text(ctx, t.text, VIEW_W / 2, 132 + i * 18, { size: 13, align: 'center', color: '#ffe9a8' });
       ctx.globalAlpha = 1;
     });
     const m = this.modal;
@@ -225,6 +279,8 @@ export class Ui {
       case 'shop': return this.drawShop(ctx, m);
       case 'menu': return this.drawMenu(ctx, m);
       case 'map': return this.drawMap(ctx, m);
+      case 'offer': return this.drawOffer(ctx, m);
+      case 'quests': return this.drawQuests(ctx);
       case 'dead': return this.drawDead(ctx);
     }
   }
@@ -241,6 +297,13 @@ export class Ui {
     text(ctx, `${Math.floor(p.mp)}/${p.maxMp}`, 114, 30, { size: 7, align: 'center' });
     bar(ctx, 12, 42, 164, 4, progress.exp / expToNext(progress.level), '#8fe07a');
     text(ctx, `${progress.gold} G`, 12, 66, { size: 11, color: '#ffd36b' });
+    // missões em andamento
+    const qb = this.game.quests;
+    qb.active().slice(0, 3).forEach((q, i) => {
+      const ready = qb.isReady(q);
+      const label = ready ? `✔ ${q.title} · ${qb.giverName(q)}` : `📜 ${q.title} ${qb.count(q)}/${qb.target(q)}`;
+      text(ctx, label, 12, 84 + i * 14, { size: 9, color: ready ? '#8fe07a' : '#e8ecf4' });
+    });
 
     text(ctx, world.stage.name, VIEW_W / 2, 16, { size: 12, align: 'center' });
     const boss = world.boss;
@@ -333,7 +396,7 @@ export class Ui {
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
     text(ctx, m.npc.name, x + 12, y + 14, { size: 12, color: m.npc.color });
-    const lines = wrapText(ctx, m.npc.dialog[m.line] ?? '', w - 24, 13);
+    const lines = wrapText(ctx, m.lines[m.line] ?? '', w - 24, 13);
     lines.forEach((l, i) => text(ctx, l, x + 12, y + 36 + i * 18, { size: 13, outline: false }));
     text(ctx, '▶ toque / J', x + w - 12, y + h - 12, { size: 9, align: 'right', color: '#aab' });
   }
@@ -400,13 +463,18 @@ export class Ui {
         lx, yy + 12, { size: 8, color: '#aab4cc', outline: false, bold: false });
     });
 
-    // ligar/desligar som
-    const sfx = this.game.sfx;
-    const bx = lx, by = y + h - 30;
-    ctx.fillStyle = '#34406a';
-    ctx.fillRect(bx, by, 130, 22);
-    text(ctx, sfx.muted ? '🔇 Som: desligado' : '🔊 Som: ligado', bx + 8, by + 11, { size: 11, outline: false });
-    this.regions.push({ x: bx, y: by, w: 130, h: 22, fn: () => { sfx.setMuted(!sfx.muted); sfx.play('ui'); } });
+    // som, música e diário de missões
+    const { sfx, music } = this.game;
+    const by = y + h - 30;
+    const button = (bx: number, bw: number, label: string, on: boolean, fn: () => void) => {
+      ctx.fillStyle = on ? '#34406a' : '#2a2f3d';
+      ctx.fillRect(bx, by, bw, 22);
+      text(ctx, label, bx + bw / 2, by + 11, { size: 10, align: 'center', outline: false, color: on ? '#ffffff' : '#8890a0' });
+      this.regions.push({ x: bx, y: by - 4, w: bw, h: 30, fn });
+    };
+    button(lx, 64, sfx.muted ? '🔇 Som' : '🔊 Som', !sfx.muted, () => { sfx.setMuted(!sfx.muted); sfx.play('ui'); });
+    button(lx + 70, 70, music.muted ? '🎵 Música ✕' : '🎵 Música', !music.muted, () => { music.setMuted(!music.muted); sfx.play('ui'); });
+    button(lx + 146, 74, `📜 Missões`, true, () => { this.modal = { kind: 'quests' }; sfx.play('ui'); });
 
     const rx = x + 240, rw = w - 252;
     text(ctx, 'Equipamentos (toque para equipar)', rx, y + 42, { size: 11, color: '#ffe9a8' });
@@ -510,6 +578,50 @@ export class Ui {
     ctx.fillRect(bx, by, bw, 32);
     text(ctx, open ? 'Entrar ▶' : 'Bloqueada', bx + bw / 2, by + 16, { size: 13, align: 'center', color: open ? '#ffffff' : '#888' });
     this.regions.push({ x: bx, y: by, w: bw, h: 32, fn: () => this.mapEnter(m) });
+  }
+
+  private drawOffer(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'offer' }>): void {
+    const w = 380, h = 190, x = (VIEW_W - w) / 2, y = (VIEW_H - h) / 2;
+    this.panel(ctx, x, y, w, h, `Missão de ${m.npc.name}`, false);
+    text(ctx, m.quest.title, x + w / 2, y + 46, { size: 16, align: 'center', color: '#ffe9a8' });
+    wrapText(ctx, `Objetivo: ${m.quest.goal.label}`, w - 40, 11).forEach((l, i) =>
+      text(ctx, l, x + w / 2, y + 74 + i * 15, { size: 11, align: 'center', outline: false }));
+    text(ctx, `Recompensa: ${rewardText(m.quest.reward)}`, x + w / 2, y + 110, { size: 11, align: 'center', color: '#ffd36b', outline: false });
+    const btn = (bx: number, label: string, i: number, color: string) => {
+      ctx.fillStyle = m.sel === i ? color : '#2a2f3d';
+      ctx.fillRect(bx, y + h - 50, 150, 34);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(bx, y + h - 50, 150, 34);
+      text(ctx, label, bx + 75, y + h - 33, { size: 13, align: 'center' });
+      this.regions.push({ x: bx, y: y + h - 50, w: 150, h: 34, fn: () => this.answerOffer(m, i === 0) });
+    };
+    btn(x + 30, '✔ Aceitar', 0, '#3f8a45');
+    btn(x + w - 180, 'Agora não', 1, '#5a6278');
+  }
+
+  private drawQuests(ctx: CanvasRenderingContext2D): void {
+    const x = 20, y = 16, w = VIEW_W - 40, h = VIEW_H - 32;
+    const qb = this.game.quests;
+    this.panel(ctx, x, y, w, h, `Missões  ·  ${qb.doneCount()} concluídas`);
+    const list = qb.active();
+    if (!list.length) {
+      text(ctx, 'Nenhuma missão em andamento.', x + w / 2, y + 90, { size: 13, align: 'center', outline: false });
+      text(ctx, 'Procure NPCs com ! na cabeça, na Vila de Lumen.', x + w / 2, y + 112, { size: 11, align: 'center', outline: false, color: '#aab4cc' });
+      return;
+    }
+    list.forEach((q, i) => {
+      const ry = y + 36 + i * 52;
+      const ready = qb.isReady(q);
+      ctx.fillStyle = ready ? '#24402c' : '#252e45';
+      ctx.fillRect(x + 12, ry, w - 24, 46);
+      text(ctx, `${q.title}  ·  ${qb.giverName(q)}`, x + 22, ry + 12, { size: 12, color: ready ? '#8fe07a' : '#ffe9a8', outline: false });
+      text(ctx, ready ? `Pronta! Volte a ${qb.giverName(q)} para receber a recompensa.` : q.goal.label, x + 22, ry + 27, { size: 10, outline: false, bold: false });
+      text(ctx, `Recompensa: ${rewardText(q.reward)}`, x + 22, ry + 39, { size: 9, color: '#ffd36b', outline: false, bold: false });
+      const t = qb.target(q), c = qb.count(q);
+      bar(ctx, x + w - 150, ry + 18, 120, 8, c / t, ready ? '#8fe07a' : '#9cc4ff');
+      text(ctx, `${c}/${t}`, x + w - 90, ry + 34, { size: 10, align: 'center', outline: false });
+    });
   }
 
   private drawDead(ctx: CanvasRenderingContext2D): void {

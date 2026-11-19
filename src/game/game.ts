@@ -1,6 +1,9 @@
-import { getItem, getStage, START_STAGE } from '../data';
+import { getItem, getStage, START_STAGE, type QuestDef } from '../data';
+import { TRACKS } from '../data/music';
 import { Sfx, vibrate } from '../engine/audio';
 import type { Input } from '../engine/input';
+import { Music } from '../engine/music';
+import { QuestBook, rewardText } from './quests';
 import { loadProgress, saveProgress, type Progress } from './progress';
 import { Ui, type GameApi } from './ui';
 import { World, type WorldHooks } from './world';
@@ -10,6 +13,8 @@ export class Game implements GameApi {
   world: World;
   ui: Ui;
   sfx = new Sfx();
+  music = new Music(this.sfx);
+  quests = new QuestBook(this.progress);
   private pendingStage: { id: string; keep?: { hp: number; mp: number } } | null = null;
 
   private hooks: WorldHooks = {
@@ -24,7 +29,17 @@ export class Game implements GameApi {
     save: () => saveProgress(this.progress),
     sound: (name) => this.sfx.play(name),
     vibrate: (ms) => { if (!this.sfx.muted) vibrate(ms); },
+    killed: (def) => this.questsReady(this.quests.onKill(def, this.world.stage.region)),
+    stageCleared: (id) => this.questsReady(this.quests.onClear(id)),
+    questMark: (npcId) => this.quests.mark(npcId),
   };
+
+  private questsReady(list: QuestDef[]): void {
+    for (const q of list) {
+      this.ui.toast(`Missão pronta: ${q.title} — volte a ${this.quests.giverName(q)}`);
+      this.sfx.play('levelup');
+    }
+  }
 
   constructor(private input: Input) {
     this.ui = new Ui(this, input);
@@ -39,6 +54,8 @@ export class Game implements GameApi {
     this.input.update();
     const paused = this.ui.update(dt);
     this.world.update(dt, this.input, !paused);
+    // música da região; trilha de chefe enquanto houver um vivo
+    this.music.play(this.world.boss ? TRACKS.boss : TRACKS[this.world.stage.theme]);
     if (this.pendingStage) {
       this.world = this.makeWorld(this.pendingStage.id, this.pendingStage.keep);
       this.pendingStage = null;
@@ -81,6 +98,28 @@ export class Game implements GameApi {
   heal(): void {
     this.world.heal();
     this.sfx.play('levelup');
+  }
+
+  acceptQuest(q: QuestDef): void {
+    this.quests.accept(q);
+    this.ui.toast(`Nova missão: ${q.title}`);
+    this.sfx.play('ui');
+    saveProgress(this.progress);
+  }
+
+  completeQuest(q: QuestDef): void {
+    if (!this.quests.isReady(q)) return;
+    this.quests.complete(q);
+    const r = q.reward;
+    if (r.gold) this.progress.gold += r.gold;
+    if (r.item) {
+      if (this.progress.owned.includes(r.item)) this.progress.gold += Math.round(getItem(r.item).price / 2);
+      else this.progress.owned.push(r.item);
+    }
+    if (r.exp) this.world.gainExp(r.exp, false);
+    this.ui.toast(`Recompensa: ${rewardText(r)}`);
+    this.sfx.play('coin');
+    saveProgress(this.progress);
   }
 
   travel(stageId: string): void {

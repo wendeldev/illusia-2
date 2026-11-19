@@ -8,7 +8,9 @@ export type SoundName =
 const MUTE_KEY = 'lumen-muted';
 
 export class Sfx {
-  private ctx: AudioContext | null = null;
+  /** contexto de áudio compartilhado com a música (existe após o primeiro toque) */
+  ctx: AudioContext | null = null;
+  private unlockListeners: ((ctx: AudioContext) => void)[] = [];
   private master: GainNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
   muted = false;
@@ -39,6 +41,15 @@ export class Sfx {
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
     }
     if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    const ctx = this.ctx;
+    this.unlockListeners.forEach((fn) => fn(ctx));
+    this.unlockListeners = [];
+  }
+
+  /** Chama `fn` quando o áudio estiver liberado (na hora, se já estiver). */
+  onUnlock(fn: (ctx: AudioContext) => void): void {
+    if (this.ctx) fn(this.ctx);
+    else this.unlockListeners.push(fn);
   }
 
   private tone(freq: number, to: number, dur: number, type: OscillatorType, vol: number, delay = 0): void {

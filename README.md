@@ -40,6 +40,15 @@ pancada (círculo vermelho), investida (faixa com setas), disparos, chamar ajuda
 - Regras de geração das fases (ondas, largura, força): `makeStage()` no mesmo arquivo
 - Ataques especiais de cada inimigo: `abilities` em `src/data/enemies.ts`
 
+## Missões e música
+
+- **Missões:** a Capitã Ivy (história: os 9 chefes), o Curandeiro Taro (caçadas) e a Ferreira Brida
+  (materiais, com equipamentos de recompensa). `!` sobre o NPC = missão nova; `?` = pronta para entregar.
+  As missões ficam em `src/data/quests.ts`; o andamento aparece no canto da tela e em ☰ → 📜 Missões.
+- **Música:** cada região tem uma trilha própria e os chefes têm uma trilha mais intensa. É composta
+  em tempo real pelo navegador (`src/engine/music.ts`); as "partituras" ficam em `src/data/music.ts`.
+  Som e música podem ser desligados separadamente no menu.
+
 ## Estrutura
 
 ```
@@ -62,6 +71,5 @@ que não existe, o erro aparece no console com o nome do que falta.
 ## Próximos passos sugeridos
 
 - Arte própria (sprites) no lugar das formas provisórias (`src/game/draw.ts`)
-- Sons e música
-- Missões dos NPCs
+- Estrelas por fase (tempo e dano recebido)
 - PvP online (precisa de um servidor)

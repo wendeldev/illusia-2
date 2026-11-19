@@ -29,6 +29,12 @@ export interface WorldHooks {
   playerDied(): void;
   toast(msg: string): void;
   openMap(): void;
+  /** um inimigo foi derrotado (missões) */
+  killed(def: EnemyDef): void;
+  /** a fase foi vencida (missões) */
+  stageCleared(stageId: string): void;
+  /** marca sobre o NPC: '!' tem missão nova, '?' missão pronta para entregar */
+  questMark(npcId: string): '!' | '?' | null;
   save(): void;
   sound(name: SoundName): void;
   vibrate(ms: number): void;
@@ -516,7 +522,6 @@ export class World {
     e.dead = true;
     e.deadTimer = 0.5;
     const pr = this.progress;
-    pr.exp += e.exp;
     pr.gold += e.gold;
     const recent = this.texts.filter((t) => t.color === '#9ff0a0' && t.life > 0.5).length;
     this.floatText(e.x, GROUND_TOP + e.y - 10 + recent * 12, `+${e.exp} EXP  +${e.gold} G`, '#9ff0a0', 10, 0.9);
@@ -534,7 +539,17 @@ export class World {
         this.hooks.toast(`Obtido: ${getItem(d.itemId).name}`);
       }
     }
+    this.gainExp(e.exp, false);
+    this.hooks.killed(e.def);
+    this.hooks.save();
+  }
+
+  /** Soma experiência e trata a subida de nível (usado por inimigos e recompensas de missão). */
+  gainExp(amount: number, save = true): void {
+    const pr = this.progress;
+    pr.exp += amount;
     let leveled = false;
+    const startLevel = pr.level;
     while (pr.exp >= expToNext(pr.level)) {
       pr.exp -= expToNext(pr.level);
       pr.level++;
@@ -551,10 +566,10 @@ export class World {
           vx: 0, vy: 0, vz: 60 + Math.random() * 60, life: 0.9, maxLife: 0.9, size: 2.5, color: '#ffe9a8', gravity: -40,
         });
       }
-      const unlocked = SKILLS.find((s) => s.unlockLevel === pr.level);
+      const unlocked = SKILLS.find((s) => s.unlockLevel > startLevel && s.unlockLevel <= pr.level);
       if (unlocked) this.hooks.toast(`Novo poder: ${unlocked.name}`);
     }
-    this.hooks.save();
+    if (save) this.hooks.save();
   }
 
   private updateEnemy(e: Enemy, dt: number): void {
@@ -842,6 +857,7 @@ export class World {
       if (this.waveIndex >= this.stage.waves.length) {
         this.cleared = true;
         if (!this.progress.cleared.includes(this.stage.id)) this.progress.cleared.push(this.stage.id);
+        this.hooks.stageCleared(this.stage.id);
         this.hooks.save();
         this.hooks.toast('Fase concluída! Siga até o portal.');
         // fôlego: recupera parte da vida para seguir direto para a próxima fase
@@ -1099,6 +1115,18 @@ export class World {
     }
     drawHuman(ctx, n.x, gy, facing, n.look, npcPose(working ? 'hammer' : n.def.idle === 'hammer' ? 'still' : n.def.idle, this.time, n.seed));
     text(ctx, n.def.name, n.x, gy - 58, { size: 10, align: 'center' });
+    const mark = this.hooks.questMark(n.def.id);
+    if (mark) {
+      const bob = Math.sin(this.time * 4) * 2;
+      ctx.fillStyle = mark === '?' ? '#8fe07a' : '#ffd36b';
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(n.x, gy - 76 + bob, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      text(ctx, mark, n.x, gy - 75 + bob, { size: 12, align: 'center', color: '#1d1a24', outline: false });
+    }
   }
 
   /** Aviso no chão antes de um ataque especial: dá tempo de fugir. */

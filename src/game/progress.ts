@@ -10,6 +10,13 @@ export interface Progress {
   owned: string[];
   equipped: Partial<Record<Slot, string>>;
   cleared: string[];
+  /** estado das missões: ativa (com contagem) ou entregue */
+  quests: Record<string, QuestState>;
+}
+
+export interface QuestState {
+  status: 'active' | 'done';
+  count: number;
 }
 
 export function newProgress(): Progress {
@@ -20,6 +27,7 @@ export function newProgress(): Progress {
     owned: ['training_sword'],
     equipped: { weapon: 'training_sword' },
     cleared: [],
+    quests: {},
   };
 }
 
