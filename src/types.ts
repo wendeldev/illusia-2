@@ -142,6 +142,18 @@ export interface WaveDef {
   enemies: { enemyId: string; count: number }[];
 }
 
+export type SceneryTheme = 'village' | 'forest' | 'ruins' | 'cave';
+
+export type LandmarkKind = 'house' | 'clinic' | 'forge' | 'tower' | 'gate';
+
+export interface LandmarkDef {
+  kind: LandmarkKind;
+  /** posição no mapa (borda esquerda da construção) */
+  x: number;
+  /** muda cores/tamanho de casas */
+  variant?: number;
+}
+
 export interface StageDef {
   id: string;
   name: string;
@@ -149,9 +161,10 @@ export interface StageDef {
   width: number;
   /** profundidade do chão (movimento vertical) em px */
   depth: number;
-  sky: string;
-  far: string;
-  ground: string;
+  /** visual do cenário */
+  theme: SceneryTheme;
+  /** construções fixas no fundo (vila: casas, forja...) */
+  landmarks?: LandmarkDef[];
   spawn: { x: number; y: number };
   npcs: { npcId: string; x: number; y: number }[];
   portals: PortalDef[];

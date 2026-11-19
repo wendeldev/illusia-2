@@ -5,7 +5,16 @@ export const START_STAGE = 'lumen';
 export const STAGES: StageDef[] = [
   {
     id: 'lumen', name: 'Vila de Lumen', width: 960, depth: 140,
-    sky: '#8fc7e8', far: '#6aa36f', ground: '#8db36a',
+    theme: 'village',
+    landmarks: [
+      { kind: 'house', x: 20, variant: 1 },
+      { kind: 'forge', x: 150 },
+      { kind: 'clinic', x: 330 },
+      { kind: 'house', x: 470, variant: 2 },
+      { kind: 'tower', x: 610 },
+      { kind: 'house', x: 720, variant: 0 },
+      { kind: 'gate', x: 845 },
+    ],
     spawn: { x: 480, y: 70 },
     npcs: [
       { npcId: 'brida', x: 220, y: 40 },
@@ -21,7 +30,7 @@ export const STAGES: StageDef[] = [
   },
   {
     id: 'whisper_woods', name: 'Bosque Sussurrante', width: 2100, depth: 150,
-    sky: '#9ed3c0', far: '#3f7a4f', ground: '#5f8f45',
+    theme: 'forest',
     spawn: { x: 90, y: 75 },
     npcs: [],
     portals: [
@@ -36,7 +45,7 @@ export const STAGES: StageDef[] = [
   },
   {
     id: 'iron_ruins', name: 'Ruínas de Ferro', width: 2400, depth: 150,
-    sky: '#d8c3a5', far: '#8a7560', ground: '#9a8b70',
+    theme: 'ruins',
     spawn: { x: 90, y: 75 },
     npcs: [],
     portals: [
@@ -51,7 +60,7 @@ export const STAGES: StageDef[] = [
   },
   {
     id: 'gray_cave', name: 'Caverna Cinzenta', width: 2400, depth: 140,
-    sky: '#2b2a3a', far: '#3d3b52', ground: '#55516a',
+    theme: 'cave',
     spawn: { x: 90, y: 70 },
     npcs: [],
     portals: [

@@ -5,8 +5,10 @@ import { VIEW_W, VIEW_H } from '../engine/view';
 import type { EnemyDef, HumanLook, NpcDef, PortalDef, SkillDef, StageDef } from '../types';
 import { drawHuman, OUTLINE } from './art/human';
 import { drawMonster } from './art/monsters';
+import { glow } from './art/scene3d';
+import { Scenery } from './art/scenery';
 import { npcLook, npcPose, playerLook, playerPose, type ActionAnim } from './art/poses';
-import { bar, shade, text } from './draw';
+import { bar, text } from './draw';
 import type { Progress } from './progress';
 import { calcDamage, computeStats, expToNext, type Stats } from './stats';
 
@@ -127,6 +129,7 @@ interface Effect {
 export class World {
   player: Player;
   stats: Stats;
+  scenery: Scenery;
   npcs: { def: NpcDef; x: number; y: number; look: HumanLook; seed: number }[];
   playerLook: HumanLook;
   enemies: Enemy[] = [];
@@ -155,6 +158,7 @@ export class World {
   ) {
     this.stats = computeStats(progress);
     this.cleared = stage.waves.length === 0;
+    this.scenery = new Scenery(stage);
     this.npcs = stage.npcs.map((n, i) => {
       const def = getNpc(n.npcId);
       return { def, x: n.x, y: n.y, look: npcLook(def.look), seed: i * 1.7 };
@@ -705,39 +709,16 @@ export class World {
 
   render(ctx: CanvasRenderingContext2D): void {
     const s = this.stage;
-    ctx.fillStyle = s.sky;
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    const camX = Math.round(this.camX);
     ctx.save();
     if (this.shakeT > 0) {
       const m = this.shakeMag * (this.shakeT / this.shakeDur);
       ctx.translate((Math.random() * 2 - 1) * m, (Math.random() * 2 - 1) * m);
     }
-
-    // fundo com paralaxe
-    const farX = this.camX * 0.35;
-    ctx.fillStyle = s.far;
-    for (let k = Math.floor(farX / 160) - 1; k < Math.floor((farX + VIEW_W) / 160) + 2; k++) {
-      const h = 50 + (((k * 37) % 5) + 5) % 5 * 14;
-      const x = k * 160 - farX;
-      ctx.beginPath();
-      ctx.moveTo(x - 40, GROUND_TOP - 8);
-      ctx.lineTo(x + 80, GROUND_TOP - 8 - h);
-      ctx.lineTo(x + 200, GROUND_TOP - 8);
-      ctx.fill();
-    }
-    ctx.fillStyle = shade(s.ground, -0.12);
-    // desenha além das bordas para o tremor de tela não revelar buracos
-    ctx.fillRect(-20, GROUND_TOP - 14, VIEW_W + 40, 14);
-    ctx.fillStyle = s.ground;
-    ctx.fillRect(-20, GROUND_TOP - 6, VIEW_W + 40, VIEW_H);
-    ctx.fillStyle = shade(s.ground, 0.06);
-    for (let k = Math.floor(this.camX / 90); k < Math.floor((this.camX + VIEW_W) / 90) + 1; k++) {
-      const x = k * 90 - this.camX;
-      ctx.fillRect(x, GROUND_TOP + ((k * 53) % s.depth), 26, 4);
-    }
+    this.scenery.drawBackground(ctx, camX, this.time);
 
     ctx.save();
-    ctx.translate(-Math.round(this.camX), 0);
+    ctx.translate(-camX, 0);
 
     for (const portal of s.portals) this.drawPortal(ctx, portal);
 
@@ -745,6 +726,14 @@ export class World {
     type D = { y: number; draw: () => void };
     const list: D[] = [];
     for (const n of this.npcs) list.push({ y: n.y, draw: () => this.drawNpc(ctx, n) });
+    for (const prop of this.scenery.props) {
+      list.push({ y: prop.y, draw: () => {
+        ctx.save();
+        ctx.translate(camX, 0);
+        this.scenery.drawProp(ctx, prop, camX, this.time);
+        ctx.restore();
+      } });
+    }
     for (const e of this.enemies) list.push({ y: e.y, draw: () => this.drawEnemy(ctx, e) });
     list.push({ y: this.player.y, draw: () => this.drawPlayer(ctx) });
     list.sort((a, b) => a.y - b.y).forEach((d) => d.draw());
@@ -783,7 +772,13 @@ export class World {
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
+    ctx.restore();
 
+    // primeiro plano, luz e atmosfera (por cima dos personagens, por baixo dos textos)
+    this.scenery.drawForeground(ctx, camX, this.time, this.player);
+
+    ctx.save();
+    ctx.translate(-camX, 0);
     const near = this.nearby();
     if (near && !this.player.dead) {
       const label = near.kind === 'npc' ? `Falar com ${near.npc.name}` : (this.portalLock(near.portal) ? '🔒 ' : '→ ') + near.portal.label;
@@ -810,17 +805,46 @@ export class World {
 
   private drawPortal(ctx: CanvasRenderingContext2D, portal: PortalDef): void {
     const locked = !!this.portalLock(portal);
-    const y = GROUND_TOP + portal.y;
-    const pulse = 0.8 + Math.sin(this.time * 3) * 0.2;
-    ctx.globalAlpha = locked ? 0.35 : 0.8;
-    ctx.fillStyle = locked ? '#666' : '#8fd8ff';
+    const x = portal.x, y = GROUND_TOP + portal.y;
+    const c = locked ? '#8a8a9a' : '#8fd8ff';
+    // base de pedra
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
-    ctx.ellipse(portal.x, y - 24, 14 * pulse, 26, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y, 20, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#8a8478';
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 1, 17, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    if (!locked) glow(ctx, x, y - 26, 46, c, 0.35 + Math.sin(this.time * 3) * 0.08);
+    // anéis girando
+    for (let k = 0; k < 3; k++) {
+      const ph = this.time * (1.5 + k * 0.5) + k * 2;
+      ctx.globalAlpha = locked ? 0.35 : 0.85 - k * 0.2;
+      ctx.strokeStyle = k === 0 ? '#ffffff' : c;
+      ctx.lineWidth = 2.5 - k * 0.6;
+      ctx.beginPath();
+      ctx.ellipse(x, y - 26, 12 + k * 3 + Math.sin(ph) * 1.5, 24 - k * 2, 0, ph, ph + Math.PI * 1.4);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = locked ? 0.3 : 0.55;
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 26, 10, 21, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = locked ? '#999' : '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    if (!locked) {
+      ctx.fillStyle = '#ffffff';
+      for (let k = 0; k < 4; k++) {
+        const ph = (this.time * 0.8 + k / 4) % 1;
+        ctx.globalAlpha = 1 - ph;
+        ctx.fillRect(x + Math.sin(k * 2 + this.time) * 8, y - 6 - ph * 44, 1.6, 1.6);
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
   private drawNpc(ctx: CanvasRenderingContext2D, n: World['npcs'][number]): void {
