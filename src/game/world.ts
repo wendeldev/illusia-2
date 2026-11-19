@@ -1,4 +1,5 @@
 import { getEnemy, getItem, getNpc, SKILLS } from '../data';
+import type { SoundName } from '../engine/audio';
 import type { Input } from '../engine/input';
 import { VIEW_W, VIEW_H } from '../engine/view';
 import type { EnemyDef, NpcDef, PortalDef, SkillDef, StageDef } from '../types';
@@ -23,6 +24,8 @@ export interface WorldHooks {
   playerDied(): void;
   toast(msg: string): void;
   save(): void;
+  sound(name: SoundName): void;
+  vibrate(ms: number): void;
 }
 
 interface Body {
@@ -49,6 +52,9 @@ export interface Player extends Body {
   dead: boolean;
   deadTimer: number;
   walk: number;
+  /** comando apertado durante uma ação, executado assim que possível (deixa o combo fluido) */
+  buffered: { kind: 'attack'; count: number } | { kind: 'skill'; skill: SkillDef } | null;
+  bufferT: number;
 }
 
 export interface Enemy extends Body {
@@ -75,6 +81,23 @@ interface FloatText {
   text: string;
   color: string;
   life: number;
+  maxLife: number;
+  size: number;
+}
+
+interface Particle {
+  x: number;
+  y: number;
+  /** altura acima do chão */
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  color: string;
+  gravity: number;
 }
 
 interface Effect {
@@ -96,6 +119,14 @@ export class World {
   private projectiles: Projectile[] = [];
   private texts: FloatText[] = [];
   private effects: Effect[] = [];
+  private particles: Particle[] = [];
+  /** congela o mundo por instantes no impacto (sensação de peso) */
+  private hitStop = 0;
+  private shakeT = 0;
+  private shakeDur = 1;
+  private shakeMag = 0;
+  private hurtFlash = 0;
+  private soundsThisFrame = new Set<SoundName>();
   camX = 0;
   waveIndex = 0;
   waveActive = false;
@@ -116,7 +147,7 @@ export class World {
       hp: Math.min(keep?.hp ?? this.stats.maxHp, this.stats.maxHp), maxHp: this.stats.maxHp,
       mp: Math.min(keep?.mp ?? this.stats.maxMp, this.stats.maxMp), maxMp: this.stats.maxMp,
       hitStun: 0, flash: 0, attackTimer: 0, swing: 0, comboStep: 0, comboWindow: 0,
-      cooldowns: {}, invuln: 0, dead: false, deadTimer: 0, walk: 0,
+      cooldowns: {}, invuln: 0, dead: false, deadTimer: 0, walk: 0, buffered: null, bufferT: 0,
     };
     this.camX = this.cameraTarget();
   }
@@ -142,6 +173,40 @@ export class World {
     this.player.mp = this.player.maxMp;
   }
 
+  private sound(name: SoundName): void {
+    if (this.soundsThisFrame.has(name)) return; // evita somar 5 sons iguais num golpe em área
+    this.soundsThisFrame.add(name);
+    this.hooks.sound(name);
+  }
+
+  private shake(mag: number, dur: number): void {
+    if (mag >= this.shakeMag * (this.shakeT / this.shakeDur)) {
+      this.shakeMag = mag;
+      this.shakeT = dur;
+      this.shakeDur = dur;
+    }
+  }
+
+  private freeze(t: number): void {
+    this.hitStop = Math.max(this.hitStop, t);
+  }
+
+  private burst(x: number, y: number, z: number, count: number, color: string, speed: number, size = 2.5, gravity = 300): void {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = speed * (0.4 + Math.random() * 0.8);
+      const life = 0.25 + Math.random() * 0.3;
+      this.particles.push({
+        x, y, z, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.3, vz: Math.random() * speed * 0.9,
+        life, maxLife: life, size: size * (0.6 + Math.random() * 0.8), color, gravity,
+      });
+    }
+  }
+
+  private floatText(x: number, y: number, str: string, color: string, size = 13, life = 0.7): void {
+    this.texts.push({ x: x + (Math.random() - 0.5) * 10, y, text: str, color, life, maxLife: life, size });
+  }
+
   get boss(): Enemy | undefined {
     return this.enemies.find((e) => e.def.boss && !e.dead);
   }
@@ -149,6 +214,14 @@ export class World {
   // ───────────────────────── atualização ─────────────────────────
 
   update(dt: number, input: Input, active: boolean): void {
+    this.soundsThisFrame.clear();
+    this.shakeT = Math.max(0, this.shakeT - dt);
+    this.hurtFlash = Math.max(0, this.hurtFlash - dt);
+    if (this.hitStop > 0) {
+      this.hitStop -= dt;
+      if (active && !this.player.dead) this.readCommands(input);
+      return;
+    }
     this.time += dt;
     const p = this.player;
     p.mp = Math.min(p.maxMp, p.mp + dt * 2.5);
@@ -173,6 +246,14 @@ export class World {
 
     for (const t of this.texts) { t.life -= dt; t.y -= 28 * dt; }
     this.texts = this.texts.filter((t) => t.life > 0);
+    for (const pt of this.particles) {
+      pt.life -= dt;
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      pt.vz -= pt.gravity * dt;
+      pt.z = Math.max(0, pt.z + pt.vz * dt);
+    }
+    this.particles = this.particles.filter((pt) => pt.life > 0);
     for (const fx of this.effects) fx.life -= dt;
     this.effects = this.effects.filter((fx) => fx.life > 0);
 
@@ -209,12 +290,34 @@ export class World {
     p.x = Math.max(minX, Math.min(maxX, p.x));
     p.y = Math.max(0, Math.min(this.stage.depth, p.y));
 
-    const canAct = p.hitStun <= 0 && p.attackTimer <= 0;
-    if (input.consume('attack') && canAct) this.basicAttack();
-    SKILLS.forEach((skill, i) => {
-      if (input.consume(`skill${i + 1}` as 'skill1') && p.hitStun <= 0 && p.attackTimer <= 0) this.useSkill(skill);
-    });
+    this.readCommands(input);
+    p.bufferT -= dt;
+    if (p.bufferT <= 0) p.buffered = null;
+    // o golpe seguinte pode sair um pouco antes do anterior terminar (cancelamento)
+    const canAct = p.hitStun <= 0 && p.attackTimer <= 0.06;
+    if (canAct && p.buffered) {
+      const cmd = p.buffered;
+      p.buffered = null;
+      if (cmd.kind === 'attack') {
+        this.basicAttack();
+        // apertos rápidos seguidos viram o combo inteiro
+        if (cmd.count > 1) { p.buffered = { kind: 'attack', count: cmd.count - 1 }; p.bufferT = 0.35; }
+      }
+      else this.useSkill(cmd.skill);
+    }
     if (input.consume('interact')) this.interact();
+  }
+
+  private readCommands(input: Input): void {
+    const p = this.player;
+    if (input.consume('attack')) {
+      const queued = p.buffered?.kind === 'attack' ? p.buffered.count : 0;
+      p.buffered = { kind: 'attack', count: Math.min(2, queued + 1) };
+      p.bufferT = 0.35;
+    }
+    SKILLS.forEach((skill, i) => {
+      if (input.consume(`skill${i + 1}` as 'skill1')) { p.buffered = { kind: 'skill', skill }; p.bufferT = 0.35; }
+    });
   }
 
   private basicAttack(): void {
@@ -225,8 +328,14 @@ export class World {
     p.attackTimer = step.time;
     p.swing = step.time;
     p.vx = p.facing * 40;
-    this.hitFront(step.range, step.mul, step.knock);
-    this.effects.push({ kind: 'swing', x: p.x, y: p.y, dir: p.facing, radius: step.range, color: '#ffffff', life: 0.15, maxLife: 0.15 });
+    const finisher = step === COMBO[COMBO.length - 1];
+    this.sound('swing');
+    const hits = this.hitFront(step.range, step.mul, step.knock, 22, finisher);
+    if (hits > 0) {
+      this.freeze(finisher ? 0.09 : 0.045);
+      if (finisher) { this.shake(4, 0.18); this.sound('heavy'); }
+    }
+    this.effects.push({ kind: 'swing', x: p.x, y: p.y, dir: p.facing, radius: step.range, color: finisher ? '#ffe9a8' : '#ffffff', life: 0.15, maxLife: 0.15 });
   }
 
   private useSkill(skill: SkillDef): void {
@@ -238,6 +347,7 @@ export class World {
     if ((p.cooldowns[skill.id] ?? 0) > 0) return;
     if (p.mp < skill.mpCost) {
       this.hooks.toast('MP insuficiente');
+      this.sound('nomp');
       return;
     }
     p.mp -= skill.mpCost;
@@ -246,6 +356,7 @@ export class World {
     p.swing = 0.3;
     switch (skill.kind) {
       case 'projectile':
+        this.sound('wind');
         this.projectiles.push({ x: p.x + p.facing * 20, y: p.y, dir: p.facing, dist: 0, skill, hit: new Set() });
         break;
       case 'aoe':
@@ -253,30 +364,49 @@ export class World {
           if (e.dead) continue;
           const dx = e.x - p.x, dy = (e.y - p.y) * 2;
           if (dx * dx + dy * dy <= (skill.radius + e.radius) ** 2) {
-            this.damageEnemy(e, skill.damageMul, skill.knockback * (Math.sign(dx) || p.facing));
+            this.damageEnemy(e, skill.damageMul, skill.knockback * (Math.sign(dx) || p.facing), true);
           }
+        }
+        this.sound('whirl');
+        this.shake(3, 0.2);
+        this.freeze(0.06);
+        for (let i = 0; i < 18; i++) {
+          const a = (i / 18) * Math.PI * 2;
+          this.particles.push({
+            x: p.x + Math.cos(a) * 20, y: p.y + Math.sin(a) * 10, z: 12, vx: Math.cos(a) * 260, vy: Math.sin(a) * 90, vz: 40,
+            life: 0.35, maxLife: 0.35, size: 3, color: skill.color, gravity: 100,
+          });
         }
         this.effects.push({ kind: 'ring', x: p.x, y: p.y, dir: 1, radius: skill.radius, color: skill.color, life: 0.35, maxLife: 0.35 });
         break;
       case 'melee':
-        this.hitFront(skill.range, skill.damageMul, skill.knockback, skill.radius);
+        this.sound('thunder');
+        this.hitFront(skill.range, skill.damageMul, skill.knockback, skill.radius, true);
+        this.shake(8, 0.35);
+        this.freeze(0.12);
+        this.hooks.vibrate(60);
+        this.burst(p.x + p.facing * skill.range * 0.6, p.y, 30, 22, skill.color, 260, 3, 200);
         this.effects.push({ kind: 'swing', x: p.x, y: p.y, dir: p.facing, radius: skill.range, color: skill.color, life: 0.3, maxLife: 0.3 });
         break;
     }
   }
 
-  private hitFront(range: number, mul: number, knock: number, depth = 22): void {
+  /** Golpe à frente do jogador. Retorna quantos inimigos acertou. */
+  private hitFront(range: number, mul: number, knock: number, depth = 22, heavy = false): number {
     const p = this.player;
+    let hits = 0;
     for (const e of this.enemies) {
       if (e.dead) continue;
       const dx = (e.x - p.x) * p.facing;
       if (dx > -12 && dx < range + e.radius && Math.abs(e.y - p.y) < depth + e.radius * 0.5) {
-        this.damageEnemy(e, mul, knock * p.facing);
+        this.damageEnemy(e, mul, knock * p.facing, heavy);
+        hits++;
       }
     }
+    return hits;
   }
 
-  private damageEnemy(e: Enemy, mul: number, knock: number): void {
+  private damageEnemy(e: Enemy, mul: number, knock: number, heavy = false): void {
     const crit = Math.random() < this.stats.crit;
     const dmg = calcDamage(this.stats.atk, e.def.def, mul) * (crit ? 2 : 1);
     e.hp -= dmg;
@@ -285,7 +415,11 @@ export class World {
     e.hitStun = e.def.boss ? 0.06 : 0.28;
     e.vx = knock * resist;
     if (!e.def.boss && e.state === 'windup') { e.state = 'recover'; e.timer = 0.4; }
-    this.texts.push({ x: e.x, y: GROUND_TOP + e.y - e.radius * 2.6, text: crit ? `${dmg}!` : `${dmg}`, color: crit ? '#ffd36b' : '#fff', life: 0.7 });
+    const bodyZ = e.def.shape === 'flyer' ? e.radius * 2.6 : e.radius * 1.2;
+    this.floatText(e.x, GROUND_TOP + e.y - e.radius * 2.6, crit ? `${dmg}!` : `${dmg}`, crit ? '#ffd36b' : '#fff', crit ? 19 : heavy ? 16 : 13);
+    this.burst(e.x - Math.sign(knock) * e.radius * 0.4, e.y, bodyZ, crit ? 12 : 6, crit ? '#ffd36b' : '#ffffff', crit ? 240 : 170, 2.2);
+    if (crit) { this.sound('crit'); this.shake(3, 0.12); this.freeze(0.07); }
+    else this.sound('hit');
     if (e.hp <= 0) this.killEnemy(e);
   }
 
@@ -295,7 +429,16 @@ export class World {
     const pr = this.progress;
     pr.exp += e.def.exp;
     pr.gold += e.def.gold;
-    this.texts.push({ x: e.x, y: GROUND_TOP + e.y - 10, text: `+${e.def.exp} EXP  +${e.def.gold} G`, color: '#9ff0a0', life: 1 });
+    const recent = this.texts.filter((t) => t.color === '#9ff0a0' && t.life > 0.5).length;
+    this.floatText(e.x, GROUND_TOP + e.y - 10 + recent * 12, `+${e.def.exp} EXP  +${e.def.gold} G`, '#9ff0a0', 10, 0.9);
+    this.burst(e.x, e.y, e.radius, e.def.boss ? 60 : 16, e.def.color, e.def.boss ? 320 : 180, e.def.boss ? 4 : 3, 260);
+    this.sound('kill');
+    this.sound('coin');
+    if (e.def.boss) {
+      this.freeze(0.3);
+      this.shake(12, 0.8);
+      this.hooks.vibrate(200);
+    }
     for (const d of e.def.drops ?? []) {
       if (Math.random() < d.chance && !pr.owned.includes(d.itemId)) {
         pr.owned.push(d.itemId);
@@ -311,6 +454,14 @@ export class World {
     if (leveled) {
       this.refreshStats(true);
       this.hooks.toast(`Nível ${pr.level}!`);
+      this.sound('levelup');
+      for (let i = 0; i < 24; i++) {
+        const a = (i / 24) * Math.PI * 2;
+        this.particles.push({
+          x: this.player.x + Math.cos(a) * 16, y: this.player.y + Math.sin(a) * 6, z: Math.random() * 10,
+          vx: 0, vy: 0, vz: 60 + Math.random() * 60, life: 0.9, maxLife: 0.9, size: 2.5, color: '#ffe9a8', gravity: -40,
+        });
+      }
       const unlocked = SKILLS.find((s) => s.unlockLevel === pr.level);
       if (unlocked) this.hooks.toast(`Novo poder: ${unlocked.name}`);
     }
@@ -375,7 +526,13 @@ export class World {
     p.attackTimer = 0;
     p.invuln = 0.6;
     p.vx = e.facing * (e.def.boss ? 260 : 150);
-    this.texts.push({ x: p.x, y: GROUND_TOP + p.y - 44, text: `-${dmg}`, color: '#ff6b6b', life: 0.8 });
+    this.floatText(p.x, GROUND_TOP + p.y - 44, `-${dmg}`, '#ff6b6b', 15, 0.8);
+    this.burst(p.x, p.y, 18, 8, '#ff6b6b', 160, 2.5);
+    this.sound('hurt');
+    this.hooks.vibrate(e.def.boss ? 90 : 40);
+    this.shake(e.def.boss ? 9 : 5, 0.22);
+    this.freeze(0.06);
+    this.hurtFlash = 0.35;
     if (p.hp <= 0) {
       p.hp = 0;
       p.dead = true;
@@ -410,6 +567,7 @@ export class World {
         if (Math.abs(e.x - pr.x) < pr.skill.radius + e.radius && Math.abs(e.y - pr.y) < 20 + e.radius * 0.4) {
           pr.hit.add(e);
           this.damageEnemy(e, pr.skill.damageMul, pr.skill.knockback * pr.dir);
+          this.freeze(0.03);
           if (!pr.skill.pierce) pr.dist = Infinity;
         }
       }
@@ -449,7 +607,12 @@ export class World {
         });
       }
     }
-    if (wave.enemies.some((g) => getEnemy(g.enemyId).boss)) this.hooks.toast('Um chefe apareceu!');
+    this.sound('wave');
+    if (wave.enemies.some((g) => getEnemy(g.enemyId).boss)) {
+      this.hooks.toast('Um chefe apareceu!');
+      this.shake(5, 0.7);
+      this.hooks.vibrate(120);
+    }
   }
 
   // ───────────────────────── interação ─────────────────────────
@@ -488,6 +651,11 @@ export class World {
     const s = this.stage;
     ctx.fillStyle = s.sky;
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.save();
+    if (this.shakeT > 0) {
+      const m = this.shakeMag * (this.shakeT / this.shakeDur);
+      ctx.translate((Math.random() * 2 - 1) * m, (Math.random() * 2 - 1) * m);
+    }
 
     // fundo com paralaxe
     const farX = this.camX * 0.35;
@@ -502,9 +670,10 @@ export class World {
       ctx.fill();
     }
     ctx.fillStyle = shade(s.ground, -0.12);
-    ctx.fillRect(0, GROUND_TOP - 14, VIEW_W, 14);
+    // desenha além das bordas para o tremor de tela não revelar buracos
+    ctx.fillRect(-20, GROUND_TOP - 14, VIEW_W + 40, 14);
     ctx.fillStyle = s.ground;
-    ctx.fillRect(0, GROUND_TOP - 6, VIEW_W, VIEW_H);
+    ctx.fillRect(-20, GROUND_TOP - 6, VIEW_W + 40, VIEW_H);
     ctx.fillStyle = shade(s.ground, 0.06);
     for (let k = Math.floor(this.camX / 90); k < Math.floor((this.camX + VIEW_W) / 90) + 1; k++) {
       const x = k * 90 - this.camX;
@@ -526,11 +695,22 @@ export class World {
 
     for (const pr of this.projectiles) {
       const y = GROUND_TOP + pr.y - 22;
+      if (Math.random() < 0.6) {
+        this.particles.push({ x: pr.x - pr.dir * 8, y: pr.y, z: 22, vx: -pr.dir * 40, vy: 0, vz: (Math.random() - 0.5) * 60,
+          life: 0.2, maxLife: 0.2, size: 2.5, color: pr.skill.color, gravity: 0 });
+      }
       ctx.fillStyle = pr.skill.color;
       ctx.beginPath();
       ctx.ellipse(pr.x, y, pr.skill.radius * 1.4, pr.skill.radius * 0.5, 0, 0, Math.PI * 2);
       ctx.fill();
     }
+    for (const pt of this.particles) {
+      ctx.globalAlpha = Math.min(1, (pt.life / pt.maxLife) * 1.5);
+      ctx.fillStyle = pt.color;
+      const sz = pt.size * (0.5 + 0.5 * pt.life / pt.maxLife);
+      ctx.fillRect(pt.x - sz / 2, GROUND_TOP + pt.y - pt.z - sz / 2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
     for (const fx of this.effects) {
       const a = fx.life / fx.maxLife;
       ctx.globalAlpha = a;
@@ -554,11 +734,22 @@ export class World {
       text(ctx, label, near.x, GROUND_TOP + near.y - 58, { size: 11, align: 'center', color: '#ffe9a8' });
     }
     for (const t of this.texts) {
-      ctx.globalAlpha = Math.min(1, t.life * 2);
-      text(ctx, t.text, t.x, t.y, { size: 13, align: 'center', color: t.color });
+      const age = t.maxLife - t.life;
+      const pop = age < 0.1 ? 1 + (1 - age / 0.1) * 0.6 : 1; // número "salta" ao aparecer
+      ctx.globalAlpha = Math.min(1, t.life * 2.5);
+      text(ctx, t.text, t.x, t.y, { size: Math.round(t.size * pop), align: 'center', color: t.color });
       ctx.globalAlpha = 1;
     }
     ctx.restore();
+    ctx.restore();
+
+    if (this.hurtFlash > 0) {
+      const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.35, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.65);
+      g.addColorStop(0, 'rgba(255,0,0,0)');
+      g.addColorStop(1, `rgba(220,20,20,${(this.hurtFlash / 0.35) * 0.55})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    }
   }
 
   private drawPortal(ctx: CanvasRenderingContext2D, portal: PortalDef): void {

@@ -1,4 +1,5 @@
 import { getItem, SKILLS } from '../data';
+import type { Sfx } from '../engine/audio';
 import type { Input, TouchButton } from '../engine/input';
 import { VIEW_H, VIEW_W } from '../engine/view';
 import type { NpcDef } from '../types';
@@ -10,6 +11,7 @@ import type { World } from './world';
 export interface GameApi {
   progress: Progress;
   world: World;
+  sfx: Sfx;
   buy(itemId: string): void;
   equip(itemId: string): void;
   heal(): void;
@@ -62,8 +64,14 @@ export class Ui {
     if (this.toasts.length > 4) this.toasts.shift();
   }
 
+  private openMenu(): void {
+    this.modal = { kind: 'menu', sel: 0 };
+    this.game.sfx.play('ui');
+  }
+
   openNpc(npc: NpcDef): void {
     this.modal = { kind: 'dialog', npc, line: 0 };
+    this.game.sfx.play('ui');
   }
 
   showDead(): void {
@@ -85,7 +93,7 @@ export class Ui {
       if (r) { r.fn(); break; }
     }
 
-    if (!this.modal && input.consume('menu')) this.modal = { kind: 'menu', sel: 0 };
+    if (!this.modal && input.consume('menu')) this.openMenu();
     input.buttonsEnabled = !this.modal;
     const m = this.modal;
     if (!m) return false;
@@ -120,6 +128,7 @@ export class Ui {
 
   private advanceDialog(m: Extract<Modal, { kind: 'dialog' }>): void {
     m.line++;
+    this.game.sfx.play('ui');
     if (m.line < m.npc.dialog.length) return;
     switch (m.npc.action) {
       case 'shop':
@@ -188,7 +197,7 @@ export class Ui {
     if (!this.modal) {
       circle(ctx, mb.x, mb.y, mb.r, 'rgba(0,0,0,0.45)');
       text(ctx, mb.label, mb.x, mb.y + 1, { size: 14, align: 'center' });
-      this.regions.push({ x: mb.x - mb.r, y: mb.y - mb.r, w: mb.r * 2, h: mb.r * 2, fn: () => { this.modal = { kind: 'menu', sel: 0 }; } });
+      this.regions.push({ x: mb.x - mb.r, y: mb.y - mb.r, w: mb.r * 2, h: mb.r * 2, fn: () => this.openMenu() });
     }
   }
 
@@ -330,6 +339,14 @@ export class Ui {
       text(ctx, locked ? `Desbloqueia no nível ${sk.unlockLevel}` : `${sk.mpCost} MP · ${sk.cooldown}s · ${sk.description}`,
         lx, yy + 12, { size: 8, color: '#aab4cc', outline: false, bold: false });
     });
+
+    // ligar/desligar som
+    const sfx = this.game.sfx;
+    const bx = lx, by = y + h - 30;
+    ctx.fillStyle = '#34406a';
+    ctx.fillRect(bx, by, 130, 22);
+    text(ctx, sfx.muted ? '🔇 Som: desligado' : '🔊 Som: ligado', bx + 8, by + 11, { size: 11, outline: false });
+    this.regions.push({ x: bx, y: by, w: 130, h: 22, fn: () => { sfx.setMuted(!sfx.muted); sfx.play('ui'); } });
 
     const rx = x + 240, rw = w - 252;
     text(ctx, 'Equipamentos (toque para equipar)', rx, y + 42, { size: 11, color: '#ffe9a8' });
