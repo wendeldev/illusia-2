@@ -17,7 +17,8 @@ px = im.load()
 def is_bg(c):
     r, g, b = c
     if dark:
-        return max(r, g, b) < 40
+        # fundo azul-marinho escuro da prancha de cenários
+        return max(r, g, b) < 48 and b >= r and abs(r - 11) < 14 and abs(g - 20) < 14
     return min(r, g, b) > 228 and max(r, g, b) - min(r, g, b) < 18
 
 # flood fill do fundo a partir das bordas

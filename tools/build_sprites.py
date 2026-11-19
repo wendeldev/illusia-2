@@ -362,3 +362,132 @@ os.makedirs(os.path.join(ROOT, 'public', 'sprites'), exist_ok=True)
 atlas.save(os.path.join(ROOT, 'public', 'sprites', 'atlas.png'), optimize=True)
 json.dump(out, open(os.path.join(ROOT, 'src', 'data', 'atlas.json'), 'w'), separators=(',', ':'))
 print(f'atlas {AW}x{AH}, {len(items)} quadros, {len(out)} sprites')
+
+# ═══════════════════ prancha 3: cenários (fundos, blocos e objetos) ═══════════════════
+# Recortes por retângulo (coordenadas medidas em assets-src/sheet-backgrounds.png).
+from PIL import Image as _I
+SHEET3 = _I.open(os.path.join(ROOT, 'assets-src', 'sheet-backgrounds.png')).convert('RGBA')
+
+# panoramas (x0, y0, x1, y1): ficam opacos, viram o fundo com paralaxe
+PANORAMAS = {
+    'pano_forest': (0, 2, 716, 128), 'pano_ruins': (0, 133, 716, 244), 'pano_snow': (0, 249, 716, 357),
+    'pano_desert': (0, 362, 716, 460), 'pano_volcano': (0, 465, 716, 547), 'pano_haunted': (0, 552, 716, 638),
+    'pano_cave': (0, 645, 716, 714), 'pano_castle': (0, 721, 716, 803), 'pano_sky': (0, 808, 716, 907),
+    'pano_void': (0, 912, 716, 1013),
+}
+# camadas que se movem (fundo próprio removido)
+LAYERS = {
+    'layer_clouds': (1143, 585, 1531, 651), 'layer_mount_snow': (1143, 651, 1531, 690),
+    'layer_mount_blue': (1143, 690, 1531, 729), 'layer_mount_far': (1143, 732, 1531, 778),
+    'layer_castles': (1145, 782, 1531, 846), 'layer_fog': (1145, 850, 1531, 903), 'layer_fog2': (1145, 968, 1531, 1013),
+    'moon_blue': (1166, 905, 1230, 962), 'moon_red': (1266, 905, 1325, 958), 'sunset': (1342, 903, 1439, 970),
+}
+# blocos de terreno (bloco inteiro com topo)
+BLOCKS = {
+    'b_grass': (728, 6, 824, 83), 'b_grass2': (1024, 6, 1121, 83), 'b_moss': (728, 88, 824, 163),
+    'b_brick': (728, 168, 824, 243), 'b_snowbrick': (728, 246, 824, 321), 'b_ice': (1024, 246, 1121, 321),
+    'b_sand_snow': (728, 324, 824, 391), 'b_sand': (1024, 324, 1121, 391), 'b_lava': (728, 394, 824, 466),
+    'b_lava2': (1024, 394, 1121, 466), 'b_purple': (728, 469, 824, 541), 'b_purple2': (1024, 469, 1121, 541),
+    'b_carved': (728, 546, 824, 613), 'b_carved2': (1024, 546, 1121, 613), 'b_purplebrick': (935, 546, 1020, 613),
+    'b_stone_plain': (730, 932, 790, 1012),
+}
+# objetos de cenário
+OBJECTS = {
+    'o_tree1': (1132, 6, 1239, 119), 'o_tree2': (1239, 6, 1339, 117), 'o_tree_orange': (1339, 6, 1437, 117),
+    'o_tree_pink': (1437, 6, 1534, 117), 'o_tree_yellow': (1132, 124, 1240, 221), 'o_pine_snow': (1236, 108, 1294, 202),
+    'o_tree_snow': (1287, 104, 1367, 202), 'o_dead1': (1364, 124, 1432, 209), 'o_dead2': (1432, 106, 1532, 206),
+    'o_palm': (1246, 207, 1358, 299), 'o_bush_big': (1145, 224, 1240, 299), 'o_snow_bush': (1382, 213, 1482, 247),
+    'o_bush_y': (1346, 261, 1429, 299), 'o_bush_g': (1434, 261, 1532, 299),
+    'o_flowers1': (1145, 301, 1211, 346), 'o_flowers2': (1219, 304, 1287, 345), 'o_flowers3': (1294, 300, 1359, 346),
+    'o_flowers4': (1367, 302, 1414, 344), 'o_flowers5': (1424, 304, 1474, 344), 'o_flowers6': (1482, 307, 1527, 343),
+    'o_crystal_blue': (1305, 347, 1365, 397), 'o_crystal_purple': (1369, 343, 1430, 397),
+    'o_mushroom': (1441, 343, 1494, 391), 'o_mushroom_s': (1493, 358, 1529, 391),
+    'o_rock1': (1143, 401, 1215, 439), 'o_rock2': (1223, 396, 1294, 439), 'o_rock3': (1299, 405, 1380, 439),
+    'o_log1': (1380, 405, 1451, 439), 'o_log2': (1462, 404, 1527, 439),
+    'o_vines': (1142, 449, 1224, 496), 'o_flowers7': (1240, 449, 1323, 491), 'o_plant': (1336, 448, 1400, 490),
+    'o_mush_small': (1409, 451, 1469, 489), 'o_rock4': (1477, 449, 1531, 491),
+    'o_waterfall': (1143, 499, 1221, 574), 'o_waterfall2': (1224, 499, 1274, 574),
+    'o_arch_bridge': (729, 624, 829, 681), 'o_arch2': (839, 624, 919, 681), 'o_column': (927, 621, 972, 684),
+    'o_column2': (976, 621, 1009, 684), 'o_arch_big': (729, 696, 854, 746), 'o_ladder': (869, 694, 904, 759),
+    'o_ruin_wall': (912, 694, 1013, 749), 'o_banner_red': (1029, 689, 1075, 764), 'o_banner_blue': (1077, 689, 1124, 764),
+    'o_arch_small': (734, 756, 816, 801), 'o_crate': (831, 766, 865, 801), 'o_sign': (921, 769, 963, 811),
+    'o_column_broken': (977, 756, 1003, 839), 'o_signboard': (1017, 781, 1074, 839), 'o_brazier': (1077, 766, 1128, 839),
+    'o_crate2': (732, 806, 789, 846), 'o_arrow_sign': (832, 826, 899, 859), 'o_crate3': (907, 826, 952, 861),
+    'o_crate_tall': (734, 864, 777, 921), 'o_fence_wood': (792, 881, 854, 921), 'o_fence_iron': (869, 874, 959, 921),
+    'o_lantern': (974, 846, 1011, 921), 'o_lantern2': (1024, 844, 1069, 921), 'o_brazier2': (1069, 844, 1127, 921),
+    'o_banner_green': (899, 931, 949, 1011), 'o_lantern3': (962, 929, 1014, 1011), 'o_cage': (1017, 929, 1064, 1011),
+    'o_cage2': (1073, 929, 1122, 1011),
+}
+
+def _is_bg3(c):
+    r, g, b, a = c
+    lum = (r * 3 + g * 6 + b) / 10
+    return lum < 64 and b >= r - 4 and b >= g - 10
+
+def cut3(rect, remove_bg=True):
+    im = SHEET3.crop(rect).copy()
+    if not remove_bg:
+        return im
+    W, H = im.size
+    px = im.load()
+    seen = bytearray(W * H)
+    dq = deque([(x, y) for x in range(W) for y in (0, H - 1)] + [(x, y) for y in range(H) for x in (0, W - 1)])
+    while dq:
+        x, y = dq.popleft()
+        i = y * W + x
+        if seen[i] or not _is_bg3(px[x, y]):
+            continue
+        seen[i] = 1
+        px[x, y] = (0, 0, 0, 0)
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < W and 0 <= ny < H and not seen[ny * W + nx]:
+                dq.append((nx, ny))
+    bb = im.getbbox()
+    return im.crop(bb) if bb else im
+
+extra = {}
+for n, r in PANORAMAS.items():
+    extra[n] = cut3(r, False)
+for n, r in LAYERS.items():
+    extra[n] = cut3(r, True)
+for n, r in BLOCKS.items():
+    im = cut3(r, True)
+    extra[n] = im
+    # recheio: metade de baixo do bloco (sem a grama/neve do topo)
+    w, h = im.size
+    # recheio opaco (sem tirar fundo: senão as frestas escuras viram buracos)
+    x0, y0, x1, y1 = r
+    raw = SHEET3.crop((x0 + 6, y0 + int((y1 - y0) * 0.5), x1 - 6, y1 - 11))
+    extra[n + '_fill'] = raw
+for n, r in OBJECTS.items():
+    extra[n] = cut3(r, True)
+
+# empacota num 2º atlas (os panoramas são grandes)
+items3 = sorted(extra.items(), key=lambda t: -t[1].size[1])
+AW3, pad = 2048, 2
+x = y = row_h = 0
+pl = []
+for n, im in items3:
+    w, h = im.size
+    if x + w + pad > AW3:
+        x, y, row_h = 0, y + row_h + pad, 0
+    pl.append((n, im, x, y))
+    x += w + pad
+    row_h = max(row_h, h)
+atlas3 = _I.new('RGBA', (AW3, y + row_h), (0, 0, 0, 0))
+meta3 = {}
+for n, im, px_, py_ in pl:
+    atlas3.paste(im, (px_, py_))
+    w, h = im.size
+    meta3[n] = {'scale': 1, 'faces': 1, 'frames': [[px_, py_, w, h, w // 2, h]], 'sheet': 1}
+    if n.startswith('pano_'):
+        # cor média do céu (topo) e de um pouco abaixo: vira degradê acima do panorama
+        def avg(y0, y1):
+            px = im.crop((0, y0, w, y1)).convert('RGB').resize((1, 1), _I.BOX).getpixel((0, 0))
+            return '#%02x%02x%02x' % px
+        meta3[n]['sky'] = [avg(0, 3), avg(3, 10)]
+atlas3.save(os.path.join(ROOT, 'public', 'sprites', 'scenery.png'), optimize=True)
+allmeta = json.load(open(os.path.join(ROOT, 'src', 'data', 'atlas.json')))
+allmeta.update(meta3)
+json.dump(allmeta, open(os.path.join(ROOT, 'src', 'data', 'atlas.json'), 'w'), separators=(',', ':'))
+print(f'cenário: {atlas3.size[0]}x{atlas3.size[1]}, {len(meta3)} peças')

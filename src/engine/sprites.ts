@@ -11,15 +11,30 @@ interface SpriteDef {
   /** para onde o desenho olha: 1 = direita, -1 = esquerda */
   faces: number;
   frames: Frame[];
+  /** cores do céu acima de um panorama [topo, logo abaixo] */
+  sky?: [string, string];
+  /** 1 = prancha de cenário (public/sprites/scenery.png) */
+  sheet?: number;
 }
 
 const ATLAS = atlasData as unknown as Record<string, SpriteDef>;
 
 let img: HTMLImageElement | null = null;
 let white: HTMLCanvasElement | null = null;
+let scenery: HTMLImageElement | null = null;
+
+const sheetOf = (d: SpriteDef): HTMLImageElement | null => (d.sheet === 1 ? scenery : img);
+
+/** Prancha de cenário carregada? */
+export function sceneryReady(): boolean {
+  return !!scenery;
+}
 let ready = false;
 
 export function loadSprites(): Promise<void> {
+  const sc = new Image();
+  sc.onload = () => { scenery = sc; };
+  sc.src = './sprites/scenery.png';
   return new Promise((resolve) => {
     const im = new Image();
     im.onload = () => {
@@ -75,7 +90,8 @@ export interface SpriteOpts {
 /** Desenha o quadro com os pés em (x, y). `facing` = 1 direita, -1 esquerda. */
 export function drawSprite(ctx: CanvasRenderingContext2D, name: string, frame: number, x: number, y: number, facing: number, o: SpriteOpts = {}): void {
   const d = ATLAS[name];
-  if (!d || !img) return;
+  const sheet = d && sheetOf(d);
+  if (!d || !sheet) return;
   const f = d.frames[Math.max(0, Math.floor(frame)) % d.frames.length];
   const s = d.scale * (o.scale ?? 1);
   const flip = facing === d.faces ? 1 : -1;
@@ -86,8 +102,8 @@ export function drawSprite(ctx: CanvasRenderingContext2D, name: string, frame: n
   if (o.alpha !== undefined) ctx.globalAlpha *= o.alpha;
   // pixel art ampliado fica nítido sem suavização; reduzido fica melhor suavizado
   ctx.imageSmoothingEnabled = Math.abs(s) < 1;
-  ctx.drawImage(img, f[0], f[1], f[2], f[3], -f[4], -f[5], f[2], f[3]);
-  if (o.flash && white) {
+  ctx.drawImage(sheet, f[0], f[1], f[2], f[3], -f[4], -f[5], f[2], f[3]);
+  if (o.flash && white && d.sheet !== 1) {
     ctx.globalAlpha *= 0.85;
     ctx.drawImage(white, f[0], f[1], f[2], f[3], -f[4], -f[5], f[2], f[3]);
   }
@@ -97,9 +113,10 @@ export function drawSprite(ctx: CanvasRenderingContext2D, name: string, frame: n
 /** Desenha o quadro inteiro esticado no retângulo (blocos de terreno). */
 export function drawTile(ctx: CanvasRenderingContext2D, name: string, x: number, y: number, w: number, h: number): void {
   const d = ATLAS[name];
-  if (!d || !img) return;
+  const sheet = d && sheetOf(d);
+  if (!d || !sheet) return;
   const f = d.frames[0];
-  ctx.drawImage(img, f[0], f[1], f[2], f[3], x, y, w, h);
+  ctx.drawImage(sheet, f[0], f[1], f[2], f[3], x, y, w, h);
 }
 
 /** Proporção altura/largura do 1º quadro. */
@@ -111,7 +128,29 @@ export function tileAspect(name: string): number {
 /** Desenha com uma altura final em px (objetos de cenário), pés em (x, y). */
 export function drawSpriteH(ctx: CanvasRenderingContext2D, name: string, x: number, y: number, height: number, facing = 1, o: SpriteOpts = {}): boolean {
   const d = ATLAS[name];
-  if (!d || !img) return false;
+  if (!d || !sheetOf(d)) return false;
   drawSprite(ctx, name, 0, x, y, facing, { ...o, scale: (o.scale ?? 1) * height / (d.frames[0][3] * d.scale) });
   return true;
+}
+
+/** Tamanho original (px) do 1º quadro. */
+export function frameSize(name: string): [number, number] {
+  const f = ATLAS[name]?.frames[0];
+  return f ? [f[2], f[3]] : [0, 0];
+}
+
+/** Desenha um pedaço (sx, sy, sw, sh, em px do quadro) esticado no retângulo de destino. */
+export function drawSub(ctx: CanvasRenderingContext2D, name: string, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number): void {
+  const d = ATLAS[name];
+  const sheet = d && sheetOf(d);
+  if (!d || !sheet || sw <= 0 || sh <= 0) return;
+  const f = d.frames[0];
+  const smooth = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false; // ampliado em pixel art: sem borrão
+  ctx.drawImage(sheet, f[0] + sx, f[1] + sy, sw, sh, dx, dy, dw, dh);
+  ctx.imageSmoothingEnabled = smooth;
+}
+
+export function panoSky(name: string): [string, string] {
+  return ATLAS[name]?.sky ?? ['#6aa8e8', '#9fd0f0'];
 }

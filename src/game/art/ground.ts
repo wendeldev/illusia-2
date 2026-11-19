@@ -9,19 +9,19 @@ import { drawTile, spritesReady, tileAspect } from '../../engine/sprites';
 
 /** Blocos de pixel art por região: topo do chão, recheio e plataforma. */
 const PX_TILES: Record<SceneryTheme, { top: string; fill: string; plat: string }> = {
-  village: { top: 'tile_grass', fill: 'tile_dirt', plat: 'tile_moss' },
-  forest: { top: 'tile_grass2', fill: 'tile_dirt', plat: 'tile_moss' },
-  swamp: { top: 'tile_swamp', fill: 'tile_dirt', plat: 'tile_moss_swamp' },
-  ruins: { top: 'tile_sand', fill: 'tile_brick', plat: 'tile_moss_sand' },
-  desert: { top: 'tile_sand', fill: 'tile_sandrock', plat: 'tile_moss_sand' },
-  cave: { top: 'tile_cave', fill: 'tile_cave', plat: 'tile_moss_dark' },
-  snow: { top: 'tile_snow', fill: 'tile_icerock', plat: 'tile_moss_snow' },
-  volcano: { top: 'tile_ash', fill: 'tile_lava', plat: 'tile_moss_lava' },
-  castle: { top: 'tile_darkbrick', fill: 'tile_darkbrick', plat: 'tile_moss_dark' },
-  sky: { top: 'tile_cloud', fill: 'tile_dirt', plat: 'tile_moss' },
+  village: { top: 'b_grass', fill: 'b_grass_fill', plat: 'b_grass2' },
+  forest: { top: 'b_grass2', fill: 'b_grass2_fill', plat: 'b_grass' },
+  swamp: { top: 'b_purple', fill: 'b_purple_fill', plat: 'b_purple2' },
+  ruins: { top: 'b_moss', fill: 'b_moss_fill', plat: 'b_carved' },
+  desert: { top: 'b_sand', fill: 'b_sand_fill', plat: 'b_carved2' },
+  cave: { top: 'b_purple2', fill: 'b_purple2_fill', plat: 'b_ice' },
+  snow: { top: 'b_snowbrick', fill: 'b_snowbrick_fill', plat: 'b_ice' },
+  volcano: { top: 'b_lava', fill: 'b_lava2_fill', plat: 'b_lava2' },
+  castle: { top: 'b_brick', fill: 'b_brick_fill', plat: 'b_purplebrick' },
+  sky: { top: 'b_grass', fill: 'b_grass_fill', plat: 'b_grass2' },
 };
 /** largura de cada bloco na tela */
-const TILE_W = 40;
+const TILE_W = 48;
 
 function pxGround(ctx: Ctx, s: TerrainSeg, prev: TerrainSeg | undefined, next: TerrainSeg | undefined, theme: SceneryTheme, camX: number, camY: number): void {
   const tiles = PX_TILES[theme];
@@ -36,7 +36,8 @@ function pxGround(ctx: Ctx, s: TerrainSeg, prev: TerrainSeg | undefined, next: T
   // alinhados ao mundo: os blocos não "andam" com a câmera
   const start = Math.floor(s.x0 / TILE_W) * TILE_W - camX;
   for (let tx = start; tx < x + w; tx += TILE_W) {
-    for (let ty = y + topH - 8; ty < bottom; ty += TILE_W) drawTile(ctx, tiles.fill, Math.round(tx), Math.round(ty), TILE_W + 1, TILE_W + 1);
+    const fillH = Math.round(TILE_W * tileAspect(tiles.fill));
+    for (let ty = y + topH - 10; ty < bottom; ty += fillH) drawTile(ctx, tiles.fill, Math.round(tx), Math.round(ty), TILE_W + 1, fillH + 1);
   }
   // escurece o recheio com a profundidade (fica menos repetitivo e destaca o topo)
   const g = ctx.createLinearGradient(0, y + topH - 8, 0, y + topH + 120);
@@ -62,7 +63,7 @@ function pxGround(ctx: Ctx, s: TerrainSeg, prev: TerrainSeg | undefined, next: T
 function pxPlatform(ctx: Ctx, p: TerrainSeg, theme: SceneryTheme, camX: number, camY: number): void {
   const name = PX_TILES[theme].plat;
   const x = p.x0 - camX, w = p.x1 - p.x0, y = p.y - camY;
-  const tw = 46, th = Math.round(tw * tileAspect(name));
+  const tw = 52, th = Math.round(tw * tileAspect(name));
   ctx.fillStyle = 'rgba(0,0,0,0.1)';
   ctx.beginPath();
   ctx.ellipse(x + w / 2, y + th + 26, w * 0.4, 6, 0, 0, Math.PI * 2);

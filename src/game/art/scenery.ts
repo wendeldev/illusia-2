@@ -6,7 +6,8 @@
 import { VIEW_H, VIEW_W } from '../../engine/view';
 import type { LandmarkDef, StageDef } from '../../types';
 import { BASE_GROUND, type Terrain } from '../terrain';
-import { drawSpriteH, spritesReady } from '../../engine/sprites';
+import { drawSpriteH, drawSub, frameSize, panoSky, sceneryReady, spritesReady } from '../../engine/sprites';
+import type { SceneryTheme } from '../../types';
 import {
   alpha, BACK_ROW_Y, ellipse, glow, HORIZON, mix, poly, rnd, seedOf, tone, type Ctx, type Pt,
 } from './scene3d';
@@ -41,6 +42,25 @@ interface Light {
 }
 
 const LANDMARK_W: Record<LandmarkDef['kind'], number> = { house: 100, clinic: 92, forge: 112, tower: 50, gate: 96 };
+
+const PANO: Record<SceneryTheme, string> = {
+  village: 'pano_forest', forest: 'pano_forest', swamp: 'pano_haunted', ruins: 'pano_ruins', desert: 'pano_desert',
+  cave: 'pano_cave', snow: 'pano_snow', volcano: 'pano_volcano', castle: 'pano_castle', sky: 'pano_sky',
+};
+const CLOUDY = new Set<SceneryTheme>(['village', 'forest', 'ruins', 'desert', 'snow', 'sky']);
+const FOGGY = new Set<SceneryTheme>(['swamp', 'cave', 'castle']);
+/** fileira intermediária: [desenho, altura] */
+const BACK_ROW: Partial<Record<SceneryTheme, [string, number][]>> = {
+  forest: [['o_tree1', 90], ['o_tree2', 85], ['o_tree_orange', 85], ['o_tree_yellow', 85], ['o_bush_big', 40], ['o_bush_g', 26], ['o_flowers1', 20]],
+  swamp: [['o_dead1', 80], ['o_dead2', 92], ['o_mushroom', 30], ['o_plant', 26], ['o_crystal_purple', 30], ['o_mush_small', 22]],
+  ruins: [['o_arch_bridge', 62], ['o_column', 62], ['o_ruin_wall', 50], ['o_arch_small', 46], ['o_column_broken', 64], ['o_plant', 24]],
+  desert: [['o_palm', 88], ['o_column_broken', 56], ['o_arch2', 56], ['o_rock2', 30], ['o_rock3', 26]],
+  cave: [['o_crystal_blue', 46], ['o_crystal_purple', 46], ['o_rock1', 30], ['o_mushroom_s', 22], ['o_rock4', 26]],
+  snow: [['o_pine_snow', 88], ['o_tree_snow', 86], ['o_snow_bush', 26], ['o_rock4', 26]],
+  volcano: [['o_dead1', 72], ['o_rock2', 30], ['o_brazier', 50], ['o_rock3', 28], ['o_dead2', 80]],
+  castle: [['o_banner_red', 60], ['o_banner_blue', 60], ['o_lantern2', 46], ['o_cage', 46], ['o_fence_iron', 36], ['o_column', 62], ['o_brazier2', 46]],
+  sky: [['o_tree1', 82], ['o_tree_pink', 82], ['o_column', 62], ['o_arch2', 56], ['o_bush_g', 26], ['o_flowers3', 24]],
+};
 
 const PROPS_BY_THEME: Record<StageDef['theme'], PropKind[]> = {
   village: ['barrel', 'crate', 'lamp', 'barrel', 'well'],
@@ -99,6 +119,11 @@ export class Scenery {
     this.lights = [];
     // o fundo desce um pouco quando a câmera sobe (paralaxe vertical)
     this.bgOff = -(camY - CAM_REST) * 0.35;
+    if (sceneryReady()) {
+      this.pixelBackground(ctx, camX, camY, t);
+      this.moodLight(ctx, t);
+      return;
+    }
     ctx.save();
     ctx.translate(0, this.bgOff);
     switch (this.stage.theme) {
@@ -115,6 +140,103 @@ export class Scenery {
     }
     ctx.restore();
     this.moodLight(ctx, t);
+  }
+
+  // ───────────────────────── fundo em pixel art (prancha de cenários) ─────────────────────────
+
+  private panoName(): string {
+    const st = this.stage;
+    // última fase da Cidadela e das Ilhas: o céu do vazio
+    if (st.index === 80 || st.index === 90) return 'pano_void';
+    return PANO[st.theme];
+  }
+
+  /**
+   * Camadas, de trás para frente:
+   * céu (topo do panorama esticado) → lua/sol → panorama (paralaxe 0.2) → nuvens andando
+   * → fileira intermediária de árvores/ruínas (paralaxe 0.6, menores = mais longe) → névoa andando.
+   */
+  private pixelBackground(ctx: Ctx, camX: number, camY: number, t: number): void {
+    const pano = this.panoName();
+    const [pw, ph] = frameSize(pano);
+    const groundS = BASE_GROUND - camY;
+    const bottom = 276 + (groundS - 260) * 0.4;
+    const sc = Math.min(2.6, 235 / ph);
+    const top = bottom - ph * sc;
+    const W = pw * sc;
+    // céu acima do panorama: a 1ª linha esticada
+    if (top > -20) {
+      const [c0, c1] = panoSky(pano);
+      const g = ctx.createLinearGradient(0, -20, 0, top + 2);
+      g.addColorStop(0, tone(c0, -0.08));
+      g.addColorStop(0.7, c0);
+      g.addColorStop(1, c1);
+      ctx.fillStyle = g;
+      ctx.fillRect(-20, -20, VIEW_W + 40, top + 24);
+    }
+    // lua / pôr do sol (os panoramas que não têm um)
+    const mood = this.stage.mood;
+    const own = pano === 'pano_haunted' || pano === 'pano_castle' || pano === 'pano_void' || pano === 'pano_cave';
+    if (!own && (mood === 'night' || mood === 'dusk')) {
+      const name = mood === 'night' ? (this.stage.theme === 'volcano' ? 'moon_red' : 'moon_blue') : 'sunset';
+      drawSpriteH(ctx, name, VIEW_W * 0.78 - camX * 0.01, top + ph * sc * 0.42, mood === 'night' ? 46 : 54);
+    }
+    // panorama repetido; cópias alternadas espelhadas para não aparecer a emenda
+    const off = camX * 0.2;
+    const k0 = Math.floor(off / W) - 1;
+    for (let k = k0; k * W - off < VIEW_W + W; k++) {
+      const x = k * W - off;
+      if (x + W < -2) continue;
+      if (k % 2 === 0) drawSub(ctx, pano, 0, 0, pw, ph, Math.floor(x), top, Math.ceil(W) + 1, ph * sc);
+      else {
+        ctx.save();
+        ctx.translate(Math.floor(x + W), 0);
+        ctx.scale(-1, 1);
+        drawSub(ctx, pano, 0, 0, pw, ph, 0, top, Math.ceil(W) + 1, ph * sc);
+        ctx.restore();
+      }
+    }
+    const theme = this.stage.theme;
+    // nuvens andando com o vento
+    if (CLOUDY.has(theme) && pano !== 'pano_void') {
+      const [cw, ch] = frameSize('layer_clouds');
+      const s2 = 1.6, w2 = cw * s2;
+      const o2 = (camX * 0.08 - t * 8) % w2;
+      ctx.globalAlpha = 0.9;
+      for (let x = -o2 - w2; x < VIEW_W + w2; x += w2) drawSub(ctx, 'layer_clouds', 0, 0, cw, ch, Math.floor(x), top + 4, Math.ceil(w2) + 1, ch * s2);
+      ctx.globalAlpha = 1;
+    }
+    // fileira intermediária (dá profundidade: anda mais devagar que o chão)
+    const row = BACK_ROW[theme];
+    if (row && theme !== 'village') {
+      const f = 0.6, step = 70;
+      const rowY = bottom - 10;
+      this.each(camX, f, step, 140, (i, sx) => {
+        if (rnd(this.seed, i, 200) < 0.3) return;
+        const [name, h] = row[Math.floor(rnd(this.seed, i, 201) * row.length)];
+        const x = sx + rnd(this.seed, i, 202) * 40;
+        drawSpriteH(ctx, name, x, rowY + rnd(this.seed, i, 203) * 6, h * (0.75 + rnd(this.seed, i, 204) * 0.2), rnd(this.seed, i, 205) < 0.5 ? 1 : -1);
+        if (name.includes('crystal')) this.lights.push({ x, y: rowY - h * 0.4, r: 60, color: name.includes('purple') ? '#c49bff' : '#5ff0e0' });
+        if (name.includes('brazier') || name.includes('lantern')) glow(ctx, x, rowY - h * 0.75, 30, '#ffb060', 0.35 + Math.sin(t * 9 + i) * 0.05);
+      });
+    } else if (theme === 'village') {
+      this.each(camX, 0.6, 90, 140, (i, sx) => {
+        if (rnd(this.seed, i, 200) < 0.4) return;
+        const name = ['o_tree1', 'o_tree_pink', 'o_tree2', 'o_bush_y'][Math.floor(rnd(this.seed, i, 201) * 4)];
+        drawSpriteH(ctx, name, sx, bottom - 12, name.startsWith('o_bush') ? 22 : 70, 1);
+      });
+    }
+    // névoa andando (lugares sombrios)
+    if (FOGGY.has(theme) || pano === 'pano_void') {
+      const [fw, fh] = frameSize('layer_fog');
+      const s3 = 1.8, w3 = fw * s3;
+      for (const [speed, a, dy, name] of [[10, 0.35, -30, 'layer_fog'], [22, 0.25, -6, 'layer_fog2']] as const) {
+        const o3 = ((camX * 0.7 + t * speed) % w3 + w3) % w3;
+        ctx.globalAlpha = a;
+        for (let x = -o3 - w3; x < VIEW_W + w3; x += w3) drawSub(ctx, name, 0, 0, fw, fh, Math.floor(x), bottom + dy - fh * s3 * 0.5, Math.ceil(w3) + 1, fh * s3);
+        ctx.globalAlpha = 1;
+      }
+    }
   }
 
   /** Construções fixas (vila) em pé no chão de verdade. */
@@ -137,7 +259,10 @@ export class Scenery {
       return;
     }
     if (th !== 'castle') {
-      ctx.fillStyle = 'rgba(16,24,70,0.4)';
+      ctx.fillStyle = sceneryReady() ? 'rgba(16,24,70,0.3)' : 'rgba(16,24,70,0.4)';
+      ctx.fillRect(-20, -20, VIEW_W + 40, VIEW_H + 40);
+      if (sceneryReady()) return;
+      ctx.fillStyle = 'rgba(16,24,70,0.0)';
       ctx.fillRect(-20, -20, VIEW_W + 40, VIEW_H + 40);
       this.stars(ctx, t);
       ellipse(ctx, VIEW_W * 0.78, 38, 13, 13, '#f4f0d8');
@@ -506,7 +631,15 @@ export class Scenery {
     if (x < -60 || x > VIEW_W + 60) return;
     if (spritesReady()) {
       const r = rnd(this.seed, p.seed, 85);
-      const pxProp: Partial<Record<PropKind, [string, number]>> = {
+      const rocks = ['o_rock1', 'o_rock2', 'o_rock3', 'o_rock4'];
+      const pxProp: Partial<Record<PropKind, [string, number]>> = sceneryReady() ? {
+        barrel: ['o_crate', 22], crate: [r < 0.5 ? 'o_crate3' : 'o_crate2', 22], lamp: ['o_lantern', 34],
+        rock: [rocks[Math.floor(r * 4)], 22], mushrooms: [r < 0.5 ? 'o_mush_small' : 'o_mushroom', 22], log: ['o_log1', 18],
+        stump: ['o_log2', 16], stub: ['o_column2', 32], drum: ['o_rock3', 20], vase: ['o_flowers5', 18],
+        stalagmite: ['o_rock1', 24], crystal: [r < 0.5 ? 'o_crystal_blue' : 'o_crystal_purple', 28], reeds: ['o_plant', 24],
+        bones: ['o_rock4', 18], iceRock: ['o_snow_bush', 18], lavaRock: ['o_rock2', 20], obsidian: ['o_rock3', 22],
+        brazier: ['o_brazier2', 36], goldCrystal: ['o_crystal_blue', 26],
+      } : {
         barrel: ['barrel_px', 24], rock: [['rock1', 'rock2', 'rock3', 'rock4', 'rock5', 'rock6'][Math.floor(r * 6)], 20],
         mushrooms: ['mushroom_deco', 18], stub: ['column_thin', 30], iceRock: ['rock_snow', 20], lavaRock: ['rock_lava', 20],
         brazier: ['brazier_px', 34], goldCrystal: ['crystal_gold', 24], stump: ['bush', 18],
