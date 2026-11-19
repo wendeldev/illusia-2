@@ -525,3 +525,262 @@ export function vase(ctx: Ctx, cx: number, yb: number): void {
   ctx.fillRect(cx - 6, yb - 11, 12, 1.5);
 }
 
+
+// ───────────────────────── pântano ─────────────────────────
+
+/** Árvore morta retorcida com galhos e musgo pendurado. */
+export function deadTree(ctx: Ctx, x: number, yb: number, s: number, color: string, seed: number, t: number): void {
+  groundShadow(ctx, x + 4, yb + 1, 18 * s, 4 * s);
+  const lean = (rnd(seed, 1) - 0.5) * 10 * s;
+  // raízes
+  poly(ctx, [[x - 12 * s, yb], [x - 4 * s, yb - 10 * s], [x + 4 * s, yb - 10 * s], [x + 13 * s, yb], [x + 3 * s, yb - 3 * s], [x - 3 * s, yb - 3 * s]], tone(color, -0.1));
+  // tronco
+  poly(ctx, [[x - 5 * s, yb - 2], [x - 3 * s + lean, yb - 70 * s], [x + 3 * s + lean, yb - 72 * s], [x + 6 * s, yb - 2]], color);
+  ctx.fillStyle = tone(color, -0.25);
+  ctx.fillRect(x + 1 * s, yb - 60 * s, 3 * s, 55 * s);
+  // galhos
+  ctx.lineCap = 'round';
+  const branch = (bx: number, by: number, ang: number, len: number, w: number) => {
+    const ex = bx + Math.sin(ang) * len, ey = by - Math.cos(ang) * len;
+    ctx.strokeStyle = OL; ctx.lineWidth = w + 2;
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = w;
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ex, ey); ctx.stroke();
+    return [ex, ey] as Pt;
+  };
+  const top: Pt = [x + lean, yb - 70 * s];
+  const b1 = branch(top[0], top[1] + 20 * s, -1.0, 26 * s, 3 * s);
+  const b2 = branch(top[0], top[1] + 8 * s, 0.9, 30 * s, 3 * s);
+  branch(b1[0], b1[1], -0.3, 12 * s, 1.6 * s);
+  branch(b2[0], b2[1], 0.4, 14 * s, 1.6 * s);
+  branch(top[0], top[1], 0.1, 14 * s, 2 * s);
+  // musgo pendurado balançando
+  ctx.strokeStyle = '#7a9a52';
+  ctx.lineWidth = 1.6 * s;
+  for (const [mx, my] of [b1, b2, [top[0] - 6 * s, top[1] + 22 * s] as Pt]) {
+    const sw = Math.sin(t * 1.3 + mx * 0.05) * 3 * s;
+    ctx.beginPath(); ctx.moveTo(mx, my); ctx.quadraticCurveTo(mx + sw, my + 10 * s, mx + sw * 0.5, my + 20 * s); ctx.stroke();
+  }
+}
+
+export function reeds(ctx: Ctx, x: number, yb: number, s: number, t: number, seed: number): void {
+  ctx.lineCap = 'round';
+  for (let k = 0; k < 6; k++) {
+    const bx = x + (k - 2.5) * 3.5 * s;
+    const h = (18 + rnd(seed, k) * 14) * s;
+    const sw = Math.sin(t * 1.5 + k + seed) * 2 * s;
+    ctx.strokeStyle = k % 2 ? '#5f7a3a' : '#7a9a4a';
+    ctx.lineWidth = 1.6 * s;
+    ctx.beginPath(); ctx.moveTo(bx, yb); ctx.quadraticCurveTo(bx, yb - h * 0.6, bx + sw, yb - h); ctx.stroke();
+    if (k % 2 === 0) ellipse(ctx, bx + sw, yb - h - 3 * s, 1.8 * s, 4.5 * s, '#7a4a2a', OL);
+  }
+}
+
+// ───────────────────────── deserto ─────────────────────────
+
+export function cactus(ctx: Ctx, x: number, yb: number, s: number, seed: number): void {
+  groundShadow(ctx, x + 4, yb + 1, 12 * s, 3 * s);
+  const c = '#5f9a48';
+  const arm = (side: number, ay: number, h: number) => {
+    const ax = x + side * 9 * s;
+    cylinder(ctx, ax, yb - ay, 7 * s, h, c);
+    poly(ctx, [[x + side * 3 * s, yb - ay + 5 * s], [ax, yb - ay + 5 * s], [ax, yb - ay], [x + side * 3 * s, yb - ay]], tone(c, -0.1));
+  };
+  arm(-1, 22 * s + rnd(seed, 1) * 8 * s, 18 * s);
+  if (rnd(seed, 2) < 0.7) arm(1, 30 * s + rnd(seed, 3) * 8 * s, 14 * s);
+  cylinder(ctx, x, yb, 10 * s, 52 * s, c);
+  ctx.strokeStyle = 'rgba(30,70,30,0.45)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x, yb - 2); ctx.lineTo(x, yb - 50 * s); ctx.stroke();
+  if (rnd(seed, 4) < 0.5) ellipse(ctx, x, yb - 53 * s, 3 * s, 2.5 * s, '#ff7aa0', OL);
+}
+
+export function bones(ctx: Ctx, x: number, yb: number, s: number): void {
+  groundShadow(ctx, x, yb + 1, 12 * s, 2.5 * s);
+  ellipse(ctx, x - 4 * s, yb - 5 * s, 6 * s, 5 * s, '#f0e6d0', OL);
+  ellipse(ctx, x - 6 * s, yb - 6 * s, 1.4 * s, 1.6 * s, '#3a2a1a');
+  ellipse(ctx, x - 2 * s, yb - 6 * s, 1.4 * s, 1.6 * s, '#3a2a1a');
+  poly(ctx, [[x + 2 * s, yb - 2 * s], [x + 14 * s, yb - 4 * s], [x + 14 * s, yb - 2 * s], [x + 2 * s, yb]], '#e8dcc4');
+}
+
+/** Duna (morro de areia suave com lado iluminado). */
+export function dune(ctx: Ctx, x: number, yb: number, w: number, h: number, color: string): void {
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2, yb);
+  ctx.quadraticCurveTo(x - w * 0.15, yb - h * 1.6, x + w * 0.08, yb - h);
+  ctx.quadraticCurveTo(x + w * 0.3, yb - h * 0.55, x + w / 2, yb);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.08, yb - h);
+  ctx.quadraticCurveTo(x + w * 0.3, yb - h * 0.55, x + w / 2, yb);
+  ctx.lineTo(x + w * 0.05, yb);
+  ctx.closePath();
+  ctx.fillStyle = tone(color, -0.12);
+  ctx.fill();
+}
+
+export function palm(ctx: Ctx, x: number, yb: number, s: number, t: number, seed: number): void {
+  groundShadow(ctx, x + 10 * s, yb + 1, 18 * s, 4 * s);
+  const topX = x + 12 * s, topY = yb - 62 * s;
+  ctx.strokeStyle = OL; ctx.lineWidth = 8 * s; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x, yb); ctx.quadraticCurveTo(x + 2 * s, yb - 40 * s, topX, topY); ctx.stroke();
+  ctx.strokeStyle = '#a87a42'; ctx.lineWidth = 6 * s; ctx.stroke();
+  for (let k = 0; k < 6; k++) {
+    const a = -2.6 + k * 1.05 + Math.sin(t * 1.4 + k + seed) * 0.08;
+    const ex = topX + Math.cos(a) * 28 * s, ey = topY + Math.sin(a) * 14 * s + 8 * s;
+    poly(ctx, [[topX, topY], [topX + Math.cos(a - 0.2) * 16 * s, topY + Math.sin(a - 0.2) * 9 * s - 3 * s], [ex, ey], [topX + Math.cos(a + 0.2) * 16 * s, topY + Math.sin(a + 0.2) * 9 * s + 2 * s]], k % 2 ? '#4f8a3a' : '#5f9a48');
+  }
+  ellipse(ctx, topX - 2 * s, topY + 3 * s, 3 * s, 3 * s, '#7a5030', OL);
+}
+
+// ───────────────────────── neve ─────────────────────────
+
+export function snowPine(ctx: Ctx, x: number, yb: number, s: number, seed: number, t: number): void {
+  pine(ctx, x, yb, s, { trunk: '#5a3a22', leaves: '#2f5a4a' }, seed, t);
+  for (let k = 0; k < 4; k++) {
+    const by = yb - 12 * s - k * 17 * s;
+    const hw = (24 - k * 4.5) * s;
+    poly(ctx, [[x - hw * 0.75, by - 8 * s], [x, by - 22 * s], [x + hw * 0.55, by - 9 * s], [x + hw * 0.2, by - 6 * s], [x - hw * 0.3, by - 8 * s]], '#f4f8fc', null);
+  }
+  poly(ctx, [[x - 5 * s, yb - 74 * s], [x, yb - 80 * s], [x + 4 * s, yb - 74 * s]], '#ffffff', null);
+}
+
+export function snowman(ctx: Ctx, x: number, yb: number): void {
+  groundShadow(ctx, x + 2, yb + 1, 12, 3);
+  ellipse(ctx, x, yb - 9, 11, 10, '#f4f8fc', OL);
+  ellipse(ctx, x, yb - 25, 8, 7.5, '#f4f8fc', OL);
+  ellipse(ctx, x - 3, yb - 9, 4, 4, '#dfe8f2');
+  ellipse(ctx, x + 2.5, yb - 27, 1.2, 1.2, '#1d1a24');
+  ellipse(ctx, x - 2, yb - 27, 1.2, 1.2, '#1d1a24');
+  poly(ctx, [[x + 1, yb - 25], [x + 9, yb - 24], [x + 1, yb - 23]], '#ff8a3c');
+  poly(ctx, [[x - 8, yb - 31], [x + 8, yb - 31], [x + 6, yb - 33], [x - 6, yb - 33]], '#3a3f48');
+  poly(ctx, [[x - 5, yb - 33], [x + 5, yb - 33], [x + 5, yb - 42], [x - 5, yb - 42]], '#3a3f48');
+  ctx.fillStyle = '#c4553c';
+  ctx.fillRect(x - 7, yb - 19, 14, 3);
+}
+
+export function iceRock(ctx: Ctx, x: number, yb: number, s: number, seed: number): void {
+  rock(ctx, x, yb, s, '#9fc8e8', seed);
+  poly(ctx, [[x - 8 * s, yb - 8 * s], [x - 2 * s, yb - 15 * s], [x + 4 * s, yb - 9 * s]], '#f4f8fc', null);
+}
+
+// ───────────────────────── vulcão ─────────────────────────
+
+/** Coluna de basalto (prisma hexagonal escuro). */
+export function basalt(ctx: Ctx, x: number, yb: number, w: number, h: number): void {
+  box(ctx, x, yb, w, h, 0.07, { front: '#3a3038', side: '#241c24', top: '#5a4a50' });
+  ctx.strokeStyle = 'rgba(255,120,60,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x + w * 0.3, yb - h * 0.2); ctx.lineTo(x + w * 0.5, yb - h * 0.45); ctx.lineTo(x + w * 0.35, yb - h * 0.7); ctx.stroke();
+}
+
+export function lavaRock(ctx: Ctx, x: number, yb: number, s: number, seed: number, t: number): void {
+  rock(ctx, x, yb, s, '#3a2a2a', seed);
+  const pulse = 0.6 + Math.sin(t * 3 + seed) * 0.3;
+  ctx.strokeStyle = `rgba(255,140,60,${pulse})`;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(x - 6 * s, yb - 3 * s); ctx.lineTo(x - 1 * s, yb - 9 * s); ctx.lineTo(x + 4 * s, yb - 5 * s); ctx.stroke();
+  glow(ctx, x, yb - 6 * s, 16 * s, '#ff7a2a', 0.2 * pulse);
+}
+
+/** Vulcão distante soltando fumaça e brilho. */
+export function volcanoCone(ctx: Ctx, x: number, yb: number, w: number, h: number, t: number): void {
+  const top = yb - h;
+  poly(ctx, [[x - w / 2, yb], [x - w * 0.09, top], [x + w * 0.04, top + 4], [x + w * 0.05, yb]], '#5a3a3a', null);
+  poly(ctx, [[x + w * 0.05, yb], [x + w * 0.04, top + 4], [x + w * 0.09, top], [x + w / 2, yb]], '#3a2428', null);
+  // rios de lava escorrendo
+  ctx.strokeStyle = '#ff7a2a';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(x - w * 0.02, top + 3); ctx.quadraticCurveTo(x - w * 0.1, yb - h * 0.5, x - w * 0.16, yb - 4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + w * 0.03, top + 4); ctx.quadraticCurveTo(x + w * 0.12, yb - h * 0.4, x + w * 0.2, yb - 3); ctx.stroke();
+  glow(ctx, x, top, 60, '#ff6a2a', 0.45 + Math.sin(t * 2) * 0.1);
+  for (let i = 0; i < 6; i++) {
+    const ph = (t * 0.12 + i / 6) % 1;
+    const r = 10 + ph * 34;
+    ctx.globalAlpha = (1 - ph) * 0.5;
+    ellipse(ctx, x + Math.sin(ph * 3 + i) * 12 + ph * 40, top - ph * 90, r, r * 0.8, '#4a3a40');
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ───────────────────────── cidadela ─────────────────────────
+
+/** Trecho de muralha com janelas em arco iluminadas. */
+export function castleWall(ctx: Ctx, x: number, yb: number, w: number, h: number, t: number, seed: number): void {
+  const stone = '#5a5670';
+  groundShadow(ctx, x + w / 2 + 6, yb + 2, w * 0.6, 6);
+  box(ctx, x, yb, w, h, 0.1, boxColors(stone));
+  ctx.strokeStyle = 'rgba(20,18,30,0.35)';
+  ctx.lineWidth = 1;
+  for (let r = 1; r * 11 < h; r++) {
+    ctx.beginPath(); ctx.moveTo(x, yb - r * 11); ctx.lineTo(x + w, yb - r * 11); ctx.stroke();
+    for (let c = 0; c * 20 < w; c++) {
+      const xx = x + c * 20 + (r % 2) * 10;
+      ctx.beginPath(); ctx.moveTo(xx, yb - r * 11); ctx.lineTo(xx, yb - r * 11 + 11); ctx.stroke();
+    }
+  }
+  for (let k = 0; k * 14 < w; k++) box(ctx, x + k * 14, yb - h, 8, 9, 0.1, boxColors(tone(stone, 0.05)));
+  // janelas
+  const nWin = Math.max(1, Math.floor(w / 46));
+  for (let k = 0; k < nWin; k++) {
+    const wx = x + (w / nWin) * (k + 0.5) - 6, wy = yb - h * 0.62;
+    const lit = rnd(seed, k) < 0.7;
+    poly(ctx, [[wx, wy + 18], [wx, wy + 5], [wx + 6, wy], [wx + 12, wy + 5], [wx + 12, wy + 18]], lit ? '#ffd080' : '#1a1828');
+    if (lit) glow(ctx, wx + 6, wy + 10, 22 + Math.sin(t * 3 + k) * 2, '#ffb060', 0.3);
+  }
+  // estandarte
+  if (rnd(seed, 9) < 0.6) {
+    const bx = x + w * 0.5 - 7, by = yb - h + 14;
+    const pts: Pt[] = [[bx, by], [bx + 14, by]];
+    for (let k = 0; k <= 4; k++) pts.push([bx + 14 - k * 3.5 + Math.sin(t * 2 + k) * 0.8, by + 30 + (k % 2) * 5]);
+    poly(ctx, [[bx, by], [bx + 14, by], [bx + 14, by + 30], [bx + 7, by + 24], [bx, by + 30]], '#6a2a4a');
+    ellipse(ctx, bx + 7, by + 12, 3, 3, '#d9a83f');
+  }
+}
+
+export function castleTower(ctx: Ctx, x: number, yb: number, h: number, t: number): void {
+  const w = 40;
+  box(ctx, x, yb, w, h, 0.1, boxColors('#4f4b66'));
+  // telhado cônico
+  poly(ctx, [[x - 5, yb - h], [x + w / 2, yb - h - 40], [x + w + 5, yb - h]], '#3a2a4a');
+  poly(ctx, [[x + w / 2, yb - h - 40], [x + w + 5, yb - h], [x + w / 2 + 4, yb - h]], '#2a1e38', null);
+  poly(ctx, [[x + 15, yb - h * 0.55], [x + 15, yb - h * 0.55 - 12], [x + 20, yb - h * 0.55 - 17], [x + 25, yb - h * 0.55 - 12], [x + 25, yb - h * 0.55]], '#ffd080');
+  glow(ctx, x + 20, yb - h * 0.55 - 8, 24 + Math.sin(t * 3 + x) * 2, '#ffb060', 0.3);
+}
+
+export function brazier(ctx: Ctx, x: number, yb: number, t: number, seed: number): void {
+  groundShadow(ctx, x + 2, yb + 1, 9, 2.5);
+  poly(ctx, [[x - 2, yb], [x + 2, yb], [x + 1.5, yb - 18], [x - 1.5, yb - 18]], '#3a3f48');
+  poly(ctx, [[x - 9, yb - 18], [x + 9, yb - 18], [x + 6, yb - 25], [x - 6, yb - 25]], '#4a4f5a');
+  ellipse(ctx, x, yb - 25, 9, 2.5, '#2a1a14', OL);
+  // chama
+  const fl = 0.85 + Math.sin(t * 13 + seed) * 0.1;
+  glow(ctx, x, yb - 30, 34 * fl, '#ff9a3c', 0.32);
+  poly(ctx, [[x - 6, yb - 25], [x - 3, yb - 33 * fl], [x, yb - 40 * fl], [x + 3, yb - 32 * fl], [x + 6, yb - 25]], '#ff7a2a', null);
+  poly(ctx, [[x - 3, yb - 25], [x, yb - 32 * fl], [x + 3, yb - 25]], '#ffe08a', null);
+}
+
+// ───────────────────────── céu ─────────────────────────
+
+/** Ilha flutuante: grama em cima, rocha pendurada embaixo. */
+export function floatingIsland(ctx: Ctx, x: number, y: number, w: number, t: number, seed: number, detail = true): void {
+  const bob = Math.sin(t * 0.8 + seed) * 3;
+  const yy = y + bob;
+  poly(ctx, [[x - w / 2, yy], [x + w / 2, yy], [x + w * 0.25, yy + w * 0.35], [x + w * 0.05, yy + w * 0.6], [x - w * 0.2, yy + w * 0.3]], '#9a8a7a', detail ? OL : null);
+  poly(ctx, [[x + w * 0.05, yy], [x + w / 2, yy], [x + w * 0.25, yy + w * 0.35], [x + w * 0.05, yy + w * 0.6]], '#7a6a5a', null);
+  ellipse(ctx, x, yy, w / 2 + 2, w * 0.08 + 2, '#7fc06a', detail ? OL : null);
+  if (detail) {
+    ellipse(ctx, x - w * 0.15, yy - w * 0.12, w * 0.12, w * 0.12, '#5f9a48', OL);
+    ellipse(ctx, x - w * 0.15, yy - w * 0.12, w * 0.07, w * 0.07, '#7fc06a');
+    // cachoeirinha
+    ctx.fillStyle = 'rgba(200,235,255,0.7)';
+    ctx.fillRect(x + w * 0.2, yy + 2, 3, w * 0.4 + Math.sin(t * 4) * 2);
+  }
+}
+
+export function cloudPuff(ctx: Ctx, x: number, yb: number, s: number): void {
+  for (let k = 0; k < 4; k++) ellipse(ctx, x + (k - 1.5) * 9 * s, yb - 6 * s - (k % 2) * 4 * s, 10 * s, 8 * s, '#e8eefc');
+  ellipse(ctx, x - 6 * s, yb - 10 * s, 7 * s, 5 * s, '#ffffff');
+}

@@ -9,15 +9,18 @@ import {
   alpha, BACK_ROW_Y, ellipse, glow, HORIZON, mix, poly, rnd, seedOf, tone, type Ctx, type Pt,
 } from './scene3d';
 import {
-  archRuin, barrel, bush, column, crate, crystal, drum, fence, forge, gate, house, lampPost, log,
-  mushrooms, pine, rock, roundTree, ruinWall, stalactite, stalagmite, stump, torch, tower, vase, well,
+  archRuin, barrel, basalt, bones, brazier, bush, cactus, castleTower, castleWall, cloudPuff, column, crate,
+  crystal, deadTree, drum, dune, fence, floatingIsland, forge, gate, house, iceRock, lampPost, lavaRock, log,
+  mushrooms, palm, pine, reeds, rock, roundTree, ruinWall, snowman, snowPine, stalactite, stalagmite, stump,
+  torch, tower, vase, volcanoCone, well,
 } from './structures';
 
 const GROUND_TOP = 200;
 
 export type PropKind =
   | 'barrel' | 'crate' | 'lamp' | 'well' | 'stump' | 'log' | 'mushrooms' | 'rock'
-  | 'drum' | 'vase' | 'stub' | 'stalagmite' | 'crystal';
+  | 'drum' | 'vase' | 'stub' | 'stalagmite' | 'crystal'
+  | 'reeds' | 'cactus' | 'bones' | 'snowman' | 'iceRock' | 'lavaRock' | 'obsidian' | 'brazier' | 'cloud' | 'goldCrystal';
 
 export interface SceneProp {
   x: number;
@@ -40,6 +43,12 @@ const PROPS_BY_THEME: Record<StageDef['theme'], PropKind[]> = {
   forest: ['stump', 'log', 'mushrooms', 'rock', 'mushrooms'],
   ruins: ['drum', 'vase', 'rock', 'stub', 'vase'],
   cave: ['stalagmite', 'crystal', 'rock', 'crystal'],
+  swamp: ['reeds', 'stump', 'mushrooms', 'reeds', 'rock'],
+  desert: ['cactus', 'bones', 'rock', 'vase', 'cactus'],
+  snow: ['snowman', 'iceRock', 'iceRock', 'stump'],
+  volcano: ['lavaRock', 'obsidian', 'lavaRock', 'bones'],
+  castle: ['brazier', 'barrel', 'crate', 'brazier'],
+  sky: ['goldCrystal', 'cloud', 'vase', 'cloud'],
 };
 
 export class Scenery {
@@ -79,7 +88,46 @@ export class Scenery {
       case 'village': return this.village(ctx, camX, t);
       case 'forest': return this.forest(ctx, camX, t);
       case 'ruins': return this.ruins(ctx, camX, t);
-      case 'cave': return this.cave(ctx, camX, t);
+      case 'cave': this.cave(ctx, camX, t); break;
+      case 'swamp': this.swamp(ctx, camX, t); break;
+      case 'desert': this.desert(ctx, camX, t); break;
+      case 'snow': this.snow(ctx, camX, t); break;
+      case 'volcano': this.volcano(ctx, camX, t); break;
+      case 'castle': this.castle(ctx, camX, t); break;
+      case 'sky': this.skyIslands(ctx, camX, t); break;
+    }
+    this.moodLight(ctx, t);
+  }
+
+  /** Entardecer e noite: tingem o fundo (os personagens continuam bem visíveis). */
+  private moodLight(ctx: Ctx, t: number): void {
+    const m = this.stage.mood;
+    const th = this.stage.theme;
+    if (!m || m === 'day' || th === 'cave' || th === 'village') return;
+    if (m === 'dusk') {
+      const g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+      g.addColorStop(0, 'rgba(120,60,140,0.22)');
+      g.addColorStop(0.5, 'rgba(255,130,60,0.18)');
+      g.addColorStop(1, 'rgba(255,150,80,0.08)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-20, -20, VIEW_W + 40, VIEW_H + 40);
+      return;
+    }
+    if (th !== 'castle') {
+      ctx.fillStyle = 'rgba(16,24,70,0.4)';
+      ctx.fillRect(-20, -20, VIEW_W + 40, VIEW_H + 40);
+      this.stars(ctx, t);
+      ellipse(ctx, VIEW_W * 0.78, 38, 13, 13, '#f4f0d8');
+      glow(ctx, VIEW_W * 0.78, 38, 60, '#f4f0d8', 0.2);
+    }
+  }
+
+  private stars(ctx: Ctx, t: number): void {
+    for (let i = 0; i < 45; i++) {
+      const x = rnd(this.seed, i, 140) * VIEW_W, y = rnd(this.seed, i, 141) * 62;
+      const tw = 0.5 + 0.5 * Math.sin(t * 2 + i * 3);
+      ctx.fillStyle = `rgba(255,255,240,${0.4 + tw * 0.5})`;
+      ctx.fillRect(x, y, 1.4, 1.4);
     }
   }
 
@@ -99,6 +147,7 @@ export class Scenery {
   }
 
   private sun(ctx: Ctx, x: number, y: number, r: number, color: string): void {
+    if (this.stage.mood === 'night') return; // à noite aparece a lua
     glow(ctx, x, y, r * 6, color, 0.35);
     glow(ctx, x, y, r * 2.2, '#ffffff', 0.35);
     ellipse(ctx, x, y, r, r, tone(color, 0.5));
@@ -418,7 +467,7 @@ export class Scenery {
   }
 
   /** Piso de pedra em perspectiva (linhas convergem para o ponto de fuga). */
-  private tiles(ctx: Ctx, camX: number): void {
+  private tiles(ctx: Ctx, camX: number, colA = '#c8b490', colB = '#b09a76', line = 'rgba(90,70,50,0.35)'): void {
     const y0 = GROUND_TOP + 30, y1 = VIEW_H;
     const vx = VIEW_W / 2;
     const rows = [y0, y0 + 26, y0 + 56, y0 + 92, y0 + 134];
@@ -431,7 +480,7 @@ export class Scenery {
         const a = sx + off, b = sx + off + size;
         const shadeT = rnd(this.seed, i * 7 + r, 70);
         if (shadeT < 0.15) continue; // pedra faltando: aparece a areia
-        poly(ctx, [[xAt(a, ya), ya], [xAt(b, ya), ya], [xAt(b, yb), yb], [xAt(a, yb), yb]], mix('#c8b490', '#b09a76', shadeT), 'rgba(90,70,50,0.35)', 1);
+        poly(ctx, [[xAt(a, ya), ya], [xAt(b, ya), ya], [xAt(b, yb), yb], [xAt(a, yb), yb]], mix(colA, colB, shadeT), line, 1);
       }
     });
   }
@@ -455,6 +504,16 @@ export class Scenery {
       case 'vase': vase(ctx, x, y); break;
       case 'stub': column(ctx, x, y, 14 + rnd(this.seed, p.seed, 81) * 10, 14, '#d8c4a0', true, p.seed); break;
       case 'stalagmite': stalagmite(ctx, x, y, 18, 28 + rnd(this.seed, p.seed, 82) * 14, '#6a6484'); break;
+      case 'reeds': reeds(ctx, x, y, 1, t, p.seed); break;
+      case 'cactus': cactus(ctx, x, y, 0.6, p.seed); break;
+      case 'bones': bones(ctx, x, y, 1); break;
+      case 'snowman': snowman(ctx, x, y); break;
+      case 'iceRock': iceRock(ctx, x, y, 0.8, p.seed); break;
+      case 'lavaRock': lavaRock(ctx, x, y, 0.9, p.seed, t); break;
+      case 'obsidian': stalagmite(ctx, x, y, 16, 26 + rnd(this.seed, p.seed, 84) * 12, '#2a2030'); break;
+      case 'brazier': brazier(ctx, x, y, t, p.seed); break;
+      case 'cloud': cloudPuff(ctx, x, y, 1); break;
+      case 'goldCrystal': crystal(ctx, x, y, 0.8, '#ffe08a', t, p.seed); break;
       case 'crystal': {
         const c = rnd(this.seed, p.seed, 83) < 0.5 ? '#5ff0e0' : '#c49bff';
         crystal(ctx, x, y, 0.8, c, t, p.seed);
@@ -522,7 +581,310 @@ export class Scenery {
         this.fgLayer(camX, (x, i) => stalagmite(ctx, x, VIEW_H + 8, 30, 26 + rnd(this.seed, i, 98) * 10, '#141220', null));
         break;
       }
+      case 'swamp': {
+        this.groundFog(ctx, camX, t, 'rgba(220,235,210,0.18)');
+        this.fireflies(ctx, camX, t, '#d0ff8a');
+        this.fgLayer(camX, (x, i) => reeds(ctx, x, VIEW_H + 4, 1.6, t, i));
+        break;
+      }
+      case 'desert': {
+        const g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+        g.addColorStop(0, 'rgba(255,220,150,0.12)');
+        g.addColorStop(1, 'rgba(255,170,90,0.08)');
+        ctx.fillStyle = g;
+        ctx.fillRect(-20, -20, VIEW_W + 40, VIEW_H + 40);
+        this.fireflies(ctx, camX, t, '#fff0c0', 0.4);
+        this.fgLayer(camX, (x, i) => (rnd(this.seed, i, 90) < 0.6 ? rock(ctx, x, VIEW_H + 6, 1.5, '#b07a4a', i) : this.fgGrass(ctx, x, i, '#a89a52', null)));
+        break;
+      }
+      case 'snow': {
+        this.snowfall(ctx, camX, t);
+        this.fgLayer(camX, (x) => { ellipse(ctx, x, VIEW_H + 6, 40, 16, '#f4f8fc', 'rgba(120,150,180,0.5)'); ellipse(ctx, x - 10, VIEW_H, 16, 6, '#ffffff'); });
+        break;
+      }
+      case 'volcano': {
+        const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.4, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.7);
+        g.addColorStop(0, 'rgba(255,60,20,0)');
+        g.addColorStop(1, 'rgba(120,20,10,0.35)');
+        ctx.fillStyle = g;
+        ctx.fillRect(-20, -20, VIEW_W + 40, VIEW_H + 40);
+        this.embers(ctx, camX, t);
+        this.fgLayer(camX, (x, i) => rock(ctx, x, VIEW_H + 6, 1.7, '#241c24', i));
+        break;
+      }
+      case 'castle': {
+        const px = player.x - camX, py = GROUND_TOP + player.y - 20;
+        const g = ctx.createRadialGradient(px, py, 120, px, py, 520);
+        g.addColorStop(0, 'rgba(10,8,24,0)');
+        g.addColorStop(1, 'rgba(10,8,24,0.5)');
+        ctx.fillStyle = g;
+        ctx.fillRect(-20, -20, VIEW_W + 40, VIEW_H + 40);
+        this.groundFog(ctx, camX, t, 'rgba(160,140,200,0.12)');
+        this.fgLayer(camX, (x, i) => rock(ctx, x, VIEW_H + 6, 1.5, '#2a2638', i));
+        break;
+      }
+      case 'sky': {
+        this.fireflies(ctx, camX, t, '#fff4c0', 0.6);
+        // nuvens passando na frente, embaixo
+        this.each(camX, 1.4, 170, 120, (i, sx) => {
+          if (rnd(this.seed, i, 150) < 0.4) return;
+          ctx.globalAlpha = 0.85;
+          cloudPuff(ctx, sx, VIEW_H + 14, 2.4);
+          ctx.globalAlpha = 1;
+        });
+        break;
+      }
     }
+  }
+
+  private groundFog(ctx: Ctx, camX: number, t: number, color: string): void {
+    for (let i = 0; i < 7; i++) {
+      const total = VIEW_W + 400;
+      const x = ((rnd(this.seed, i, 160) * total - camX * 0.8 + t * (8 + i * 2)) % total + total) % total - 200;
+      const y = GROUND_TOP + 20 + rnd(this.seed, i, 161) * 120;
+      ellipse(ctx, x, y, 140, 16, color);
+    }
+  }
+
+  private snowfall(ctx: Ctx, camX: number, t: number): void {
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    const W = VIEW_W + 40;
+    for (let i = 0; i < 70; i++) {
+      const sp = 20 + rnd(this.seed, i, 170) * 30;
+      const x = ((rnd(this.seed, i, 171) * W - camX * (0.6 + rnd(this.seed, i, 172) * 0.6) + Math.sin(t + i) * 12) % W + W) % W - 20;
+      const y = ((rnd(this.seed, i, 173) * VIEW_H + t * sp) % (VIEW_H + 10)) - 5;
+      const r = 1 + rnd(this.seed, i, 174) * 1.8;
+      ctx.fillRect(x, y, r, r);
+    }
+  }
+
+  private embers(ctx: Ctx, camX: number, t: number): void {
+    const W = VIEW_W + 40;
+    for (let i = 0; i < 40; i++) {
+      const sp = 20 + rnd(this.seed, i, 180) * 40;
+      const x = ((rnd(this.seed, i, 181) * W - camX * 0.9 + Math.sin(t * 1.3 + i) * 15) % W + W) % W - 20;
+      const y = VIEW_H - ((rnd(this.seed, i, 182) * VIEW_H + t * sp) % (VIEW_H + 10));
+      const a = 0.5 + 0.5 * Math.sin(t * 5 + i);
+      ctx.fillStyle = `rgba(255,${140 + Math.floor(a * 80)},60,${0.5 + a * 0.5})`;
+      ctx.fillRect(x, y, 1.8, 1.8);
+    }
+  }
+
+  // ───────────────────────── temas novos ─────────────────────────
+
+  private swamp(ctx: Ctx, camX: number, t: number): void {
+    this.sky(ctx, [[0, '#5a7a70'], [0.6, '#9ab4a0'], [1, '#cddcc0']]);
+    this.sun(ctx, VIEW_W * 0.7 - camX * 0.02, 50, 10, '#f0f4d0');
+    this.mountains(ctx, camX, 0.05, 170, 35, 60, '#7a9488', null, HORIZON + 4, 12);
+    this.fog(ctx, '#cddcc0', 0.6, 50);
+    // silhuetas de árvores mortas
+    const deadLayer = (f: number, spacing: number, color: string, s: number, k: number) => {
+      this.each(camX, f, spacing, 60, (i, sx) => {
+        const x = sx + rnd(this.seed, i, k) * spacing * 0.5;
+        const h = (40 + rnd(this.seed, i, k + 1) * 30) * s;
+        const by = HORIZON + 10 * s;
+        ctx.strokeStyle = color;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 4 * s;
+        ctx.beginPath(); ctx.moveTo(x, by); ctx.lineTo(x + 3 * s, by - h); ctx.stroke();
+        ctx.lineWidth = 2 * s;
+        ctx.beginPath();
+        ctx.moveTo(x + 2 * s, by - h * 0.6); ctx.lineTo(x - 12 * s, by - h * 0.85);
+        ctx.moveTo(x + 3 * s, by - h * 0.75); ctx.lineTo(x + 14 * s, by - h * 0.95);
+        ctx.stroke();
+        ellipse(ctx, x + 6 * s, by - h * 0.8, 16 * s, 10 * s, alpha(color, 0.6));
+      });
+    };
+    deadLayer(0.2, 40, '#7a9088', 0.7, 20);
+    this.fog(ctx, '#cddcc0', 0.4, 100);
+    deadLayer(0.45, 55, '#4f6a58', 1, 24);
+    this.groundBase(ctx, '#5f7a4a', '#3f5232');
+    this.each(camX, 1, 75, 120, (i, sx) => {
+      const r = rnd(this.seed, i, 30);
+      const x = sx + rnd(this.seed, i, 31) * 30;
+      if (r < 0.5) deadTree(ctx, x, BACK_ROW_Y, 1 + rnd(this.seed, i, 32) * 0.3, '#5a4a3a', i, t);
+      else if (r < 0.75) bush(ctx, x, BACK_ROW_Y, 1, '#4f6a3a', i);
+      else rock(ctx, x, BACK_ROW_Y + 2, 1, '#7a8478', i);
+      if (rnd(this.seed, i, 33) < 0.6) reeds(ctx, x + 24, BACK_ROW_Y + 3, 1, t, i);
+    });
+    // poças de água parada com vitórias-régias
+    this.decals(camX, 46, (x, y, r, s) => {
+      if (r(3) < 0.35) {
+        ellipse(ctx, x, y, 26 * s, 6 * s, '#3a4a40');
+        ellipse(ctx, x - 6 * s, y - 1, 12 * s, 1.6 * s, 'rgba(200,230,210,0.35)');
+        if (r(4) < 0.6) {
+          ellipse(ctx, x + 8 * s, y, 4 * s, 1.6 * s, '#6aa048');
+          if (r(5) < 0.5) ellipse(ctx, x + 8 * s, y - 1.5 * s, 1.4 * s, 1.4 * s, '#ff9ac8');
+        }
+      } else if (r(3) < 0.75) this.tuft(ctx, x, y, s, '#2f4a24');
+      else ellipse(ctx, x, y, 8 * s, 2 * s, 'rgba(60,80,40,0.5)');
+    });
+  }
+
+  private desert(ctx: Ctx, camX: number, t: number): void {
+    this.sky(ctx, [[0, '#3f8fd0'], [0.6, '#9fd0ec'], [1, '#f8e8c0']]);
+    this.sun(ctx, VIEW_W * 0.75 - camX * 0.02, 44, 18, '#fff4c0');
+    this.clouds(ctx, camX, t, '#ffffff', 3);
+    this.each(camX, 0.07, 190, 200, (i, sx) => {
+      const w = 80 + rnd(this.seed, i, 10) * 90, h = 25 + rnd(this.seed, i, 11) * 40;
+      const x = sx + rnd(this.seed, i, 12) * 60, by = HORIZON + 4, c = '#c88a5a';
+      poly(ctx, [[x - 12, by], [x, by - h], [x + w * 0.55, by - h], [x + w * 0.55, by]], c, null);
+      poly(ctx, [[x + w * 0.55, by - h], [x + w, by - h + 4], [x + w + 16, by], [x + w * 0.55, by]], tone(c, -0.15), null);
+    });
+    this.fog(ctx, '#f8e8c0', 0.5, 80);
+    this.each(camX, 0.25, 130, 140, (i, sx) => dune(ctx, sx, HORIZON + 8, 180 + rnd(this.seed, i, 20) * 80, 20 + rnd(this.seed, i, 21) * 16, '#ecc890'));
+    this.each(camX, 0.5, 160, 160, (i, sx) => dune(ctx, sx + 40, HORIZON + 16, 220 + rnd(this.seed, i, 22) * 80, 22 + rnd(this.seed, i, 23) * 12, '#e0b478'));
+    this.groundBase(ctx, '#ecca90', '#d4a868');
+    this.each(camX, 1, 85, 140, (i, sx) => {
+      const r = rnd(this.seed, i, 30);
+      const x = sx + rnd(this.seed, i, 31) * 30;
+      if (r < 0.4) cactus(ctx, x, BACK_ROW_Y, 1 + rnd(this.seed, i, 32) * 0.3, i);
+      else if (r < 0.55) palm(ctx, x, BACK_ROW_Y, 1.1, t, i);
+      else if (r < 0.75) rock(ctx, x, BACK_ROW_Y + 2, 1.4, '#c0805a', i);
+      else if (r < 0.9) ruinWall(ctx, x - 20, BACK_ROW_Y, 60, '#d8b07a', i);
+      else column(ctx, x, BACK_ROW_Y, 40 + rnd(this.seed, i, 33) * 30, 14, '#e0c090', true, i);
+    });
+    // ondulações na areia
+    this.decals(camX, 30, (x, y, r, s) => {
+      if (r(3) < 0.5) {
+        ctx.strokeStyle = 'rgba(160,110,60,0.35)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x - 10 * s, y); ctx.quadraticCurveTo(x, y - 3 * s, x + 10 * s, y); ctx.stroke();
+      } else if (r(3) < 0.75) ellipse(ctx, x, y, 2 * s, 1.3 * s, '#a87a4a');
+      else this.tuft(ctx, x, y, s * 0.8, '#a89a52');
+    });
+  }
+
+  private snow(ctx: Ctx, camX: number, t: number): void {
+    this.sky(ctx, [[0, '#5f9ad8'], [0.6, '#b0d4f0'], [1, '#eef6fc']]);
+    this.sun(ctx, VIEW_W * 0.2 - camX * 0.02, 42, 11, '#ffffff');
+    this.clouds(ctx, camX, t, '#ffffff', 4);
+    this.mountains(ctx, camX, 0.05, 150, 70, 110, '#8aa8c4', '#f4f8fc', HORIZON + 4, 13);
+    this.fog(ctx, '#eef6fc', 0.45, 60);
+    this.mountains(ctx, camX, 0.15, 120, 40, 70, '#a8c0d8', '#ffffff', HORIZON + 6, 14);
+    this.fog(ctx, '#eef6fc', 0.35, 100);
+    // silhuetas de pinheiros nevados
+    this.each(camX, 0.45, 30, 60, (i, sx) => {
+      const x = sx + rnd(this.seed, i, 20) * 15, h = 30 + rnd(this.seed, i, 21) * 22, by = HORIZON + 12;
+      poly(ctx, [[x - 12, by], [x, by - h], [x + 12, by]], '#5f7f90', null);
+      poly(ctx, [[x - 6, by - h * 0.55], [x, by - h], [x + 6, by - h * 0.55]], '#eef6fc', null);
+    });
+    this.groundBase(ctx, '#e4eef8', '#cfdeee');
+    this.each(camX, 1, 66, 120, (i, sx) => {
+      const r = rnd(this.seed, i, 30);
+      const x = sx + rnd(this.seed, i, 31) * 24;
+      if (r < 0.6) snowPine(ctx, x, BACK_ROW_Y - 2, 1.1 + rnd(this.seed, i, 32) * 0.4, i, t);
+      else if (r < 0.8) iceRock(ctx, x, BACK_ROW_Y + 2, 1.3, i);
+      else bush(ctx, x, BACK_ROW_Y, 1, '#dfe8f2', i);
+    });
+    this.decals(camX, 28, (x, y, r, s) => {
+      if (r(3) < 0.4) { ellipse(ctx, x, y, 12 * s, 3 * s, '#f8fbff'); ellipse(ctx, x + 3 * s, y + 1.5 * s, 10 * s, 1.5 * s, 'rgba(120,150,190,0.3)'); }
+      else if (r(3) < 0.7) {
+        const tw = 0.5 + 0.5 * Math.sin(t * 3 + x);
+        ctx.fillStyle = `rgba(255,255,255,${tw})`;
+        ctx.fillRect(x, y, 1.6, 1.6);
+      } else ellipse(ctx, x, y, 14 * s, 3 * s, 'rgba(160,210,240,0.45)');
+    });
+  }
+
+  private volcano(ctx: Ctx, camX: number, t: number): void {
+    this.sky(ctx, [[0, '#1e0e14'], [0.5, '#5a2220'], [1, '#c0502a']]);
+    volcanoCone(ctx, VIEW_W * 0.62 - camX * 0.04, HORIZON + 6, 280, 120, t);
+    this.mountains(ctx, camX, 0.1, 130, 30, 60, '#4a2a2a', null, HORIZON + 6, 15);
+    this.fog(ctx, '#c0502a', 0.35, 80);
+    this.each(camX, 0.4, 50, 60, (i, sx) => {
+      const h = 20 + rnd(this.seed, i, 20) * 40;
+      ctx.fillStyle = '#3a2428';
+      ctx.fillRect(sx, HORIZON + 12 - h, 12 + rnd(this.seed, i, 21) * 10, h);
+    });
+    this.groundBase(ctx, '#4a3434', '#2e2226');
+    this.each(camX, 1, 70, 120, (i, sx) => {
+      const r = rnd(this.seed, i, 30);
+      const x = sx + rnd(this.seed, i, 31) * 24;
+      if (r < 0.5) {
+        for (let k = 0; k < 3; k++) basalt(ctx, x + k * 13, BACK_ROW_Y, 14, 30 + rnd(this.seed, i * 3 + k, 32) * 45);
+      } else if (r < 0.75) stalagmite(ctx, x, BACK_ROW_Y, 26, 44 + rnd(this.seed, i, 33) * 30, '#2a2030');
+      else lavaRock(ctx, x, BACK_ROW_Y + 2, 1.5, i, t);
+    });
+    // poças e rachaduras de lava
+    this.decals(camX, 40, (x, y, r, s) => {
+      if (r(3) < 0.28) {
+        const pulse = 0.8 + Math.sin(t * 2 + x * 0.1) * 0.2;
+        ellipse(ctx, x, y, 22 * s, 5 * s, '#5a1a10');
+        ellipse(ctx, x, y, 18 * s, 3.8 * s, '#ff6a2a');
+        ellipse(ctx, x - 3 * s, y - 0.5, 9 * s * pulse, 1.6 * s, '#ffd060');
+        glow(ctx, x, y, 34 * s, '#ff6a2a', 0.25);
+      } else if (r(3) < 0.55) {
+        ctx.strokeStyle = 'rgba(255,120,50,0.7)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(x - 8 * s, y); ctx.lineTo(x - 2 * s, y - 2 * s); ctx.lineTo(x + 3 * s, y + 1 * s); ctx.lineTo(x + 9 * s, y - 1 * s); ctx.stroke();
+      } else ellipse(ctx, x, y, 2.5 * s, 1.5 * s, '#1e1418');
+    });
+  }
+
+  private castle(ctx: Ctx, camX: number, t: number): void {
+    this.sky(ctx, [[0, '#120f24'], [0.6, '#33264f'], [1, '#5f4472']]);
+    this.stars(ctx, t);
+    ellipse(ctx, VIEW_W * 0.75 - camX * 0.02, 46, 22, 22, '#f0e8d0');
+    ellipse(ctx, VIEW_W * 0.75 - camX * 0.02 - 6, 42, 5, 4, '#d8d0b8');
+    glow(ctx, VIEW_W * 0.75 - camX * 0.02, 46, 90, '#f0e8d0', 0.22);
+    // silhueta do castelo distante
+    this.each(camX, 0.08, 90, 100, (i, sx) => {
+      const h = 40 + rnd(this.seed, i, 10) * 50, w = 22 + rnd(this.seed, i, 11) * 14, by = HORIZON + 4, c = '#2a2440';
+      ctx.fillStyle = c;
+      ctx.fillRect(sx, by - h, w, h);
+      poly(ctx, [[sx - 4, by - h], [sx + w / 2, by - h - 26], [sx + w + 4, by - h]], c, null);
+      ctx.fillRect(sx + w, by - h * 0.5, 70, h * 0.5);
+      if (rnd(this.seed, i, 12) < 0.7) { ctx.fillStyle = '#ffc070'; ctx.fillRect(sx + w / 2 - 1.5, by - h * 0.7, 3, 5); }
+    });
+    this.fog(ctx, '#5f4472', 0.45, 90);
+    this.each(camX, 0.35, 120, 120, (i, sx) => {
+      const h = 30 + rnd(this.seed, i, 20) * 20, c = '#3a3454';
+      ctx.fillStyle = c;
+      ctx.fillRect(sx, HORIZON + 12 - h, 110, h);
+      for (let k = 0; k < 8; k++) ctx.fillRect(sx + k * 14, HORIZON + 12 - h - 6, 8, 6);
+    });
+    this.groundBase(ctx, '#4a4660', '#3a3650');
+    this.each(camX, 1, 150, 160, (i, sx) => {
+      const x = sx + rnd(this.seed, i, 31) * 20;
+      if (rnd(this.seed, i, 30) < 0.3) castleTower(ctx, x + 50, BACK_ROW_Y, 90 + rnd(this.seed, i, 32) * 30, t);
+      else castleWall(ctx, x, BACK_ROW_Y, 130, 62 + rnd(this.seed, i, 33) * 20, t, i);
+      brazier(ctx, x + 140, BACK_ROW_Y + 6, t, i);
+    });
+    this.tiles(ctx, camX, '#5a5670', '#46425c', 'rgba(20,18,30,0.4)');
+  }
+
+  private skyIslands(ctx: Ctx, camX: number, t: number): void {
+    this.sky(ctx, [[0, '#2f7fd8'], [0.6, '#8cc8f4'], [1, '#e8f6ff']]);
+    this.sun(ctx, VIEW_W * 0.3 - camX * 0.02, 40, 16, '#fff8e0');
+    // mar de nuvens no horizonte
+    this.each(camX, 0.05, 60, 80, (i, sx) => ellipse(ctx, sx, HORIZON - 2 + rnd(this.seed, i, 10) * 6, 46, 16, '#f4f8ff'));
+    this.each(camX, 0.12, 170, 120, (i, sx) => {
+      if (rnd(this.seed, i, 11) < 0.4) return;
+      floatingIsland(ctx, sx, 80 + rnd(this.seed, i, 12) * 50, 40 + rnd(this.seed, i, 13) * 30, t, i, false);
+    });
+    this.fog(ctx, '#e8f6ff', 0.4, 60);
+    this.each(camX, 0.35, 230, 160, (i, sx) => {
+      if (rnd(this.seed, i, 14) < 0.35) return;
+      floatingIsland(ctx, sx, 60 + rnd(this.seed, i, 15) * 70, 60 + rnd(this.seed, i, 16) * 40, t, i + 50);
+    });
+    this.clouds(ctx, camX, t, '#ffffff', 5);
+    this.groundBase(ctx, '#9ad888', '#6ab05a');
+    // borda da ilha (nuvens atrás do chão)
+    this.each(camX, 1, 40, 40, (_i, sx) => ellipse(ctx, sx, HORIZON + 6, 34, 10, '#f4f8ff'));
+    this.each(camX, 1, 95, 140, (i, sx) => {
+      const r = rnd(this.seed, i, 30);
+      const x = sx + rnd(this.seed, i, 31) * 30;
+      if (r < 0.5) column(ctx, x, BACK_ROW_Y, 60 + rnd(this.seed, i, 32) * 40, 16, '#f2eee4', rnd(this.seed, i, 33) < 0.35, i);
+      else if (r < 0.7) archRuin(ctx, x, BACK_ROW_Y, '#f2eee4', i);
+      else if (r < 0.85) {
+        crystal(ctx, x, BACK_ROW_Y - 20 + Math.sin(t + i) * 4, 1.3, '#ffe08a', t, i);
+      } else bush(ctx, x, BACK_ROW_Y, 1, '#7fc06a', i);
+    });
+    this.decals(camX, 30, (x, y, r, s) => {
+      if (r(3) < 0.5) this.tuft(ctx, x, y, s, '#4f9a48');
+      else if (r(3) < 0.75) ellipse(ctx, x, y, 1.8 * s, 1.8 * s, ['#ffffff', '#ffe08a', '#9fd3ff'][Math.floor(r(4) * 3)]);
+    });
   }
 
   private fgLayer(camX: number, fn: (sx: number, i: number) => void): void {

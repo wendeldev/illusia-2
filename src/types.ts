@@ -90,6 +90,17 @@ export interface DropDef {
 
 export type EnemyShape = 'blob' | 'beast' | 'golem' | 'flyer' | 'mushroom';
 
+/** Ataques especiais de inimigos. Todos têm aviso (windup) antes de acontecer. */
+export type AbilityDef =
+  /** pancada no chão: onda de choque em volta do inimigo */
+  | { kind: 'slam'; radius: number; damageMul: number; windup: number; cooldown: number }
+  /** investida em linha reta */
+  | { kind: 'charge'; speed: number; damageMul: number; windup: number; cooldown: number }
+  /** disparos (esporos, pedras, bolas de fogo...) */
+  | { kind: 'shoot'; count: number; spread: number; speed: number; damageMul: number; windup: number; cooldown: number; color: string; range: number }
+  /** chama ajudantes */
+  | { kind: 'summon'; enemyId: string; count: number; windup: number; cooldown: number };
+
 export interface EnemyDef {
   id: string;
   name: string;
@@ -108,6 +119,12 @@ export interface EnemyDef {
   attackCooldown: number;
   boss?: boolean;
   drops?: DropDef[];
+  /** ataques especiais (chefes e alguns inimigos) */
+  abilities?: AbilityDef[];
+  /** abaixo de 50% de vida fica mais rápido e ataca mais vezes */
+  enrage?: boolean;
+  /** brilho em volta (chefes) */
+  aura?: string;
 }
 
 export type NpcAction = 'talk' | 'shop' | 'heal';
@@ -142,7 +159,12 @@ export interface WaveDef {
   enemies: { enemyId: string; count: number }[];
 }
 
-export type SceneryTheme = 'village' | 'forest' | 'ruins' | 'cave';
+export type SceneryTheme =
+  | 'village' | 'forest' | 'ruins' | 'cave'
+  | 'swamp' | 'desert' | 'snow' | 'volcano' | 'castle' | 'sky';
+
+/** Clima/hora do dia: muda a luz do cenário. */
+export type Mood = 'day' | 'dusk' | 'night';
 
 export type LandmarkKind = 'house' | 'clinic' | 'forge' | 'tower' | 'gate';
 
@@ -169,4 +191,10 @@ export interface StageDef {
   npcs: { npcId: string; x: number; y: number }[];
   portals: PortalDef[];
   waves: WaveDef[];
+  mood?: Mood;
+  /** multiplicador de força dos inimigos (fases mais avançadas = mais fortes) */
+  power?: number;
+  /** região e número da fase (mapa do mundo) */
+  region?: number;
+  index?: number;
 }

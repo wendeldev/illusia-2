@@ -20,6 +20,7 @@ export class Game implements GameApi {
     },
     playerDied: () => this.ui.showDead(),
     toast: (msg) => this.ui.toast(msg),
+    openMap: () => this.ui.openMap(),
     save: () => saveProgress(this.progress),
     sound: (name) => this.sfx.play(name),
     vibrate: (ms) => { if (!this.sfx.muted) vibrate(ms); },
@@ -80,6 +81,11 @@ export class Game implements GameApi {
   heal(): void {
     this.world.heal();
     this.sfx.play('levelup');
+  }
+
+  travel(stageId: string): void {
+    const p = this.world.player;
+    this.pendingStage = { id: stageId, keep: { hp: p.hp, mp: p.mp } };
   }
 
   returnToTown(): void {

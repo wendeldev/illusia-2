@@ -1,8 +1,8 @@
-import { getItem, SKILLS } from '../data';
+import { getEnemy, getItem, getStage, REGIONS, SKILLS, STAGES_PER_REGION, stageId } from '../data';
 import type { Sfx } from '../engine/audio';
 import type { Input, TouchButton } from '../engine/input';
 import { VIEW_H, VIEW_W } from '../engine/view';
-import type { NpcDef } from '../types';
+import type { NpcDef, SceneryTheme } from '../types';
 import { bar, circle, text, wrapText } from './draw';
 import type { Progress } from './progress';
 import { describeBonus, expToNext, SLOT_NAMES } from './stats';
@@ -16,12 +16,14 @@ export interface GameApi {
   equip(itemId: string): void;
   heal(): void;
   returnToTown(): void;
+  travel(stageId: string): void;
 }
 
 type Modal =
   | { kind: 'dialog'; npc: NpcDef; line: number }
-  | { kind: 'shop'; npc: NpcDef; sel: number }
-  | { kind: 'menu'; sel: number }
+  | { kind: 'shop'; npc: NpcDef; sel: number; scroll: number }
+  | { kind: 'menu'; sel: number; scroll: number }
+  | { kind: 'map'; region: number; sel: number }
   | { kind: 'dead' };
 
 interface Region {
@@ -43,6 +45,15 @@ const BUTTON_LAYOUT: TouchButton[] = [
 ];
 const BUTTONS: TouchButton[] = BUTTON_LAYOUT.map((b) => ({ ...b }));
 
+const SHOP_ROWS = 9;
+const MENU_ROWS = 11;
+
+const THEME_COLORS: Record<SceneryTheme, [string, string]> = {
+  village: ['#8fc8f0', '#6aa048'], forest: ['#a8dcc4', '#3f8a45'], swamp: ['#9ab4a0', '#4f6a3a'],
+  ruins: ['#f2a07b', '#c8b490'], desert: ['#9fd0ec', '#e0b478'], cave: ['#2a2638', '#5a5474'],
+  snow: ['#b0d4f0', '#eef6fc'], volcano: ['#5a2220', '#ff6a2a'], castle: ['#33264f', '#5a5670'], sky: ['#8cc8f4', '#ffffff'],
+};
+
 function layoutButtons(): void {
   BUTTON_LAYOUT.forEach((b, i) => { BUTTONS[i].x = VIEW_W - b.x; });
 }
@@ -53,6 +64,7 @@ export class Ui {
   /** áreas clicáveis do último quadro desenhado (a última registrada tem prioridade) */
   private regions: Region[] = [];
   private prevAxisY = 0;
+  private prevAxisX = 0;
 
   constructor(private game: GameApi, private input: Input) {
     layoutButtons();
@@ -65,8 +77,40 @@ export class Ui {
   }
 
   private openMenu(): void {
-    this.modal = { kind: 'menu', sel: 0 };
+    this.modal = { kind: 'menu', sel: 0, scroll: 0 };
     this.game.sfx.play('ui');
+  }
+
+  // ── mapa do mundo ──
+
+  private unlocked(n: number): boolean {
+    return n <= 1 || this.game.progress.cleared.includes(stageId(n - 1));
+  }
+
+  openMap(): void {
+    // abre na fase mais avançada liberada
+    let n = 1;
+    while (n < REGIONS.length * STAGES_PER_REGION && this.unlocked(n + 1)) n++;
+    this.modal = { kind: 'map', region: Math.floor((n - 1) / STAGES_PER_REGION), sel: (n - 1) % STAGES_PER_REGION };
+    this.game.sfx.play('ui');
+  }
+
+  private mapMove(m: Extract<Modal, { kind: 'map' }>, delta: number): void {
+    let n = m.region * STAGES_PER_REGION + m.sel + delta;
+    n = Math.max(0, Math.min(REGIONS.length * STAGES_PER_REGION - 1, n));
+    m.region = Math.floor(n / STAGES_PER_REGION);
+    m.sel = n % STAGES_PER_REGION;
+  }
+
+  private mapEnter(m: Extract<Modal, { kind: 'map' }>): void {
+    const n = m.region * STAGES_PER_REGION + m.sel + 1;
+    if (!this.unlocked(n)) {
+      this.toast('Vença a fase anterior para liberar esta');
+      this.game.sfx.play('nomp');
+      return;
+    }
+    this.close();
+    this.game.travel(stageId(n));
   }
 
   openNpc(npc: NpcDef): void {
@@ -98,10 +142,13 @@ export class Ui {
     const m = this.modal;
     if (!m) return false;
 
-    const ay = input.axis.y;
+    const ay = input.axis.y, ax = input.axis.x;
     const up = ay < -0.5 && this.prevAxisY >= -0.5;
     const down = ay > 0.5 && this.prevAxisY <= 0.5;
+    const left = ax < -0.5 && this.prevAxisX >= -0.5;
+    const right = ax > 0.5 && this.prevAxisX <= 0.5;
     this.prevAxisY = ay;
+    this.prevAxisX = ax;
     const confirm = input.consume('attack') || input.consume('interact');
     const back = input.consume('menu');
 
@@ -115,10 +162,19 @@ export class Ui {
         const list = m.kind === 'shop' ? m.npc.shop ?? [] : this.game.progress.owned;
         if (up) m.sel = Math.max(0, m.sel - 1);
         if (down) m.sel = Math.min(list.length - 1, m.sel + 1);
+        if (up || down) this.keepVisible(m, m.kind === 'shop' ? SHOP_ROWS : MENU_ROWS);
         if (confirm && list[m.sel]) this.itemAction(list[m.sel]);
         if (back) this.close();
         break;
       }
+      case 'map':
+        if (left) this.mapMove(m, -1);
+        if (right) this.mapMove(m, 1);
+        if (up) this.mapMove(m, -5);
+        if (down) this.mapMove(m, 5);
+        if (confirm) this.mapEnter(m);
+        if (back) this.close();
+        break;
       case 'dead':
         if (confirm) this.game.returnToTown();
         break;
@@ -132,7 +188,7 @@ export class Ui {
     if (m.line < m.npc.dialog.length) return;
     switch (m.npc.action) {
       case 'shop':
-        this.modal = { kind: 'shop', npc: m.npc, sel: 0 };
+        this.modal = { kind: 'shop', npc: m.npc, sel: 0, scroll: 0 };
         break;
       case 'heal':
         this.game.heal();
@@ -168,6 +224,7 @@ export class Ui {
       case 'dialog': return this.drawDialog(ctx, m);
       case 'shop': return this.drawShop(ctx, m);
       case 'menu': return this.drawMenu(ctx, m);
+      case 'map': return this.drawMap(ctx, m);
       case 'dead': return this.drawDead(ctx);
     }
   }
@@ -188,8 +245,8 @@ export class Ui {
     text(ctx, world.stage.name, VIEW_W / 2, 16, { size: 12, align: 'center' });
     const boss = world.boss;
     if (boss) {
-      text(ctx, boss.def.name, VIEW_W / 2, 32, { size: 11, align: 'center', color: '#ffb3c4' });
-      bar(ctx, VIEW_W / 2 - 130, 40, 260, 8, boss.hp / boss.def.hp, '#c4466b');
+      text(ctx, boss.enraged ? `${boss.def.name} (furioso!)` : boss.def.name, VIEW_W / 2, 32, { size: 11, align: 'center', color: boss.enraged ? '#ff6b6b' : '#ffb3c4' });
+      bar(ctx, VIEW_W / 2 - 130, 40, 260, 8, boss.hp / boss.maxHp, boss.enraged ? '#e03030' : '#c4466b');
     }
 
     // botão de menu também clicável com mouse
@@ -306,8 +363,11 @@ export class Ui {
     const w = 500, h = 316, x = (VIEW_W - w) / 2, y = 22;
     this.panel(ctx, x, y, w, h, `${m.npc.name} — Loja`);
     text(ctx, `${this.game.progress.gold} G`, x + w - 44, y + 16, { size: 12, align: 'right', color: '#ffd36b' });
-    (m.npc.shop ?? []).forEach((id, i) => {
-      this.itemRow(ctx, x + 10, y + 34 + i * 30, w - 20, 30, id, i === m.sel, () => { m.sel = i; this.itemAction(id); }, true);
+    const list = m.npc.shop ?? [];
+    this.scrollList(ctx, m, list.length, SHOP_ROWS, x + w - 26, y + 34, SHOP_ROWS * 30);
+    list.slice(m.scroll, m.scroll + SHOP_ROWS).forEach((id, k) => {
+      const i = m.scroll + k;
+      this.itemRow(ctx, x + 10, y + 34 + k * 30, w - 42, 30, id, i === m.sel, () => { m.sel = i; this.itemAction(id); }, true);
     });
   }
 
@@ -350,9 +410,106 @@ export class Ui {
 
     const rx = x + 240, rw = w - 252;
     text(ctx, 'Equipamentos (toque para equipar)', rx, y + 42, { size: 11, color: '#ffe9a8' });
-    progress.owned.forEach((id, i) => {
-      this.itemRow(ctx, rx, y + 54 + i * 24, rw, 24, id, i === m.sel, () => { m.sel = i; this.itemAction(id); }, false);
+    this.scrollList(ctx, m, progress.owned.length, MENU_ROWS, rx + rw - 18, y + 54, MENU_ROWS * 24);
+    progress.owned.slice(m.scroll, m.scroll + MENU_ROWS).forEach((id, k) => {
+      const i = m.scroll + k;
+      this.itemRow(ctx, rx, y + 54 + k * 24, rw - 22, 24, id, i === m.sel, () => { m.sel = i; this.itemAction(id); }, false);
     });
+  }
+
+  private keepVisible(m: { sel: number; scroll: number }, rows: number): void {
+    if (m.sel < m.scroll) m.scroll = m.sel;
+    if (m.sel >= m.scroll + rows) m.scroll = m.sel - rows + 1;
+  }
+
+  /** Barra de rolagem com botões ▲ ▼ (só aparece se a lista não cabe). */
+  private scrollList(ctx: CanvasRenderingContext2D, m: { sel: number; scroll: number }, total: number, rows: number, x: number, y: number, h: number): void {
+    if (total <= rows) { m.scroll = 0; return; }
+    m.scroll = Math.max(0, Math.min(total - rows, m.scroll));
+    const btn = (by: number, label: string, delta: number) => {
+      ctx.fillStyle = '#34406a';
+      ctx.fillRect(x, by, 18, 26);
+      text(ctx, label, x + 9, by + 13, { size: 11, align: 'center', outline: false });
+      this.regions.push({ x: x - 6, y: by - 4, w: 30, h: 34, fn: () => {
+        m.scroll = Math.max(0, Math.min(total - rows, m.scroll + delta));
+        m.sel = Math.max(m.scroll, Math.min(m.scroll + rows - 1, m.sel));
+        this.game.sfx.play('ui');
+      } });
+    };
+    btn(y, '▲', -Math.max(1, rows - 2));
+    btn(y + h - 26, '▼', Math.max(1, rows - 2));
+    // trilho
+    const trackY = y + 30, trackH = h - 60;
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(x + 7, trackY, 4, trackH);
+    ctx.fillStyle = '#9cc4ff';
+    ctx.fillRect(x + 7, trackY + (trackH * m.scroll) / total, 4, Math.max(10, (trackH * rows) / total));
+  }
+
+  private drawMap(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'map' }>): void {
+    const x = 16, y = 12, w = VIEW_W - 32, h = VIEW_H - 24;
+    this.panel(ctx, x, y, w, h, 'Mapa do mundo');
+    const region = REGIONS[m.region];
+    const [c1, c2] = THEME_COLORS[region.theme];
+    // faixa da região
+    const g = ctx.createLinearGradient(0, y + 34, 0, y + 74);
+    g.addColorStop(0, c1);
+    g.addColorStop(1, c2);
+    ctx.fillStyle = g;
+    ctx.fillRect(x + 12, y + 34, w - 24, 40);
+    text(ctx, `Região ${m.region + 1} de ${REGIONS.length}`, VIEW_W / 2, y + 46, { size: 10, align: 'center' });
+    text(ctx, region.name, VIEW_W / 2, y + 62, { size: 15, align: 'center', color: '#ffe9a8' });
+    const arrow = (ax: number, label: string, delta: number, enabled: boolean) => {
+      ctx.globalAlpha = enabled ? 1 : 0.3;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(ax, y + 38, 34, 32);
+      text(ctx, label, ax + 17, y + 54, { size: 16, align: 'center' });
+      ctx.globalAlpha = 1;
+      if (enabled) this.regions.push({ x: ax - 4, y: y + 34, w: 42, h: 40, fn: () => { m.region += delta; m.sel = 0; this.game.sfx.play('ui'); } });
+    };
+    arrow(x + 16, '◀', -1, m.region > 0);
+    arrow(x + w - 50, '▶', 1, m.region < REGIONS.length - 1);
+
+    // cartões das fases (2 fileiras de 5)
+    const cols = 5, gap = 8;
+    const cw = (w - 24 - gap * (cols - 1)) / cols, ch = 62;
+    for (let s = 0; s < STAGES_PER_REGION; s++) {
+      const n = m.region * STAGES_PER_REGION + s + 1;
+      const cx = x + 12 + (s % cols) * (cw + gap), cy = y + 82 + Math.floor(s / cols) * (ch + gap);
+      const open = this.unlocked(n);
+      const done = this.game.progress.cleared.includes(stageId(n));
+      const isBoss = s + 1 === STAGES_PER_REGION, isElite = s + 1 === 5;
+      ctx.fillStyle = s === m.sel ? '#34406a' : open ? '#252e45' : '#1a1f2e';
+      ctx.fillRect(cx, cy, cw, ch);
+      ctx.strokeStyle = isBoss ? '#e05a7a' : isElite ? '#e0a050' : s === m.sel ? '#9cc4ff' : '#3a4560';
+      ctx.lineWidth = s === m.sel ? 2 : 1;
+      ctx.strokeRect(cx, cy, cw, ch);
+      text(ctx, `${m.region + 1}-${s + 1}`, cx + cw / 2, cy + 18, { size: 15, align: 'center', color: open ? '#ffffff' : '#666e80' });
+      const status = done ? '✔ Concluída' : open ? '▶ Jogar' : '🔒';
+      text(ctx, status, cx + cw / 2, cy + 36, { size: 9, align: 'center', outline: false, color: done ? '#8fe07a' : open ? '#9cc4ff' : '#666e80' });
+      if (isBoss || isElite) text(ctx, isBoss ? '☠ CHEFE' : '★ Chefe', cx + cw / 2, cy + 52, { size: 9, align: 'center', outline: false, color: isBoss ? '#ff8aa0' : '#ffc070' });
+      this.regions.push({ x: cx, y: cy, w: cw, h: ch, fn: () => {
+        if (m.sel === s) this.mapEnter(m);
+        else { m.sel = s; this.game.sfx.play('ui'); }
+      } });
+    }
+
+    // informações da fase escolhida
+    const n = m.region * STAGES_PER_REGION + m.sel + 1;
+    const st = getStage(stageId(n));
+    const iy = y + 82 + 2 * (ch + gap) + 4;
+    const lastWave = st.waves[st.waves.length - 1];
+    const bossDef = lastWave.enemies.map((e) => getEnemy(e.enemyId)).find((d) => d.boss);
+    text(ctx, st.name, x + 16, iy + 10, { size: 12, color: '#ffe9a8', outline: false });
+    const mood = st.mood === 'night' ? 'Noite' : st.mood === 'dusk' ? 'Entardecer' : 'Dia';
+    text(ctx, `${st.waves.length} ondas · ${mood} · Força ${(st.power ?? 1).toFixed(1)}×${bossDef ? ` · Chefe: ${bossDef.name}` : ''}`,
+      x + 16, iy + 28, { size: 9, color: '#aab4cc', outline: false, bold: false });
+    const open = this.unlocked(n);
+    const bw = 110, bx = x + w - bw - 14, by = iy + 2;
+    ctx.fillStyle = open ? '#3f8a45' : '#3a3f4a';
+    ctx.fillRect(bx, by, bw, 32);
+    text(ctx, open ? 'Entrar ▶' : 'Bloqueada', bx + bw / 2, by + 16, { size: 13, align: 'center', color: open ? '#ffffff' : '#888' });
+    this.regions.push({ x: bx, y: by, w: bw, h: 32, fn: () => this.mapEnter(m) });
   }
 
   private drawDead(ctx: CanvasRenderingContext2D): void {

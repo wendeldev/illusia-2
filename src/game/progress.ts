@@ -1,4 +1,4 @@
-import { hasItem } from '../data';
+import { hasItem, hasStage, LEGACY_STAGE_IDS } from '../data';
 import type { Slot } from '../types';
 
 const SAVE_KEY = 'lumen-save-v1';
@@ -30,6 +30,7 @@ export function loadProgress(): Progress {
     const p = { ...newProgress(), ...(JSON.parse(raw) as Partial<Progress>) };
     // descarta itens que não existem mais (conteúdo mudou entre versões)
     p.owned = p.owned.filter(hasItem);
+    p.cleared = [...new Set(p.cleared.map((id) => LEGACY_STAGE_IDS[id] ?? id).filter(hasStage))];
     for (const slot of Object.keys(p.equipped) as Slot[]) {
       const id = p.equipped[slot];
       if (!id || !p.owned.includes(id)) delete p.equipped[slot];

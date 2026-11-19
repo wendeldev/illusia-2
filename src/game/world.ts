@@ -1,4 +1,4 @@
-import { getEnemy, getItem, getNpc, SKILLS } from '../data';
+import { getEnemy, getItem, getNpc, MAP_PORTAL, SKILLS } from '../data';
 import type { SoundName } from '../engine/audio';
 import type { Input } from '../engine/input';
 import { VIEW_W, VIEW_H } from '../engine/view';
@@ -28,6 +28,7 @@ export interface WorldHooks {
   changeStage(to: string): void;
   playerDied(): void;
   toast(msg: string): void;
+  openMap(): void;
   save(): void;
   sound(name: SoundName): void;
   vibrate(ms: number): void;
@@ -71,7 +72,24 @@ export interface Player extends Body {
 
 export interface Enemy extends Body {
   def: EnemyDef;
-  state: 'chase' | 'windup' | 'recover';
+  state: 'chase' | 'windup' | 'recover' | 'ability' | 'charging';
+  /** atributos já multiplicados pela força da fase */
+  maxHp: number;
+  atk: number;
+  armor: number;
+  exp: number;
+  gold: number;
+  speed: number;
+  /** recarga de cada ataque especial */
+  abilityCd: number[];
+  /** ataque especial em preparo (índice em def.abilities) */
+  ability: number;
+  enraged: boolean;
+  /** alvo marcado no chão (investida, disparo) */
+  target: { x: number; y: number } | null;
+  chargeVx: number;
+  chargeVy: number;
+  chargeHit: boolean;
   timer: number;
   dead: boolean;
   deadTimer: number;
@@ -88,6 +106,18 @@ interface Projectile {
   dist: number;
   skill: SkillDef;
   hit: Set<Enemy>;
+}
+
+interface EnemyShot {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  dist: number;
+  range: number;
+  atk: number;
+  color: string;
+  r: number;
 }
 
 interface FloatText {
@@ -134,6 +164,7 @@ export class World {
   playerLook: HumanLook;
   enemies: Enemy[] = [];
   private projectiles: Projectile[] = [];
+  private enemyShots: EnemyShot[] = [];
   private texts: FloatText[] = [];
   private effects: Effect[] = [];
   private particles: Particle[] = [];
@@ -268,6 +299,7 @@ export class World {
     this.enemies = this.enemies.filter((e) => !e.dead || e.deadTimer > 0);
     this.separateEnemies();
     this.updateProjectiles(dt);
+    this.updateEnemyShots(dt);
 
     for (const t of this.texts) { t.life -= dt; t.y -= 28 * dt; }
     this.texts = this.texts.filter((t) => t.life > 0);
@@ -464,13 +496,14 @@ export class World {
 
   private damageEnemy(e: Enemy, mul: number, knock: number, heavy = false): void {
     const crit = Math.random() < this.stats.crit;
-    const dmg = calcDamage(this.stats.atk, e.def.def, mul) * (crit ? 2 : 1);
+    const dmg = calcDamage(this.stats.atk, e.armor, mul) * (crit ? 2 : 1);
     e.hp -= dmg;
     e.flash = 0.1;
     const resist = e.def.boss ? 0.15 : 1;
     e.hitStun = e.def.boss ? 0.06 : 0.28;
     e.vx = knock * resist;
-    if (!e.def.boss && e.state === 'windup') { e.state = 'recover'; e.timer = 0.4; }
+    // golpe interrompe o preparo de inimigos comuns (não de chefes)
+    if (!e.def.boss && (e.state === 'windup' || e.state === 'ability')) { e.state = 'recover'; e.timer = 0.4; }
     const bodyZ = e.def.shape === 'flyer' ? e.radius * 2.6 : e.radius * 1.2;
     this.floatText(e.x, GROUND_TOP + e.y - e.radius * 2.6, crit ? `${dmg}!` : `${dmg}`, crit ? '#ffd36b' : '#fff', crit ? 19 : heavy ? 16 : 13);
     this.burst(e.x - Math.sign(knock) * e.radius * 0.4, e.y, bodyZ, crit ? 12 : 6, crit ? '#ffd36b' : '#ffffff', crit ? 240 : 170, 2.2);
@@ -483,10 +516,10 @@ export class World {
     e.dead = true;
     e.deadTimer = 0.5;
     const pr = this.progress;
-    pr.exp += e.def.exp;
-    pr.gold += e.def.gold;
+    pr.exp += e.exp;
+    pr.gold += e.gold;
     const recent = this.texts.filter((t) => t.color === '#9ff0a0' && t.life > 0.5).length;
-    this.floatText(e.x, GROUND_TOP + e.y - 10 + recent * 12, `+${e.def.exp} EXP  +${e.def.gold} G`, '#9ff0a0', 10, 0.9);
+    this.floatText(e.x, GROUND_TOP + e.y - 10 + recent * 12, `+${e.exp} EXP  +${e.gold} G`, '#9ff0a0', 10, 0.9);
     this.burst(e.x, e.y, e.radius, e.def.boss ? 60 : 16, e.def.color, e.def.boss ? 320 : 180, e.def.boss ? 4 : 3, 260);
     this.sound('kill');
     this.sound('coin');
@@ -532,12 +565,22 @@ export class World {
     e.vx *= Math.pow(0.003, dt);
     e.x = Math.max(0, Math.min(this.stage.width, e.x));
     if (e.dead) { e.deadTimer -= dt; return; }
+    for (let i = 0; i < e.abilityCd.length; i++) e.abilityCd[i] -= dt;
+    if (e.def.enrage && !e.enraged && e.hp < e.maxHp / 2) {
+      e.enraged = true;
+      e.speed *= 1.35;
+      this.hooks.toast(`${e.def.name} está furioso!`);
+      this.shake(6, 0.5);
+      this.sound('wave');
+      this.burst(e.x, e.y, e.radius, 30, '#ff4040', 220, 3);
+    }
     if (e.hitStun > 0) { e.hitStun -= dt; return; }
 
     const p = this.player;
     const dx = p.x - e.x, dy = p.y - e.y;
     const d = e.def;
-    if (e.state !== 'windup') e.facing = Math.sign(dx) || e.facing;
+    const locked = e.state === 'windup' || e.state === 'ability' || e.state === 'charging';
+    if (!locked) e.facing = Math.sign(dx) || e.facing;
 
     if (e.state === 'windup') {
       e.timer -= dt;
@@ -547,9 +590,18 @@ export class World {
           this.hitPlayer(e);
         }
         e.state = 'recover';
-        e.timer = d.attackCooldown;
+        e.timer = d.attackCooldown * (e.enraged ? 0.6 : 1);
         e.strike = 1;
       }
+      return;
+    }
+    if (e.state === 'ability') {
+      e.timer -= dt;
+      if (e.timer <= 0) this.executeAbility(e);
+      return;
+    }
+    if (e.state === 'charging') {
+      this.updateCharge(e, dt);
       return;
     }
     if (e.state === 'recover') {
@@ -557,13 +609,14 @@ export class World {
       if (e.timer <= 0) e.state = 'chase';
     }
     if (p.dead) return;
+    if (e.state === 'chase' && this.tryAbility(e, dx, dy)) return;
 
     // persegue: tenta ficar ao lado do jogador, na mesma "linha"
     const wobble = Math.sin(this.time * 1.5 + e.seed) * 10;
     const tx = p.x - Math.sign(dx || 1) * (d.attackRange * 0.7 + p.radius);
     const ty = p.y + wobble;
     const mx = tx - e.x, my = ty - e.y, ml = Math.hypot(mx, my);
-    const speed = d.speed * (e.state === 'recover' ? 0.35 : 1);
+    const speed = e.speed * (e.state === 'recover' ? 0.35 : 1);
     if (ml > 2) {
       e.x += (mx / ml) * speed * dt;
       e.y += (my / ml) * speed * 0.7 * dt;
@@ -572,25 +625,170 @@ export class World {
     e.y = Math.max(0, Math.min(this.stage.depth, e.y));
     if (e.state === 'chase' && Math.abs(dx) < d.attackRange + p.radius && Math.abs(dy) < 14) {
       e.state = 'windup';
-      e.timer = d.windup;
+      e.timer = d.windup * (e.enraged ? 0.75 : 1);
     }
   }
 
-  private hitPlayer(e: Enemy): void {
+  /** Começa um ataque especial se algum estiver pronto e fizer sentido agora. */
+  private tryAbility(e: Enemy, dx: number, dy: number): boolean {
+    const list = e.def.abilities;
+    if (!list?.length) return false;
+    const adx = Math.abs(dx);
+    const start = Math.floor(Math.random() * list.length);
+    for (let k = 0; k < list.length; k++) {
+      const i = (start + k) % list.length;
+      const a = list[i];
+      if (e.abilityCd[i] > 0) continue;
+      let ok = false;
+      switch (a.kind) {
+        case 'slam': ok = adx < a.radius * 0.8 && Math.abs(dy) < 45; break;
+        case 'charge': ok = adx > 110 && adx < 460; break;
+        case 'shoot': ok = adx > 70 && adx < a.range; break;
+        case 'summon': ok = this.enemies.filter((o) => !o.dead && !o.def.boss).length < 5; break;
+      }
+      if (!ok) continue;
+      const p = this.player;
+      e.state = 'ability';
+      e.ability = i;
+      e.timer = a.windup * (e.enraged ? 0.75 : 1);
+      e.abilityCd[i] = a.cooldown * (e.enraged ? 0.6 : 1);
+      e.target = a.kind === 'slam' ? { x: e.x, y: e.y } : { x: p.x, y: p.y };
+      if (a.kind === 'charge' || a.kind === 'shoot') e.facing = Math.sign(dx) || e.facing;
+      return true;
+    }
+    return false;
+  }
+
+  private executeAbility(e: Enemy): void {
+    const a = e.def.abilities![e.ability];
     const p = this.player;
-    if (p.invuln > 0) return;
-    const dmg = calcDamage(e.def.atk, this.stats.def, 1);
+    e.state = 'recover';
+    e.timer = e.enraged ? 0.6 : 0.9;
+    e.strike = 1;
+    switch (a.kind) {
+      case 'slam': {
+        const dx = p.x - e.x, dy = (p.y - e.y) * 2;
+        if (!p.dead && dx * dx + dy * dy <= (a.radius + p.radius) ** 2) this.hitPlayer(e, a.damageMul);
+        this.shake(7, 0.3);
+        this.sound('thunder');
+        this.effects.push({ kind: 'ring', x: e.x, y: e.y, dir: 1, radius: a.radius, color: '#ff8060', life: 0.4, maxLife: 0.4 });
+        this.burst(e.x, e.y, 4, 26, '#c8b090', 240, 3, 260);
+        break;
+      }
+      case 'charge': {
+        const t = e.target ?? { x: p.x, y: p.y };
+        const dir = Math.sign(t.x - e.x) || e.facing;
+        const dist = Math.abs(t.x - e.x) + 140;
+        e.facing = dir;
+        e.chargeVx = dir * a.speed;
+        e.chargeVy = Math.max(-90, Math.min(90, (t.y - e.y) / (dist / a.speed)));
+        e.chargeHit = false;
+        e.state = 'charging';
+        e.timer = Math.min(1.5, dist / a.speed);
+        this.sound('swing');
+        break;
+      }
+      case 'shoot': {
+        const t = e.target ?? { x: p.x, y: p.y };
+        const base = Math.atan2(t.y - e.y, t.x - e.x);
+        for (let i = 0; i < a.count; i++) {
+          const off = a.count > 1 ? (i / (a.count - 1) - 0.5) * a.spread * 2 : 0;
+          const ang = base + off;
+          this.enemyShots.push({
+            x: e.x + e.facing * e.radius * 0.7, y: e.y, vx: Math.cos(ang) * a.speed, vy: Math.sin(ang) * a.speed * 0.5,
+            dist: 0, range: a.range, atk: e.atk * a.damageMul, color: a.color, r: 6,
+          });
+        }
+        this.sound('wind');
+        break;
+      }
+      case 'summon': {
+        const def = getEnemy(a.enemyId);
+        for (let i = 0; i < a.count; i++) {
+          const side = i % 2 === 0 ? 1 : -1;
+          const m = this.spawnEnemy(def, e.x + side * (50 + Math.random() * 30), Math.max(0, Math.min(this.stage.depth, e.y + (Math.random() - 0.5) * 70)), -side);
+          this.burst(m.x, m.y, 10, 14, '#c49bff', 140, 2.5);
+        }
+        this.sound('wave');
+        break;
+      }
+    }
+  }
+
+  private updateCharge(e: Enemy, dt: number): void {
+    const p = this.player;
+    const a = e.def.abilities![e.ability];
+    e.x += e.chargeVx * dt;
+    e.y = Math.max(0, Math.min(this.stage.depth, e.y + e.chargeVy * dt));
+    e.moving = true;
+    e.timer -= dt;
+    if (Math.random() < 0.5) this.burst(e.x - e.facing * e.radius, e.y, 2, 1, '#c8b090', 60, 3, 100);
+    if (!e.chargeHit && !p.dead && Math.abs(p.x - e.x) < e.radius + p.radius && Math.abs(p.y - e.y) < 20 + e.radius * 0.3) {
+      e.chargeHit = true;
+      this.hitPlayer(e, a.kind === 'charge' ? a.damageMul : 1);
+    }
+    const minX = this.waveActive ? this.camX - 20 : 0;
+    const maxX = this.waveActive ? this.camX + VIEW_W + 20 : this.stage.width;
+    if (e.timer <= 0 || e.x < minX || e.x > maxX) {
+      e.x = Math.max(minX, Math.min(maxX, e.x));
+      e.state = 'recover';
+      e.timer = e.enraged ? 0.7 : 1.1;
+      this.shake(3, 0.15);
+    }
+  }
+
+  private updateEnemyShots(dt: number): void {
+    const p = this.player;
+    for (const sh of this.enemyShots) {
+      sh.x += sh.vx * dt;
+      sh.y += sh.vy * dt;
+      sh.dist += Math.hypot(sh.vx, sh.vy) * dt;
+      if (!p.dead && Math.abs(sh.x - p.x) < sh.r + p.radius * 0.8 && Math.abs(sh.y - p.y) < 14) {
+        this.damagePlayer(sh.atk, Math.sign(sh.vx) || 1, false);
+        this.burst(sh.x, sh.y, 16, 10, sh.color, 150, 2.5);
+        sh.dist = Infinity;
+      }
+    }
+    this.enemyShots = this.enemyShots.filter((sh) => sh.dist < sh.range && sh.y > -30 && sh.y < this.stage.depth + 30);
+  }
+
+  /** Cria um inimigo com atributos ajustados à força da fase. */
+  private spawnEnemy(def: EnemyDef, x: number, y: number, facing: number): Enemy {
+    const pw = this.stage.power ?? 1;
+    // a vida e o ataque crescem um pouco mais rápido que a força, para acompanhar o nível do jogador
+    const hp = Math.round(def.hp * Math.pow(pw, 1.4));
+    const e: Enemy = {
+      def, x, y, vx: 0, facing, radius: def.radius, hp, maxHp: hp,
+      atk: def.atk * Math.pow(pw, 1.3), armor: def.def * Math.sqrt(pw),
+      exp: Math.round(def.exp * pw * 1.2), gold: Math.round(def.gold * pw),
+      speed: def.speed * (1 + Math.min(0.3, (pw - 1) * 0.03)),
+      hitStun: 0, flash: 0, state: 'chase', timer: 0, dead: false, deadTimer: 0, seed: Math.random() * 10, strike: 0, moving: false,
+      abilityCd: (def.abilities ?? []).map((a) => a.cooldown * (0.3 + Math.random() * 0.5)),
+      ability: -1, enraged: false, target: null, chargeVx: 0, chargeVy: 0, chargeHit: false,
+    };
+    this.enemies.push(e);
+    return e;
+  }
+
+  private hitPlayer(e: Enemy, mul = 1): void {
+    this.damagePlayer(e.atk * mul, e.facing, !!e.def.boss);
+  }
+
+  private damagePlayer(atk: number, dir: number, heavy: boolean): void {
+    const p = this.player;
+    if (p.invuln > 0 || p.dead) return;
+    const dmg = calcDamage(atk, this.stats.def, 1);
     p.hp -= dmg;
     p.flash = 0.12;
     p.hitStun = 0.3;
     p.attackTimer = 0;
     p.invuln = 0.6;
-    p.vx = e.facing * (e.def.boss ? 260 : 150);
+    p.vx = dir * (heavy ? 260 : 150);
     this.floatText(p.x, GROUND_TOP + p.y - 44, `-${dmg}`, '#ff6b6b', 15, 0.8);
     this.burst(p.x, p.y, 18, 8, '#ff6b6b', 160, 2.5);
     this.sound('hurt');
-    this.hooks.vibrate(e.def.boss ? 90 : 40);
-    this.shake(e.def.boss ? 9 : 5, 0.22);
+    this.hooks.vibrate(heavy ? 90 : 40);
+    this.shake(heavy ? 9 : 5, 0.22);
     this.freeze(0.06);
     this.hurtFlash = 0.35;
     if (p.hp <= 0) {
@@ -646,6 +844,12 @@ export class World {
         if (!this.progress.cleared.includes(this.stage.id)) this.progress.cleared.push(this.stage.id);
         this.hooks.save();
         this.hooks.toast('Fase concluída! Siga até o portal.');
+        // fôlego: recupera parte da vida para seguir direto para a próxima fase
+        const p = this.player;
+        if (!p.dead) {
+          p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.35);
+          p.mp = Math.min(p.maxMp, p.mp + p.maxMp * 0.5);
+        }
       } else {
         this.hooks.toast('Avance →');
       }
@@ -660,11 +864,7 @@ export class World {
       for (let i = 0; i < group.count; i++, n++) {
         const fromLeft = n % 3 === 2 && this.camX > 60;
         const x = fromLeft ? this.camX - 30 - Math.random() * 40 : this.camX + VIEW_W + 30 + Math.random() * 60;
-        this.enemies.push({
-          def, x, y: Math.random() * this.stage.depth, vx: 0, facing: fromLeft ? 1 : -1,
-          radius: def.radius, hp: def.hp, hitStun: 0, flash: 0,
-          state: 'chase', timer: 0, dead: false, deadTimer: 0, seed: Math.random() * 10, strike: 0, moving: false,
-        });
+        this.spawnEnemy(def, x, Math.random() * this.stage.depth, fromLeft ? 1 : -1);
       }
     }
     this.sound('wave');
@@ -702,6 +902,7 @@ export class World {
     }
     const lock = this.portalLock(target.portal);
     if (lock) this.hooks.toast(lock);
+    else if (target.portal.to === MAP_PORTAL) this.hooks.openMap();
     else this.hooks.changeStage(target.portal.to);
   }
 
@@ -721,6 +922,7 @@ export class World {
     ctx.translate(-camX, 0);
 
     for (const portal of s.portals) this.drawPortal(ctx, portal);
+    for (const e of this.enemies) if (!e.dead && (e.state === 'ability' || e.state === 'charging')) this.drawTelegraph(ctx, e);
 
     // ordena por profundidade
     type D = { y: number; draw: () => void };
@@ -747,6 +949,25 @@ export class World {
       ctx.fillStyle = pr.skill.color;
       ctx.beginPath();
       ctx.ellipse(pr.x, y, pr.skill.radius * 1.4, pr.skill.radius * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const sh of this.enemyShots) {
+      const sy = GROUND_TOP + sh.y;
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.beginPath();
+      ctx.ellipse(sh.x, sy, sh.r, sh.r * 0.35, 0, 0, Math.PI * 2);
+      ctx.fill();
+      glow(ctx, sh.x, sy - 16, sh.r * 3, sh.color, 0.5);
+      ctx.fillStyle = sh.color;
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(sh.x, sy - 16, sh.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(sh.x - 2, sy - 18, sh.r * 0.35, 0, Math.PI * 2);
       ctx.fill();
     }
     for (const pt of this.particles) {
@@ -880,12 +1101,82 @@ export class World {
     text(ctx, n.def.name, n.x, gy - 58, { size: 10, align: 'center' });
   }
 
+  /** Aviso no chão antes de um ataque especial: dá tempo de fugir. */
+  private drawTelegraph(ctx: CanvasRenderingContext2D, e: Enemy): void {
+    const a = e.def.abilities?.[e.ability];
+    if (!a) return;
+    const k = e.state === 'ability' ? Math.min(1, 1 - Math.max(0, e.timer) / a.windup) : 1;
+    const gy = GROUND_TOP + e.y;
+    ctx.save();
+    switch (a.kind) {
+      case 'slam': {
+        ctx.fillStyle = `rgba(255,60,40,${0.12 + 0.18 * k})`;
+        ctx.strokeStyle = 'rgba(255,80,60,0.9)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(e.x, gy, a.radius, a.radius * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,60,40,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(e.x, gy, a.radius * k, a.radius * 0.5 * k, 0, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case 'charge': {
+        if (e.state !== 'ability' || !e.target) break;
+        const dir = Math.sign(e.target.x - e.x) || e.facing;
+        const ex = e.target.x + dir * 140, ey = GROUND_TOP + e.target.y;
+        ctx.fillStyle = `rgba(255,60,40,${0.1 + 0.2 * k})`;
+        ctx.strokeStyle = 'rgba(255,80,60,0.8)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(e.x, gy - 12); ctx.lineTo(ex, ey - 12); ctx.lineTo(ex, ey + 12); ctx.lineTo(e.x, gy + 12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // setas
+        ctx.fillStyle = 'rgba(255,90,70,0.8)';
+        for (let i = 1; i <= 3; i++) {
+          const t = ((i / 4 + this.time * 1.5) % 1);
+          const ax = e.x + (ex - e.x) * t, ay = gy + (ey - gy) * t;
+          ctx.beginPath();
+          ctx.moveTo(ax + dir * 8, ay); ctx.lineTo(ax - dir * 4, ay - 6); ctx.lineTo(ax - dir * 4, ay + 6);
+          ctx.fill();
+        }
+        break;
+      }
+      case 'shoot': {
+        const lift = e.def.shape === 'flyer' ? e.radius * 2.6 : e.radius * 1.2;
+        glow(ctx, e.x + e.facing * e.radius * 0.7, gy - lift, 14 + 20 * k, a.color, 0.6);
+        break;
+      }
+      case 'summon': {
+        ctx.strokeStyle = `rgba(196,155,255,${0.4 + 0.5 * k})`;
+        ctx.lineWidth = 2;
+        for (const side of [-1, 1]) {
+          ctx.beginPath();
+          ctx.ellipse(e.x + side * 60, gy, 16 * k + 4, (16 * k + 4) * 0.4, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        break;
+      }
+    }
+    ctx.restore();
+  }
+
   private drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     const gy = GROUND_TOP + e.y;
+    if (!e.dead && e.def.aura) {
+      const pulse = 0.8 + Math.sin(this.time * 3 + e.seed) * 0.2;
+      const lift = e.def.shape === 'flyer' ? e.radius * 2.6 : e.radius;
+      glow(ctx, e.x, gy - lift, e.radius * 2.4 * pulse, e.enraged ? '#ff3030' : e.def.aura, e.enraged ? 0.45 : 0.3);
+    }
+    const abilityK = e.state === 'ability' && e.ability >= 0 ? 1 - Math.max(0, e.timer) / e.def.abilities![e.ability].windup : 0;
     drawMonster(ctx, e.def.shape, e.x, gy, e.radius, e.def.color, e.facing, {
       t: this.time + e.seed,
+      windup: e.state === 'windup' ? 1 - Math.max(0, e.timer) / e.def.windup : Math.min(1, abilityK),
       moving: e.moving,
-      windup: e.state === 'windup' ? 1 - Math.max(0, e.timer) / e.def.windup : 0,
       strike: e.strike,
       hurt: e.hitStun > 0,
       dying: e.dead ? 1 - Math.max(0, e.deadTimer) / 0.5 : 0,
@@ -894,7 +1185,8 @@ export class World {
     if (e.dead) return;
     const top = e.def.shape === 'flyer' ? e.radius * 4 : e.def.shape === 'mushroom' ? e.radius * 2.9 : e.radius * 2.4;
     if (e.state === 'windup') text(ctx, '!', e.x, gy - top - 6, { size: 16, align: 'center', color: '#ff5050' });
-    if (!e.def.boss && e.hp < e.def.hp) bar(ctx, e.x - 16, gy + 6, 32, 4, e.hp / e.def.hp, '#ff5f5f');
+    if (e.state === 'ability') text(ctx, '!!', e.x, gy - top - 8, { size: 20, align: 'center', color: '#ff3030' });
+    if (!e.def.boss && e.hp < e.maxHp) bar(ctx, e.x - 16, gy + 6, 32, 4, e.hp / e.maxHp, '#ff5f5f');
   }
 
   private drawPlayer(ctx: CanvasRenderingContext2D): void {

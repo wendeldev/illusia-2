@@ -26,12 +26,27 @@ Para depurar, abra com `?debug` e use `window.__game` no console.
 No celular dá para "Adicionar à tela inicial": o jogo abre em tela cheia e funciona offline (PWA).
 O progresso é salvo automaticamente no navegador.
 
+## Campanha
+
+90 fases em 9 regiões (10 fases cada): Bosque Sussurrante, Pântano Nebuloso, Ruínas de Ferro,
+Dunas Rubras, Caverna Cinzenta, Picos Gelados, Vulcão Ardente, Cidadela Sombria e Ilhas Celestes.
+A fase 5 de cada região tem um chefe intermediário e a fase 10, o chefe da região.
+Na vila, o portal do portão abre o **mapa do mundo**; vencer uma fase libera a próxima.
+
+Chefes e alguns inimigos têm ataques especiais, sempre com aviso no chão antes:
+pancada (círculo vermelho), investida (faixa com setas), disparos, chamar ajudantes e fúria (abaixo de 50% de vida).
+
+- Regiões, inimigos de cada região e chefes: `src/data/campaign.ts` (`REGIONS`)
+- Regras de geração das fases (ondas, largura, força): `makeStage()` no mesmo arquivo
+- Ataques especiais de cada inimigo: `abilities` em `src/data/enemies.ts`
+
 ## Estrutura
 
 ```
 src/
   data/        ← CONTEÚDO (editar aqui para criar fases, poderes, itens, NPCs)
-    stages.ts      fases, portais, ondas de inimigos, posição dos NPCs
+    stages.ts      vila (NPCs, construções) + campanha
+    campaign.ts    as 9 regiões e a geração das 90 fases
     skills.ts      poderes (até 3; projétil, área ou golpe corpo a corpo)
     equipment.ts   armas, armaduras, elmos, acessórios
     enemies.ts     inimigos, chefes e itens que deixam cair
@@ -48,5 +63,5 @@ que não existe, o erro aparece no console com o nome do que falta.
 
 - Arte própria (sprites) no lugar das formas provisórias (`src/game/draw.ts`)
 - Sons e música
-- Mais fases, chefes com ataques especiais, missões
+- Missões dos NPCs
 - PvP online (precisa de um servidor)
