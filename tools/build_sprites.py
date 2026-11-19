@@ -604,6 +604,26 @@ for name, (base, dh, sat, val) in BOSS_VARIANTS.items():
     anims, fxs = B_DATA[base]
     add_boss(name, anims, fxs, (base, dh, sat, val))
 
+# chefes básicos/intermediários (prancha 6): 1 quadro por animação
+import miniboss_cells as MC
+MINI = MC.load()
+# atk3 que é só efeito (sem o corpo): o corpo usa o ataque 2 e o efeito vira disparo/pancada
+FX_ONLY_ATK3 = {'stone_golem', 'plant', 'serpent'}
+MINI_H = {'troll': 74, 'wolf_alpha': 58, 'stone_golem': 72, 'spider': 54, 'plant': 70, 'minotaur': 80, 'orc': 76, 'serpent': 76, 'fallen_knight': 76, 'dark_mage': 78}
+for name, an in MINI.items():
+    ref = an['idle']
+    scale = MINI_H[name] / ref.size[1]
+    def fr(im, center=False):
+        return (im, im.size[0] // 2, im.size[1] // 2) if center else (im, feet(im)[0], im.size[1])
+    body3 = an['atk2'] if name in FX_ONLY_ATK3 else an['atk3']
+    seq = {'idle': [an['idle']], 'walk': [an['idle'], an['walk']], 'atk1': [an['atk1']], 'atk2': [an['atk2']],
+           'atk3': [body3], 'hit': [an['hit']], 'death': [an['hit'], an['death']]}
+    for k, ims in seq.items():
+        boss_extra[f'boss_{name}_{k}'] = ([fr(im) for im in ims if im is not None], scale)
+    boss_extra[f'boss_{name}_fxspecial'] = ([fr(an['special'], True)], scale)
+    if name in FX_ONLY_ATK3:
+        boss_extra[f'boss_{name}_fxatk3'] = ([fr(an['atk3'], True)], scale)
+
 items5 = [(n, i, im, ax, ay) for n, (lst, _) in boss_extra.items() for i, (im, ax, ay) in enumerate(lst)]
 items5.sort(key=lambda t: -t[2].size[1])
 x = y = row_h = 0

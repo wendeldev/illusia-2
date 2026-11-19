@@ -247,7 +247,17 @@ const BOSS_FX: Record<string, { shot: number; slam: number; summon: number }> = 
   crystal_golem: { shot: 2, slam: 1, summon: 3 }, demoness: { shot: 0, slam: 3, summon: 2 },
   dark_knight: { shot: 1, slam: 3, summon: 2 }, hydra: { shot: 0, slam: 1, summon: 3 }, dark_god: { shot: 0, slam: 3, summon: 1 },
 };
+/** Chefes básicos/intermediários: efeito de cada ataque (nome completo no atlas). */
+const MINI_FX: Record<string, Partial<Record<'shot' | 'slam' | 'summon', string>>> = {
+  troll: { slam: 'fxspecial' }, wolf_alpha: { summon: 'fxspecial' }, stone_golem: { slam: 'fxatk3', summon: 'fxspecial' },
+  spider: { shot: 'fxspecial', slam: 'fxspecial' }, plant: { shot: 'fxatk3', slam: 'fxspecial' },
+  minotaur: { slam: 'fxspecial' }, orc: { slam: 'fxspecial', shot: 'fxspecial' }, serpent: { shot: 'fxatk3', slam: 'fxspecial' },
+  fallen_knight: { slam: 'fxspecial' }, dark_mage: { shot: 'fxspecial', slam: 'fxspecial' },
+};
+
 function bossFx(def: EnemyDef, kind: 'shot' | 'slam' | 'summon'): string | undefined {
+  const mini = def.bossAnim && MINI_FX[def.bossAnim]?.[kind];
+  if (mini) return `boss_${def.bossAnim}_${mini}`;
   const m = def.bossAnim && BOSS_FX[def.bossAnim];
   const name = m ? `bfx_${def.bossAnim}_${m[kind]}` : '';
   return name && hasSprite(name) ? name : undefined;

@@ -61,6 +61,10 @@ disparos, pancadas e invocações. Bosque: Golem Ancião · Pântano: Rei Esquel
 Dunas: Demonessa Carmesim · Caverna: Golem de Cristal · Neve: Hidra das Profundezas · Vulcão: Dragão Rubro ·
 Cidadela: Dragão Negro · Ilhas Celestes: Deus das Trevas. Mapa em `BOSS_ANIMS` (`src/data/enemies.ts`).
 
+Chefes da fase 5 (prancha `assets-src/sheet-minibosses.png`, `tools/miniboss_cells.py`): Lobo Alfa, Planta Carnívora,
+Golem de Pedra, Serpente Gigante, Aranha Gigante, Troll Bruto, Orc Comandante, Cavaleiro Caído e Mago Sombrio;
+Minotauro Guerreiro na fase 3-8. Mapa em `MINI_BOSSES` (`src/data/enemies.ts`).
+
 ## Campanha
 
 90 fases em 9 regiões (10 fases cada): Bosque Sussurrante, Pântano Nebuloso, Ruínas de Ferro,

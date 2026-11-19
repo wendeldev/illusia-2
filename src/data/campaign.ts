@@ -13,12 +13,14 @@ export interface RegionDef {
   elite: string;
   /** chefe da região (fase 10) */
   boss: string;
+  /** mini-chefe extra (fase 8) */
+  mini?: string;
 }
 
 export const REGIONS: RegionDef[] = [
   { name: 'Bosque Sussurrante', theme: 'forest', roster: ['moss_slime', 'shadow_wolf', 'leaf_bat'], elite: 'alpha_wolf', boss: 'moss_guardian' },
   { name: 'Pântano Nebuloso', theme: 'swamp', roster: ['bog_slime', 'marsh_bat', 'swamp_shroom'], elite: 'toad_king', boss: 'plague_shroom' },
-  { name: 'Ruínas de Ferro', theme: 'ruins', roster: ['stone_slime', 'sand_jackal', 'rust_golem'], elite: 'iron_sentinel', boss: 'iron_colossus' },
+  { name: 'Ruínas de Ferro', theme: 'ruins', roster: ['stone_slime', 'sand_jackal', 'rust_golem'], elite: 'iron_sentinel', boss: 'iron_colossus', mini: 'minotaur_warrior' },
   { name: 'Dunas Rubras', theme: 'desert', roster: ['sand_slime', 'dune_hound', 'vulture'], elite: 'scarab', boss: 'golden_jackal' },
   { name: 'Caverna Cinzenta', theme: 'cave', roster: ['crystal_slime', 'cave_bat', 'cave_golem'], elite: 'crystal_golem', boss: 'fungus_king' },
   { name: 'Picos Gelados', theme: 'snow', roster: ['frost_slime', 'snow_wolf', 'ice_golem'], elite: 'yeti', boss: 'frost_ancient' },
@@ -65,6 +67,8 @@ function makeStage(r: number, s: number): StageDef {
     const enemies: WaveDef['enemies'] = [];
     if (isFinal && s === STAGES_PER_REGION) {
       enemies.push({ enemyId: region.boss, count: 1 }, { enemyId: region.roster[0], count: 2 });
+    } else if (isFinal && s === 8 && region.mini) {
+      enemies.push({ enemyId: region.mini, count: 1 }, { enemyId: region.roster[0], count: 2 });
     } else if (isFinal && s === 5) {
       enemies.push({ enemyId: region.elite, count: 1 }, { enemyId: region.roster[1], count: 2 });
     } else {

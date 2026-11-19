@@ -59,6 +59,7 @@ export const ENEMIES: EnemyDef[] = [
   mob('rust_golem', 'Golem Enferrujado', 'golem', '#a0603a', { drops: [{ itemId: 'iron_helm', chance: 0.06 }, { itemId: 'chainmail', chance: 0.03 }] }),
   mob('sand_jackal', 'Chacal das Ruínas', 'beast', '#b08a5a'),
   mob('stone_slime', 'Lodo de Pedra', 'blob', '#9a8a7a', { def: 4 }),
+  elite('minotaur_warrior', 'Minotauro Guerreiro', 'golem', '#8a5a3a', '#ffb040', [slam(95), charge(380)]),
   elite('iron_sentinel', 'Sentinela de Ferro', 'golem', '#7a7f8a', '#ffd36b', [slam(90), charge(300)]),
   boss('iron_colossus', 'Colosso de Ferro', 'golem', '#8a5030', '#ff9a3c', [slam(120, 1.8), charge(360, 1.6), summon('rust_golem', 1, 16)], { enrage: true, drops: [{ itemId: 'moon_blade', chance: 0.4 }] }),
 
@@ -104,7 +105,7 @@ export const ENEMIES: EnemyDef[] = [
   mob('cloud_slime', 'Lodo de Nuvem', 'blob', '#f4f8ff'),
   mob('storm_bat', 'Morcego da Tempestade', 'flyer', '#5a6aa0', { abilities: [shoot('#ffe08a', 2, 0.3, 0.8, 4)] }),
   mob('sky_golem', 'Golem Celeste', 'golem', '#c0c8e8', { def: 12 }),
-  elite('griffin', 'Grifo', 'flyer', '#d9a83f', '#ffe08a', [charge(460), shoot('#ffe08a', 4, 0.5)]),
+  elite('griffin', 'Grifo', 'golem', '#d9a83f', '#ffe08a', [charge(460), shoot('#ffe08a', 4, 0.5)]),
   boss('storm_emperor', 'Imperador da Tempestade', 'flyer', '#3a4a90', '#ffe08a', [shoot('#ffe08a', 9, 0.9, 0.9, 3.5), charge(520, 1.8), summon('storm_bat', 3), slam(110)], {
     enrage: true, hp: 1100, drops: [{ itemId: 'star_pendant', chance: 0.6 }],
   }),
@@ -141,5 +142,23 @@ const BOSS_ANIMS: Record<string, [string, string]> = {
 };
 for (const e of ENEMIES) {
   const b = BOSS_ANIMS[e.id];
+  if (b) { e.bossAnim = b[0]; e.name = b[1]; e.sprite = `boss_${b[0]}_idle`; e.spriteScale = 1; }
+}
+
+// Chefes básicos e intermediários (fase 5 de cada região; Minotauro na fase 8 das Ruínas).
+const MINI_BOSSES: Record<string, [string, string]> = {
+  alpha_wolf: ['wolf_alpha', 'Lobo Alfa'],
+  toad_king: ['plant', 'Planta Carnívora'],
+  iron_sentinel: ['stone_golem', 'Golem de Pedra'],
+  scarab: ['serpent', 'Serpente Gigante'],
+  crystal_golem: ['spider', 'Aranha Gigante'],
+  yeti: ['troll', 'Troll Bruto'],
+  salamander: ['orc', 'Orc Comandante'],
+  night_knight: ['fallen_knight', 'Cavaleiro Caído'],
+  griffin: ['dark_mage', 'Mago Sombrio'],
+  minotaur_warrior: ['minotaur', 'Minotauro Guerreiro'],
+};
+for (const e of ENEMIES) {
+  const b = MINI_BOSSES[e.id];
   if (b) { e.bossAnim = b[0]; e.name = b[1]; e.sprite = `boss_${b[0]}_idle`; e.spriteScale = 1; }
 }

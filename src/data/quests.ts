@@ -145,13 +145,13 @@ export const QUESTS: QuestDef[] = [
   {
     id: 'brida4', giver: 'brida', title: 'Gelo eterno',
     intro: ['Gelo que nunca derrete... imagine uma lâmina disso!', 'Derrote os golens e lodos dos Picos Gelados.'],
-    goal: { kind: 'kill', count: 20, enemyIds: ['ice_golem', 'frost_slime', 'yeti'], label: 'Derrote 20 golens de gelo, lodos gélidos ou yetis' },
+    goal: { kind: 'kill', count: 20, enemyIds: ['ice_golem', 'frost_slime', 'yeti'], label: 'Derrote 20 golens de gelo, lodos gélidos ou trolls' },
     reward: { gold: 4000, item: 'frost_fang' }, thanks: 'A Presa Gélida! Minha melhor obra até hoje.', requiresStage: 's55',
   },
   {
     id: 'brida5', giver: 'brida', title: 'Metal das estrelas',
     intro: ['Nas Ilhas Celestes caem pedaços de estrela.', 'Os golens celestes guardam esse metal.'],
-    goal: { kind: 'kill', count: 12, enemyIds: ['sky_golem', 'griffin'], label: 'Derrote 12 golens celestes ou grifos' },
+    goal: { kind: 'kill', count: 12, enemyIds: ['sky_golem', 'griffin'], label: 'Derrote 12 golens celestes ou magos sombrios' },
     reward: { gold: 9000, item: 'sun_greatsword' }, thanks: 'O Montante Solar brilha como o meio-dia. É seu!', requiresStage: 's83',
   },
 ];
