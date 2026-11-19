@@ -93,3 +93,25 @@ export function drawSprite(ctx: CanvasRenderingContext2D, name: string, frame: n
   }
   ctx.restore();
 }
+
+/** Desenha o quadro inteiro esticado no retângulo (blocos de terreno). */
+export function drawTile(ctx: CanvasRenderingContext2D, name: string, x: number, y: number, w: number, h: number): void {
+  const d = ATLAS[name];
+  if (!d || !img) return;
+  const f = d.frames[0];
+  ctx.drawImage(img, f[0], f[1], f[2], f[3], x, y, w, h);
+}
+
+/** Proporção altura/largura do 1º quadro. */
+export function tileAspect(name: string): number {
+  const d = ATLAS[name];
+  return d ? d.frames[0][3] / d.frames[0][2] : 1;
+}
+
+/** Desenha com uma altura final em px (objetos de cenário), pés em (x, y). */
+export function drawSpriteH(ctx: CanvasRenderingContext2D, name: string, x: number, y: number, height: number, facing = 1, o: SpriteOpts = {}): boolean {
+  const d = ATLAS[name];
+  if (!d || !img) return false;
+  drawSprite(ctx, name, 0, x, y, facing, { ...o, scale: (o.scale ?? 1) * height / (d.frames[0][3] * d.scale) });
+  return true;
+}

@@ -5,6 +5,78 @@ import { VIEW_H, VIEW_W } from '../../engine/view';
 import type { SceneryTheme, TerrainSeg } from '../../types';
 import { WORLD_H, type Terrain } from '../terrain';
 import { ellipse, glow, OL, rnd, tone, type Ctx } from './scene3d';
+import { drawTile, spritesReady, tileAspect } from '../../engine/sprites';
+
+/** Blocos de pixel art por região: topo do chão, recheio e plataforma. */
+const PX_TILES: Record<SceneryTheme, { top: string; fill: string; plat: string }> = {
+  village: { top: 'tile_grass', fill: 'tile_dirt', plat: 'tile_moss' },
+  forest: { top: 'tile_grass2', fill: 'tile_dirt', plat: 'tile_moss' },
+  swamp: { top: 'tile_swamp', fill: 'tile_dirt', plat: 'tile_moss_swamp' },
+  ruins: { top: 'tile_sand', fill: 'tile_brick', plat: 'tile_moss_sand' },
+  desert: { top: 'tile_sand', fill: 'tile_sandrock', plat: 'tile_moss_sand' },
+  cave: { top: 'tile_cave', fill: 'tile_cave', plat: 'tile_moss_dark' },
+  snow: { top: 'tile_snow', fill: 'tile_icerock', plat: 'tile_moss_snow' },
+  volcano: { top: 'tile_ash', fill: 'tile_lava', plat: 'tile_moss_lava' },
+  castle: { top: 'tile_darkbrick', fill: 'tile_darkbrick', plat: 'tile_moss_dark' },
+  sky: { top: 'tile_cloud', fill: 'tile_dirt', plat: 'tile_moss' },
+};
+/** largura de cada bloco na tela */
+const TILE_W = 40;
+
+function pxGround(ctx: Ctx, s: TerrainSeg, prev: TerrainSeg | undefined, next: TerrainSeg | undefined, theme: SceneryTheme, camX: number, camY: number): void {
+  const tiles = PX_TILES[theme];
+  const x = s.x0 - camX, w = s.x1 - s.x0, y = s.y - camY;
+  const bottom = Math.min(VIEW_H + 40, WORLD_H + 60 - camY);
+  const topH = Math.round(TILE_W * tileAspect(tiles.top));
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y - 14, w, bottom - y + 14);
+  ctx.clip();
+  ctx.imageSmoothingEnabled = false;
+  // alinhados ao mundo: os blocos não "andam" com a câmera
+  const start = Math.floor(s.x0 / TILE_W) * TILE_W - camX;
+  for (let tx = start; tx < x + w; tx += TILE_W) {
+    for (let ty = y + topH - 8; ty < bottom; ty += TILE_W) drawTile(ctx, tiles.fill, Math.round(tx), Math.round(ty), TILE_W + 1, TILE_W + 1);
+  }
+  // escurece o recheio com a profundidade (fica menos repetitivo e destaca o topo)
+  const g = ctx.createLinearGradient(0, y + topH - 8, 0, y + topH + 120);
+  g.addColorStop(0, 'rgba(10,6,12,0.15)');
+  g.addColorStop(1, 'rgba(10,6,12,0.6)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y + topH - 8, w, bottom - y);
+  for (let tx = start; tx < x + w; tx += TILE_W) drawTile(ctx, tiles.top, Math.round(tx), Math.round(y - 8), TILE_W + 1, topH);
+  ctx.restore();
+  // contorno das laterais expostas (degraus)
+  ctx.strokeStyle = 'rgba(20,16,24,0.7)';
+  ctx.lineWidth = 2;
+  for (const [nb, edgeX] of [[prev, x], [next, x + w]] as const) {
+    if (nb && nb.y > s.y) {
+      ctx.beginPath();
+      ctx.moveTo(edgeX, y - 6);
+      ctx.lineTo(edgeX, nb.y - camY);
+      ctx.stroke();
+    }
+  }
+}
+
+function pxPlatform(ctx: Ctx, p: TerrainSeg, theme: SceneryTheme, camX: number, camY: number): void {
+  const name = PX_TILES[theme].plat;
+  const x = p.x0 - camX, w = p.x1 - p.x0, y = p.y - camY;
+  const tw = 46, th = Math.round(tw * tileAspect(name));
+  ctx.fillStyle = 'rgba(0,0,0,0.1)';
+  ctx.beginPath();
+  ctx.ellipse(x + w / 2, y + th + 26, w * 0.4, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x - 2, y - 14, w + 4, th + 20);
+  ctx.clip();
+  ctx.imageSmoothingEnabled = false;
+  const n = Math.max(1, Math.round(w / tw));
+  const step = w / n;
+  for (let k = 0; k < n; k++) drawTile(ctx, name, Math.round(x + k * step), Math.round(y - 10), Math.ceil(step) + 1, th);
+  ctx.restore();
+}
 
 interface GroundStyle {
   /** cobertura do topo (grama, neve, areia...) */
@@ -41,19 +113,22 @@ const TOP_H = 9;
 
 export function drawTerrain(ctx: Ctx, terrain: Terrain, theme: SceneryTheme, camX: number, camY: number, t: number, seed: number): void {
   const st = STYLES[theme];
+  const pixel = spritesReady();
   const visible = (s: TerrainSeg) => s.x1 - camX > -40 && s.x0 - camX < VIEW_W + 40;
   // chão
   const ground = terrain.ground;
   for (let i = 0; i < ground.length; i++) {
     const s = ground[i];
     if (!visible(s)) continue;
-    drawGroundSeg(ctx, s, ground[i - 1], ground[i + 1], st, camX, camY, t, seed + i);
+    if (pixel) pxGround(ctx, s, ground[i - 1], ground[i + 1], theme, camX, camY);
+    else drawGroundSeg(ctx, s, ground[i - 1], ground[i + 1], st, camX, camY, t, seed + i);
   }
   // plataformas
   for (let i = 0; i < terrain.platforms.length; i++) {
     const p = terrain.platforms[i];
     if (!visible(p)) continue;
-    drawPlatform(ctx, p, st, camX, camY, t, seed * 7 + i);
+    if (pixel) pxPlatform(ctx, p, theme, camX, camY);
+    else drawPlatform(ctx, p, st, camX, camY, t, seed * 7 + i);
   }
 }
 

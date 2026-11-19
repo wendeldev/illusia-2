@@ -83,6 +83,15 @@ import os
 os.makedirs(out, exist_ok=True)
 rgba.save(os.path.join(out, 'cutout.png'))
 json.dump(comps, open(os.path.join(out, 'comps.json'), 'w'))
+# mapa de rótulos (id do componente codificado em RGB) para recortar só o desenho certo
+labimg = Image.new('RGB', (W, H))
+lp = labimg.load()
+for y in range(H):
+    for x in range(W):
+        v = lab[y * W + x]
+        if v:
+            lp[x, y] = (v & 255, (v >> 8) & 255, 0)
+labimg.save(os.path.join(out, 'labels-map.png'))
 
 # prancha numerada
 dbg = Image.new('RGB', (W, H), (40, 40, 48))

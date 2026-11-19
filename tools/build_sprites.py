@@ -20,10 +20,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = os.path.join(ROOT, 'node_modules', '.sprite-cache')
 SRC = os.path.join(ROOT, 'assets-src', 'sheet-hero.png')
 
-if not os.path.exists(os.path.join(TMP, 'comps.json')):
+if not os.path.exists(os.path.join(TMP, 'labels-map.png')):
     subprocess.check_call([sys.executable, '-I', os.path.join(ROOT, 'tools', 'segment.py'), SRC, TMP])
 cut = Image.open(os.path.join(TMP, 'cutout.png')).convert('RGBA')
 comps = {c['k']: c for c in json.load(open(os.path.join(TMP, 'comps.json')))}
+labmap = Image.open(os.path.join(TMP, 'labels-map.png')).convert('RGB')
 assert len(comps) == 238, f'segmentação mudou ({len(comps)} componentes): revise os números abaixo'
 
 # ── o que entra no jogo ───────────────────────────────────────────────
@@ -61,6 +62,46 @@ SINGLE = {
 }
 HERO_H = 52  # altura do herói parado no jogo
 
+# ícones dos equipamentos (id do item -> recorte), altura 28
+ICONS = {
+    'training_sword': 32, 'bronze_sword': 36, 'moon_blade': 35, 'rune_greatsword': 31, 'storm_saber': 38,
+    'ember_blade': 37, 'frost_fang': 34, 'sun_greatsword': 33, 'void_edge': 40,
+    'leather_vest': 58, 'chainmail': 57, 'warden_plate': 42, 'scale_mail': 59, 'ember_plate': 60,
+    'frost_guard': 43, 'aegis_plate': 61,
+    'cloth_hood': 70, 'iron_helm': 69,
+    'sapphire_ring': 82, 'falcon_amulet': 84, 'ember_ring': 83, 'star_pendant': 81,
+}
+ICON_VARIANTS = {'horned_helm': ('iron_helm', 0.08, 1.6, 1.0), 'crown_helm': ('iron_helm', 0.13, 2.5, 1.3)}
+
+# blocos de terreno e objetos de cenário: nome -> recorte (altura no jogo definida na hora de desenhar)
+TILES = {
+    'tile_grass': 189, 'tile_grass2': 190, 'tile_dirt': 208, 'tile_rock': 209, 'tile_brick': 192, 'tile_brick2': 210,
+    'tile_moss': 193, 'tile_moss2': 211,
+    'tree_green': 221, 'tree_snow': 222, 'tree_dead': 223, 'bush': 224, 'bush2': 232,
+    'rock1': 218, 'rock2': 219, 'rock3': 225, 'rock4': 226, 'rock5': 220, 'rock6': 233,
+    'crystal_blue': 234, 'mushroom_deco': 235, 'flowers_y': 236, 'flowers_b': 237,
+    'column': 203, 'column_vine': 205, 'column_thin': 206, 'arch_vine': 204, 'arch': 207,
+    'ruin1': 228, 'ruin2': 229, 'ruin3': 230, 'ruin4': 231, 'waterfall': 227,
+    'banner': 194, 'banner2': 195, 'brazier_px': 196, 'goblet': 197, 'sign': 198, 'fence_px': 199,
+    'barrel_px': 212, 'chest': 213, 'chest_blue': 214, 'chest_red': 215, 'door': 216,
+    'gallows': 200, 'ladder': 201,
+}
+TILE_RECTS = {'tree_orange': (151, 894, 290, 1021), 'tree_pink': (290, 894, 434, 1021)}
+# variações de cor do terreno por região
+TILE_VARIANTS = {
+    'tile_snow': ('tile_grass', 0.0, 0.12, 1.55), 'tile_sand': ('tile_grass', 1.11, 0.5, 1.35),
+    'tile_swamp': ('tile_grass', 0.05, 0.6, 0.8), 'tile_ash': ('tile_rock', 0.0, 0.35, 0.6),
+    'tile_lava': ('tile_rock', 1.02, 0.9, 0.7), 'tile_cave': ('tile_rock', 0.62, 0.5, 0.75),
+    'tile_cloud': ('tile_grass', 0.05, 0.5, 1.3), 'tile_sandrock': ('tile_dirt', 1.08, 0.45, 1.25),
+    'tile_icerock': ('tile_rock', 0.55, 0.6, 1.25), 'tile_darkbrick': ('tile_brick', 0.7, 0.5, 0.7),
+    'tile_moss_snow': ('tile_moss', 0.0, 0.12, 1.55), 'tile_moss_sand': ('tile_moss', 1.1, 0.5, 1.3),
+    'tile_moss_dark': ('tile_moss', 0.62, 0.4, 0.65), 'tile_moss_lava': ('tile_moss', 1.03, 0.7, 0.5),
+    'tile_moss_swamp': ('tile_moss', 0.05, 0.6, 0.8),
+    'tree_dead_dark': ('tree_dead', 0.0, 0.5, 0.6), 'crystal_purple': ('crystal_blue', 0.12, 1.0, 1.0),
+    'crystal_gold': ('crystal_blue', 0.45, 1.0, 1.2), 'column_dark': ('column', 0.65, 0.4, 0.7),
+    'rock_snow': ('rock1', 0.0, 0.15, 1.35), 'rock_lava': ('rock4', -0.05, 1.5, 0.6),
+}
+
 # variações de cor: nome -> (sprite base, deslocamento de matiz 0..1, saturação, brilho)
 VARIANTS = {
     'slime_olive': ('slime_green', 0.08, 0.8, 0.85),
@@ -95,8 +136,22 @@ VARIANTS = {
 # ── limpeza ───────────────────────────────────────────────────────────
 
 def crop(k):
+    """Recorta só os pixels do componente k (vizinhos sobrepostos ficam de fora)."""
     c = comps[k]
-    return cut.crop((c['x'], c['y'], c['x'] + c['w'], c['y'] + c['h']))
+    box = (c['x'], c['y'], c['x'] + c['w'], c['y'] + c['h'])
+    im = cut.crop(box)
+    lm = labmap.crop(box).load()
+    px = im.load()
+    for y in range(im.size[1]):
+        for x in range(im.size[0]):
+            r, g, _ = lm[x, y]
+            if r + (g << 8) != c['id']:
+                px[x, y] = (0, 0, 0, 0)
+    return im
+
+def crop_rect(x0, y0, x1, y1):
+    """Recorte por retângulo (para desenhos grudados na prancha, ex.: árvores 217)."""
+    return cut.crop((x0, y0, x1, y1))
 
 def clean(im):
     """Remove branco preso dentro do desenho (áreas grandes) e a franja clara da borda."""
@@ -152,7 +207,8 @@ def recolor(im, dh, sat, val):
             h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
             if s < 0.12 and v < 0.25:  # contorno escuro: mantém
                 continue
-            h = (h + dh) % 1
+            # dh >= 1: colorir com matiz fixo (dh - 1); senão desloca o matiz
+            h = (dh - 1) if dh >= 1 else (h + dh) % 1
             s = min(1, s * sat)
             v = min(1, v * val)
             r2, g2, b2 = colorsys.hsv_to_rgb(h, s, v)
@@ -184,6 +240,26 @@ for name, (k, h, faces) in SINGLE.items():
     im = clean(crop(k))
     frames[name] = [(im, *feet(im))]
     meta[name] = {'scale': h / im.size[1], 'faces': faces}
+for name, k in ICONS.items():
+    im = clean(crop(k))
+    frames['icon_' + name] = [(im, *feet(im))]
+    meta['icon_' + name] = {'scale': 28 / max(im.size), 'faces': 1}
+for name, (base, dh, sat, val) in ICON_VARIANTS.items():
+    im = recolor(frames['icon_' + base][0][0], dh, sat, val)
+    frames['icon_' + name] = [(im, *feet(im))]
+    meta['icon_' + name] = dict(meta['icon_' + base])
+for name, k in TILES.items():
+    im = clean(crop(k)) if not name.startswith('tile_') else crop(k).crop(crop(k).getbbox())
+    frames[name] = [(im, *feet(im))]
+    meta[name] = {'scale': 1, 'faces': 1}
+for name, r in TILE_RECTS.items():
+    im = clean(crop_rect(*r))
+    frames[name] = [(im, *feet(im))]
+    meta[name] = {'scale': 1, 'faces': 1}
+for name, (base, dh, sat, val) in TILE_VARIANTS.items():
+    im = recolor(frames[base][0][0], dh, sat, val)
+    frames[name] = [(im, *feet(im))]
+    meta[name] = {'scale': 1, 'faces': 1}
 for name, (base, dh, sat, val) in VARIANTS.items():
     im = recolor(frames[base][0][0], dh, sat, val)
     frames[name] = [(im, *feet(im))]

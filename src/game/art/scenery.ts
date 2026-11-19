@@ -6,6 +6,7 @@
 import { VIEW_H, VIEW_W } from '../../engine/view';
 import type { LandmarkDef, StageDef } from '../../types';
 import { BASE_GROUND, type Terrain } from '../terrain';
+import { drawSpriteH, spritesReady } from '../../engine/sprites';
 import {
   alpha, BACK_ROW_Y, ellipse, glow, HORIZON, mix, poly, rnd, seedOf, tone, type Ctx, type Pt,
 } from './scene3d';
@@ -84,6 +85,12 @@ export class Scenery {
       const y = tops.length > 1 && rnd(this.seed, i, 3) < 0.45 ? tops[0] : tops[tops.length - 1];
       this.props.push({ x, y, kind: kinds[Math.floor(rnd(this.seed, i, 5) * kinds.length)], seed: i });
     }
+  }
+
+  /** Desenha um objeto em pixel art (se os sprites já carregaram). Retorna false para usar o vetorial. */
+  private px(ctx: Ctx, name: string, x: number, yb: number, h: number, i = 0): boolean {
+    if (!spritesReady()) return false;
+    return drawSpriteH(ctx, name, x, yb, h, rnd(this.seed, i, 77) < 0.5 ? 1 : -1);
   }
 
   // ───────────────────────── fundo ─────────────────────────
@@ -295,7 +302,9 @@ export class Scenery {
       const wx = sx + camX;
       if (wx < 0 || wx > this.stage.width || this.nearLandmark(wx, 30)) return;
       const r = rnd(this.seed, i, 30);
-      if (r < 0.45) roundTree(ctx, sx + 20, BACK_ROW_Y - 2, 0.9 + rnd(this.seed, i, 31) * 0.3, { trunk: '#8a5a3a', leaves: '#5f9a48' }, i, t);
+      if (r < 0.45 && this.px(ctx, ['tree_green', 'tree_green', 'tree_orange', 'tree_pink'][Math.floor(rnd(this.seed, i, 70) * 4)], sx + 20, BACK_ROW_Y + 2, 82 + rnd(this.seed, i, 31) * 24, i)) { /* pixel art */ }
+      else if (r < 0.75 && this.px(ctx, 'bush', sx + 20, BACK_ROW_Y + 2, 22, i)) { /* pixel art */ }
+      else if (r < 0.45) roundTree(ctx, sx + 20, BACK_ROW_Y - 2, 0.9 + rnd(this.seed, i, 31) * 0.3, { trunk: '#8a5a3a', leaves: '#5f9a48' }, i, t);
       else if (r < 0.75) bush(ctx, sx + 20, BACK_ROW_Y, 1, '#6aa84f', i);
       else fence(ctx, sx, BACK_ROW_Y + 2, 48);
     });
@@ -339,7 +348,11 @@ export class Scenery {
       const r = rnd(this.seed, i, 30);
       const x = sx + rnd(this.seed, i, 31) * 24;
       const s = 1.1 + rnd(this.seed, i, 32) * 0.45;
-      if (r < 0.5) pine(ctx, x, BACK_ROW_Y - 2, s, { trunk: '#6b4a32', leaves: '#2f6a42' }, i, t);
+      // pixel art: árvores mais espaçadas (os desenhos são largos)
+      if (spritesReady() && r >= 0.45 && r < 0.75) { /* clareira */ }
+      else if (r < 0.45 && this.px(ctx, r < 0.3 ? 'tree_green' : 'tree_orange', x, BACK_ROW_Y + 2, 80 * s, i)) { /* pixel art */ }
+      else if (r >= 0.75 && this.px(ctx, 'bush2', x, BACK_ROW_Y + 2, 24, i)) { /* pixel art */ }
+      else if (r < 0.5) pine(ctx, x, BACK_ROW_Y - 2, s, { trunk: '#6b4a32', leaves: '#2f6a42' }, i, t);
       else if (r < 0.85) roundTree(ctx, x, BACK_ROW_Y - 2, s, { trunk: '#6b4a32', leaves: '#3f8a45' }, i, t);
       else bush(ctx, x, BACK_ROW_Y, 1.1, '#4f9a48', i);
       if (rnd(this.seed, i, 33) < 0.3) rock(ctx, x + 26, BACK_ROW_Y + 3, 0.8, '#8a9488', i);
@@ -386,7 +399,9 @@ export class Scenery {
       const r = rnd(this.seed, i, 30);
       const x = sx + rnd(this.seed, i, 31) * 30;
       const base = '#d8c4a0';
-      if (r < 0.3) archRuin(ctx, x, BACK_ROW_Y, base, i);
+      const ruinPx = ['arch', 'arch_vine', 'column', 'column_vine', 'ruin1', 'ruin2', 'ruin3', 'ruin4'][Math.floor(r * 8)];
+      if (this.px(ctx, ruinPx, x + 20, BACK_ROW_Y + 3, ruinPx.startsWith('ruin') ? 60 : 84 + rnd(this.seed, i, 32) * 16, i)) { /* pixel art */ }
+      else if (r < 0.3) archRuin(ctx, x, BACK_ROW_Y, base, i);
       else if (r < 0.7) column(ctx, x + 20, BACK_ROW_Y, 50 + rnd(this.seed, i, 32) * 50, 16, base, rnd(this.seed, i, 33) < 0.6, i);
       else ruinWall(ctx, x, BACK_ROW_Y, 60 + rnd(this.seed, i, 34) * 30, '#c8b08a', i);
     });
@@ -489,6 +504,26 @@ export class Scenery {
   drawProp(ctx: Ctx, p: SceneProp, camX: number, camY: number, t: number): void {
     const x = p.x - camX, y = p.y - camY + 1;
     if (x < -60 || x > VIEW_W + 60) return;
+    if (spritesReady()) {
+      const r = rnd(this.seed, p.seed, 85);
+      const pxProp: Partial<Record<PropKind, [string, number]>> = {
+        barrel: ['barrel_px', 24], rock: [['rock1', 'rock2', 'rock3', 'rock4', 'rock5', 'rock6'][Math.floor(r * 6)], 20],
+        mushrooms: ['mushroom_deco', 18], stub: ['column_thin', 30], iceRock: ['rock_snow', 20], lavaRock: ['rock_lava', 20],
+        brazier: ['brazier_px', 34], goldCrystal: ['crystal_gold', 24], stump: ['bush', 18],
+        crystal: [r < 0.5 ? 'crystal_blue' : 'crystal_purple', 26], crate: [r < 0.5 ? 'chest' : 'barrel_px', 22],
+        vase: ['flowers_y', 16], bones: ['rock6', 16],
+      };
+      const sp = pxProp[p.kind];
+      if (sp && drawSpriteH(ctx, sp[0], x, y + 1, sp[1], r < 0.5 ? 1 : -1)) {
+        if (p.kind === 'crystal' || p.kind === 'goldCrystal') {
+          const c = p.kind === 'goldCrystal' ? '#ffe08a' : r < 0.5 ? '#5ff0e0' : '#c49bff';
+          glow(ctx, x, y - 12, 40, c, 0.3);
+          this.lights.push({ x, y: y - 10, r: 55, color: c });
+        }
+        if (p.kind === 'brazier') glow(ctx, x, y - 30, 36, '#ff9a3c', 0.35);
+        return;
+      }
+    }
     switch (p.kind) {
       case 'barrel': barrel(ctx, x, y); break;
       case 'crate': crate(ctx, x - 9, y, 1 + rnd(this.seed, p.seed, 80) * 0.3); break;
@@ -701,7 +736,9 @@ export class Scenery {
     this.each(camX, 1, 75, 120, (i, sx) => {
       const r = rnd(this.seed, i, 30);
       const x = sx + rnd(this.seed, i, 31) * 30;
-      if (r < 0.5) deadTree(ctx, x, BACK_ROW_Y, 1 + rnd(this.seed, i, 32) * 0.3, '#5a4a3a', i, t);
+      if (r < 0.5 && this.px(ctx, 'tree_dead_dark', x, BACK_ROW_Y + 2, 90 + rnd(this.seed, i, 32) * 20, i)) { /* pixel art */ }
+      else if (r >= 0.5 && r < 0.75 && this.px(ctx, 'bush2', x, BACK_ROW_Y + 2, 22, i)) { /* pixel art */ }
+      else if (r < 0.5) deadTree(ctx, x, BACK_ROW_Y, 1 + rnd(this.seed, i, 32) * 0.3, '#5a4a3a', i, t);
       else if (r < 0.75) bush(ctx, x, BACK_ROW_Y, 1, '#4f6a3a', i);
       else rock(ctx, x, BACK_ROW_Y + 2, 1, '#7a8478', i);
       if (rnd(this.seed, i, 33) < 0.6) reeds(ctx, x + 24, BACK_ROW_Y + 3, 1, t, i);
@@ -739,6 +776,7 @@ export class Scenery {
       const x = sx + rnd(this.seed, i, 31) * 30;
       if (r < 0.4) cactus(ctx, x, BACK_ROW_Y, 1 + rnd(this.seed, i, 32) * 0.3, i);
       else if (r < 0.55) palm(ctx, x, BACK_ROW_Y, 1.1, t, i);
+      else if (r < 0.75 && this.px(ctx, 'rock3', x, BACK_ROW_Y + 3, 24, i)) { /* pixel art */ }
       else if (r < 0.75) rock(ctx, x, BACK_ROW_Y + 2, 1.4, '#c0805a', i);
       else if (r < 0.9) ruinWall(ctx, x - 20, BACK_ROW_Y, 60, '#d8b07a', i);
       else column(ctx, x, BACK_ROW_Y, 40 + rnd(this.seed, i, 33) * 30, 14, '#e0c090', true, i);
@@ -772,7 +810,9 @@ export class Scenery {
     this.each(camX, 1, 66, 120, (i, sx) => {
       const r = rnd(this.seed, i, 30);
       const x = sx + rnd(this.seed, i, 31) * 24;
-      if (r < 0.6) snowPine(ctx, x, BACK_ROW_Y - 2, 1.1 + rnd(this.seed, i, 32) * 0.4, i, t);
+      if (r < 0.6 && this.px(ctx, 'tree_snow', x, BACK_ROW_Y + 2, 84 + rnd(this.seed, i, 32) * 26, i)) { /* pixel art */ }
+      else if (r >= 0.6 && r < 0.8 && this.px(ctx, 'rock_snow', x, BACK_ROW_Y + 3, 26, i)) { /* pixel art */ }
+      else if (r < 0.6) snowPine(ctx, x, BACK_ROW_Y - 2, 1.1 + rnd(this.seed, i, 32) * 0.4, i, t);
       else if (r < 0.8) iceRock(ctx, x, BACK_ROW_Y + 2, 1.3, i);
       else bush(ctx, x, BACK_ROW_Y, 1, '#dfe8f2', i);
     });
@@ -874,7 +914,8 @@ export class Scenery {
     this.each(camX, 1, 95, 140, (i, sx) => {
       const r = rnd(this.seed, i, 30);
       const x = sx + rnd(this.seed, i, 31) * 30;
-      if (r < 0.5) column(ctx, x, BACK_ROW_Y, 60 + rnd(this.seed, i, 32) * 40, 16, '#f2eee4', rnd(this.seed, i, 33) < 0.35, i);
+      if (r < 0.7 && this.px(ctx, ['column', 'arch', 'column_thin', 'arch'][Math.floor(r / 0.175)], x, BACK_ROW_Y + 3, 84 + rnd(this.seed, i, 32) * 20, i)) { /* pixel art */ }
+      else if (r < 0.5) column(ctx, x, BACK_ROW_Y, 60 + rnd(this.seed, i, 32) * 40, 16, '#f2eee4', rnd(this.seed, i, 33) < 0.35, i);
       else if (r < 0.7) archRuin(ctx, x, BACK_ROW_Y, '#f2eee4', i);
       else if (r < 0.85) {
         crystal(ctx, x, BACK_ROW_Y - 20 + Math.sin(t + i) * 4, 1.3, '#ffe08a', t, i);

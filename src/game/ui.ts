@@ -1,6 +1,7 @@
 import { getEnemy, getItem, getStage, REGIONS, SKILLS, STAGES_PER_REGION, stageId, type QuestDef } from '../data';
 import type { Sfx } from '../engine/audio';
 import type { Music } from '../engine/music';
+import { drawSpriteH, hasSprite } from '../engine/sprites';
 import { rewardText, type QuestBook } from './quests';
 import { countStars, DAMAGE_LIMIT, drawStar, drawStars, formatTime, type StageResult } from './stars';
 import type { Input, TouchButton } from '../engine/input';
@@ -441,8 +442,17 @@ export class Ui {
     const equipped = progress.equipped[item.slot] === itemId;
     ctx.fillStyle = selected ? '#34406a' : '#252e45';
     ctx.fillRect(x, y, w, h - 3);
-    text(ctx, item.name, x + 8, y + h / 2 - 5, { size: 11, outline: false });
-    text(ctx, `${SLOT_NAMES[item.slot]} · ${describeBonus(item)}`, x + 8, y + h / 2 + 6, { size: 8, outline: false, color: '#aab4cc', bold: false });
+    // ícone do item (pixel art)
+    let tx = x + 8;
+    if (hasSprite('icon_' + itemId)) {
+      const sz = h - 6;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(x + 4, y + 1.5, sz, sz);
+      drawSpriteH(ctx, 'icon_' + itemId, x + 4 + sz / 2, y + 1.5 + sz - 1, sz - 3);
+      tx = x + sz + 10;
+    }
+    text(ctx, item.name, tx, y + h / 2 - 5, { size: 11, outline: false });
+    text(ctx, `${SLOT_NAMES[item.slot]} · ${describeBonus(item)}`, tx, y + h / 2 + 6, { size: 8, outline: false, color: '#aab4cc', bold: false });
     let label: string, color: string;
     if (equipped) { label = 'Equipado'; color = '#8fe07a'; }
     else if (owned) { label = 'Equipar'; color = '#9cc4ff'; }
