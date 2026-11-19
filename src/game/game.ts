@@ -63,6 +63,10 @@ export class Game implements GameApi {
     if (!this.progress.classId) this.ui.openClasses(true);
   }
 
+  save(): void {
+    saveProgress(this.progress);
+  }
+
   chooseClass(id: string): void {
     const changed = this.progress.classId !== id;
     this.progress.classId = id;

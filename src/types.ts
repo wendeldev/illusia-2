@@ -60,7 +60,21 @@ export interface EquipmentDef extends StatBonus {
   look?: EquipmentLook;
 }
 
-export type SkillKind = 'melee' | 'projectile' | 'aoe';
+export type SkillKind =
+  | 'melee' | 'projectile' | 'aoe'
+  /** avança atravessando os inimigos */
+  | 'dash'
+  /** explosão num ponto à frente */
+  | 'blast'
+  /** sequência de explosões saindo do chão à frente */
+  | 'erupt'
+  /** cai no inimigo mais próximo */
+  | 'strike'
+  /** vários objetos caindo do céu à frente */
+  | 'rain'
+  /** nuvem que fica causando dano */
+  | 'cloud'
+  | 'heal' | 'shield' | 'empower';
 
 export interface SkillDef {
   id: string;
@@ -81,8 +95,15 @@ export interface SkillDef {
   knockback: number;
   unlockLevel: number;
   color: string;
-  /** desenho do projétil (atlas) */
+  /** desenho do projétil/efeito (atlas) */
   fx?: string;
+  /** animação do personagem lançando o poder (atlas) e ícone do botão */
+  anim?: string;
+  icon?: string;
+  /** quantidade (projéteis, meteoros...) */
+  count?: number;
+  /** duração (nuvem, escudo, fúria) em segundos */
+  duration?: number;
 }
 
 export interface DropDef {

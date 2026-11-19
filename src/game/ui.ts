@@ -3,6 +3,7 @@ import type { Sfx } from '../engine/audio';
 import type { Music } from '../engine/music';
 import { drawSprite, drawSpriteH, hasSprite, spritesReady } from '../engine/sprites';
 import { rewardText, type QuestBook } from './quests';
+import { assignSlot, SLOT_COUNT, slotSkills } from './skillslots';
 import { countStars, DAMAGE_LIMIT, drawStar, drawStars, formatTime, type StageResult } from './stars';
 import type { Input, TouchButton } from '../engine/input';
 import { VIEW_H, VIEW_W } from '../engine/view';
@@ -26,6 +27,7 @@ export interface GameApi {
   returnToTown(): void;
   travel(stageId: string): void;
   chooseClass(id: string): void;
+  save(): void;
 }
 
 type Modal =
@@ -33,6 +35,7 @@ type Modal =
   | { kind: 'offer'; npc: NpcDef; quest: QuestDef; sel: number }
   | { kind: 'quests' }
   | { kind: 'classes'; sel: number; first: boolean }
+  | { kind: 'skills'; slot: number; sel: number }
   | { kind: 'result'; r: StageResult; t: number; shown: number }
   | { kind: 'shop'; npc: NpcDef; sel: number; scroll: number }
   | { kind: 'menu'; sel: number; scroll: number }
@@ -51,9 +54,10 @@ interface Region {
 const BUTTON_LAYOUT: TouchButton[] = [
   { action: 'attack', x: 60, y: 298, r: 34, label: '⚔' },
   { action: 'jump', x: 142, y: 320, r: 27, label: '▲' },
-  { action: 'skill1', x: 128, y: 242, r: 21, label: '1' },
-  { action: 'skill2', x: 58, y: 212, r: 21, label: '2' },
-  { action: 'skill3', x: 196, y: 266, r: 20, label: '3' },
+  { action: 'skill1', x: 132, y: 250, r: 22, label: '1' },
+  { action: 'skill2', x: 66, y: 214, r: 22, label: '2' },
+  { action: 'skill3', x: 200, y: 280, r: 22, label: '3' },
+  { action: 'skill4', x: 140, y: 186, r: 22, label: '4' },
   { action: 'interact', x: 214, y: 330, r: 16, label: '✋' },
   { action: 'menu', x: 26, y: 24, r: 16, label: '☰' },
 ];
@@ -258,6 +262,16 @@ export class Ui {
       case 'quests':
         if (confirm || back) this.close();
         break;
+      case 'skills': {
+        const list = this.game.world.cls.skills;
+        if (left) m.slot = (m.slot + SLOT_COUNT - 1) % SLOT_COUNT;
+        if (right) m.slot = (m.slot + 1) % SLOT_COUNT;
+        if (up) m.sel = Math.max(0, m.sel - 1);
+        if (down) m.sel = Math.min(list.length - 1, m.sel + 1);
+        if (confirm && list[m.sel]) this.pickSkill(m, list[m.sel].id);
+        if (back) this.modal = { kind: 'menu', sel: 0, scroll: 0 };
+        break;
+      }
       case 'classes':
         if (left) m.sel = (m.sel + CLASSES.length - 1) % CLASSES.length;
         if (right) m.sel = (m.sel + 1) % CLASSES.length;
@@ -315,6 +329,7 @@ export class Ui {
       case 'offer': return this.drawOffer(ctx, m);
       case 'quests': return this.drawQuests(ctx);
       case 'classes': return this.drawClasses(ctx, m);
+      case 'skills': return this.drawSkills(ctx, m);
       case 'result': return this.drawResult(ctx, m);
       case 'dead': return this.drawDead(ctx);
     }
@@ -371,7 +386,7 @@ export class Ui {
     const input = this.input;
     const { world, progress } = this.game;
     if (!input.touchMode) {
-      text(ctx, 'Andar: A/D ←→ · Pular: Espaço · Escada: W/S ↑↓ · Descer: S+Espaço · Atacar: J · Poderes: K L I · Falar: E · Menu: M', VIEW_W / 2, VIEW_H - 10,
+      text(ctx, 'Andar: A/D · Pular: Espaço · Escada: W/S · Atacar: J · Poderes: K L I O · Falar: E · Menu: M', VIEW_W / 2, VIEW_H - 10,
         { size: 10, align: 'center', color: 'rgba(255,255,255,0.85)' });
       return;
     }
@@ -382,38 +397,54 @@ export class Ui {
     circle(ctx, j?.x ?? jx, j?.y ?? jy, 18, '#fff');
     ctx.globalAlpha = 1;
 
+    const slots = slotSkills(progress);
     for (const b of BUTTONS) {
       if (b.action === 'menu') continue;
       const skillIdx = b.action.startsWith('skill') ? Number(b.action.slice(5)) - 1 : -1;
-      const skill = world.cls.skills[skillIdx];
+      const skill = skillIdx >= 0 ? slots[skillIdx] : null;
       if (skillIdx >= 0 && !skill) continue;
       const active = b.action !== 'interact' || !!world.nearby();
-      ctx.globalAlpha = active ? 0.55 : 0.25;
-      circle(ctx, b.x, b.y, b.r, '#000');
+      // botão estilo "ícone com moldura dourada"
+      ctx.globalAlpha = active ? 0.62 : 0.28;
+      circle(ctx, b.x, b.y, b.r, '#14101c');
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = skill ? skill.color : 'rgba(255,255,255,0.7)';
-      ctx.lineWidth = 2;
+      if (skill && hasSprite(skill.icon) && progress.level >= skill.unlockLevel) {
+        const sz = b.r * 1.62;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r - 1.5, 0, Math.PI * 2);
+        ctx.clip();
+        drawSpriteH(ctx, skill.icon, b.x, b.y + sz / 2, sz);
+        const cd = world.player.cooldowns[skill.id] ?? 0;
+        const noMp = world.player.mp < skill.mpCost;
+        if (cd > 0 || noMp) {
+          ctx.fillStyle = noMp && cd <= 0 ? 'rgba(20,30,80,0.55)' : 'rgba(0,0,0,0.62)';
+          ctx.beginPath();
+          ctx.moveTo(b.x, b.y);
+          ctx.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (cd > 0 ? cd / skill.cooldown : 1));
+          ctx.fill();
+        }
+        ctx.restore();
+        if ((world.player.cooldowns[skill.id] ?? 0) > 0) text(ctx, `${Math.ceil(world.player.cooldowns[skill.id])}`, b.x, b.y, { size: 12, align: 'center' });
+        text(ctx, `${skill.mpCost}`, b.x + b.r * 0.62, b.y + b.r * 0.72, { size: 7, align: 'center', color: '#9cc4ff' });
+      } else if (skill) {
+        if (progress.level < skill.unlockLevel) text(ctx, `Nv${skill.unlockLevel}`, b.x, b.y, { size: 9, align: 'center', color: '#aaa' });
+        else {
+          text(ctx, skill.name.split(' ')[0], b.x, b.y - 4, { size: 8, align: 'center' });
+          text(ctx, `${skill.mpCost} MP`, b.x, b.y + 7, { size: 7, align: 'center', color: '#9cc4ff' });
+        }
+      } else {
+        text(ctx, b.label, b.x, b.y + 1, { size: b.r * 0.9, align: 'center', color: '#ffe9a8' });
+      }
+      // moldura dourada
+      ctx.strokeStyle = '#3a2a10';
+      ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
       ctx.stroke();
-      if (skill) {
-        if (progress.level < skill.unlockLevel) {
-          text(ctx, `Nv${skill.unlockLevel}`, b.x, b.y, { size: 9, align: 'center', color: '#aaa' });
-          continue;
-        }
-        const cd = world.player.cooldowns[skill.id] ?? 0;
-        if (cd > 0) {
-          ctx.fillStyle = 'rgba(0,0,0,0.6)';
-          ctx.beginPath();
-          ctx.moveTo(b.x, b.y);
-          ctx.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (cd / skill.cooldown));
-          ctx.fill();
-        }
-        text(ctx, skill.name.split(' ')[0], b.x, b.y - 4, { size: 8, align: 'center' });
-        text(ctx, `${skill.mpCost} MP`, b.x, b.y + 7, { size: 7, align: 'center', color: '#9cc4ff' });
-      } else {
-        text(ctx, b.label, b.x, b.y + 1, { size: b.r * 0.9, align: 'center' });
-      }
+      ctx.strokeStyle = skill ? '#e0b04f' : 'rgba(224,176,79,0.85)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
     }
   }
 
@@ -509,14 +540,22 @@ export class Ui {
       text(ctx, k, lx, y + 42 + i * 17, { size: 11, color: '#aab4cc', outline: false });
       text(ctx, v, lx + 190, y + 42 + i * 17, { size: 11, align: 'right', outline: false });
     });
-    text(ctx, 'Poderes', lx, y + 192, { size: 12, color: '#ffe9a8' });
-    world.cls.skills.forEach((sk, i) => {
-      const locked = progress.level < sk.unlockLevel;
-      const yy = y + 212 + i * 30;
-      text(ctx, `${i + 1}. ${sk.name}`, lx, yy, { size: 11, color: locked ? '#777' : sk.color, outline: false });
-      text(ctx, locked ? `Desbloqueia no nível ${sk.unlockLevel}` : `${sk.mpCost} MP · ${sk.cooldown}s · ${sk.description}`,
-        lx, yy + 12, { size: 8, color: '#aab4cc', outline: false, bold: false });
-    });
+    text(ctx, 'Poderes nos botões', lx, y + 192, { size: 12, color: '#ffe9a8' });
+    const slotsM = slotSkills(progress);
+    for (let k = 0; k < SLOT_COUNT; k++) {
+      const sx = lx + k * 46, sy = y + 204;
+      ctx.fillStyle = '#252e45';
+      ctx.fillRect(sx, sy, 40, 40);
+      const sk = slotsM[k];
+      if (sk && hasSprite(sk.icon)) drawSpriteH(ctx, sk.icon, sx + 20, sy + 38, 36);
+      else if (sk) text(ctx, sk.name.split(' ')[0], sx + 20, sy + 20, { size: 8, align: 'center', outline: false });
+      text(ctx, `${k + 1}`, sx + 4, sy + 6, { size: 8, outline: true, color: '#ffe9a8' });
+    }
+    const bx2 = lx, by2 = y + 250;
+    ctx.fillStyle = '#3f5fb0';
+    ctx.fillRect(bx2, by2, 180, 20);
+    text(ctx, '✦ Trocar poderes', bx2 + 90, by2 + 10, { size: 10, align: 'center', outline: false });
+    this.regions.push({ x: bx2, y: by2 - 2, w: 180, h: 24, fn: () => { this.modal = { kind: 'skills', slot: 0, sel: 0 }; this.game.sfx.play('ui'); } });
 
     // som, música e diário de missões
     const { sfx, music } = this.game;
@@ -648,6 +687,63 @@ export class Ui {
     this.regions.push({ x: bx, y: by, w: bw, h: 32, fn: () => this.mapEnter(m) });
   }
 
+  private pickSkill(m: Extract<Modal, { kind: 'skills' }>, id: string): void {
+    const sk = this.game.world.cls.skills.find((s) => s.id === id);
+    if (!sk) return;
+    if (this.game.progress.level < sk.unlockLevel) {
+      this.toast(`${sk.name} desbloqueia no nível ${sk.unlockLevel}`);
+      this.game.sfx.play('nomp');
+      return;
+    }
+    assignSlot(this.game.progress, m.slot, id);
+    this.game.save();
+    this.game.sfx.play('ui');
+    this.toast(`${sk.name} no botão ${m.slot + 1}`);
+    m.slot = (m.slot + 1) % SLOT_COUNT;
+  }
+
+  private drawSkills(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'skills' }>): void {
+    const { progress, world } = this.game;
+    const x = 16, y = 10, w = VIEW_W - 32, h = VIEW_H - 20;
+    this.panel(ctx, x, y, w, h, `Poderes · ${world.cls.name}`);
+    // botões 1-4 (escolha qual trocar)
+    const slots = slotSkills(progress);
+    text(ctx, 'Escolha o botão e depois o poder:', x + 14, y + 40, { size: 10, outline: false, color: '#aab4cc' });
+    for (let k = 0; k < SLOT_COUNT; k++) {
+      const sx = x + 210 + k * 54, sy = y + 26;
+      const sel = k === m.slot;
+      ctx.fillStyle = sel ? '#4a5a90' : '#252e45';
+      ctx.fillRect(sx, sy, 46, 30);
+      ctx.strokeStyle = sel ? '#ffd36b' : '#3a4560';
+      ctx.lineWidth = sel ? 2 : 1;
+      ctx.strokeRect(sx, sy, 46, 30);
+      const sk = slots[k];
+      if (sk && hasSprite(sk.icon)) drawSpriteH(ctx, sk.icon, sx + 30, sy + 28, 26);
+      text(ctx, `${k + 1}`, sx + 8, sy + 15, { size: 12, color: '#ffe9a8' });
+      this.regions.push({ x: sx, y: sy, w: 46, h: 30, fn: () => { m.slot = k; this.game.sfx.play('ui'); } });
+    }
+    // lista dos poderes (2 colunas)
+    const list = world.cls.skills;
+    const cw = (w - 30) / 2, ch = 62;
+    list.forEach((sk, i) => {
+      const cx = x + 10 + (i % 2) * (cw + 10), cy = y + 64 + Math.floor(i / 2) * (ch + 4);
+      const locked = progress.level < sk.unlockLevel;
+      const inSlot = slots.findIndex((q) => q?.id === sk.id);
+      ctx.fillStyle = i === m.sel ? '#34406a' : '#252e45';
+      ctx.fillRect(cx, cy, cw, ch);
+      if (hasSprite(sk.icon)) {
+        ctx.globalAlpha = locked ? 0.35 : 1;
+        drawSpriteH(ctx, sk.icon, cx + 28, cy + 54, 48);
+        ctx.globalAlpha = 1;
+      }
+      text(ctx, sk.name, cx + 58, cy + 12, { size: 11, outline: false, color: locked ? '#777' : '#ffffff' });
+      text(ctx, locked ? `🔒 Nível ${sk.unlockLevel}` : `${sk.mpCost} MP · ${sk.cooldown}s`, cx + 58, cy + 26, { size: 9, outline: false, color: locked ? '#ff9b9b' : '#9cc4ff', bold: false });
+      wrapText(ctx, sk.description, cw - 66, 8).slice(0, 2).forEach((l, k) => text(ctx, l, cx + 58, cy + 39 + k * 10, { size: 8, outline: false, color: '#aab4cc', bold: false }));
+      if (inSlot >= 0) text(ctx, `[${inSlot + 1}]`, cx + cw - 8, cy + 12, { size: 10, align: 'right', color: '#ffd36b', outline: false });
+      this.regions.push({ x: cx, y: cy, w: cw, h: ch, fn: () => { m.sel = i; this.pickSkill(m, sk.id); } });
+    });
+  }
+
   private drawClasses(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'classes' }>): void {
     const x = 16, y = 12, w = VIEW_W - 32, h = VIEW_H - 24;
     this.panel(ctx, x, y, w, h, m.first ? 'Escolha sua classe' : 'Trocar de classe', !m.first);
@@ -681,7 +777,8 @@ export class Ui {
     const stat = (v: number) => (v > 1.05 ? '▲' : v < 0.95 ? '▼' : '•');
     text(ctx, `Vida ${stat(mods.hp)}  MP ${stat(mods.mp)}  Ataque ${stat(mods.atk)}  Defesa ${stat(mods.def)}  Crítico ${stat(mods.crit)}`,
       x + 16, iy + 42, { size: 10, outline: false, color: '#9cc4ff' });
-    text(ctx, `Poderes: ${c.skills.map((s) => s.name).join(' · ')}`, x + 16, iy + 60, { size: 10, outline: false, color: '#ffd36b', bold: false });
+    if (c.skills.some((s) => s.icon)) c.skills.forEach((s, k) => drawSpriteH(ctx, s.icon!, x + 30 + k * 30, iy + 82, 26));
+    else text(ctx, `Poderes: ${c.skills.map((s) => s.name).join(' · ')}`, x + 16, iy + 60, { size: 10, outline: false, color: '#ffd36b', bold: false });
     const bw = 130, bx = x + w - bw - 14, by = iy;
     ctx.fillStyle = '#3f8a45';
     ctx.fillRect(bx, by, bw, 34);

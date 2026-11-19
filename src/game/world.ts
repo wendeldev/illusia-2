@@ -1,4 +1,5 @@
 import { getClass, getEnemy, getItem, getNpc, MAP_PORTAL, type ClassDef } from '../data';
+import { slotSkills } from './skillslots';
 import type { SoundName } from '../engine/audio';
 import type { Input } from '../engine/input';
 import { VIEW_W, VIEW_H } from '../engine/view';
@@ -82,6 +83,40 @@ export interface Player extends Body {
   coyote: number;
   /** subindo/descendo uma escada */
   climbing: boolean;
+  /** animação do poder sendo lançado (atlas) */
+  castAnim: string | null;
+  castT: number;
+  castDur: number;
+  /** escudo (reduz dano) e fúria das sombras (mais dano), em segundos */
+  shieldT: number;
+  empowerT: number;
+  /** investida/teleporte em andamento */
+  dash: { vx: number; t: number; hit: Set<Enemy>; skill: SkillDef } | null;
+}
+
+/** Efeito de poder no mundo: explosão, espinhos, raio, meteoro, nuvem... */
+interface Spell {
+  name: string;
+  x: number;
+  /** pés do efeito (chão) */
+  y: number;
+  ground: number;
+  dir: number;
+  /** negativo = ainda vai começar (atraso) */
+  t: number;
+  dur: number;
+  hits: number[];
+  hitIdx: number;
+  radius: number;
+  mul: number;
+  knock: number;
+  color: string;
+  /** cai do céu até o chão (meteoro, adaga) */
+  falling: boolean;
+  landed: boolean;
+  /** dano contínuo (nuvem) */
+  tick: number;
+  tickT: number;
 }
 
 export interface Enemy extends Body {
@@ -211,6 +246,7 @@ export class World {
   playerLook: HumanLook;
   enemies: Enemy[] = [];
   private projectiles: Projectile[] = [];
+  private spells: Spell[] = [];
   private enemyShots: EnemyShot[] = [];
   private texts: FloatText[] = [];
   private effects: Effect[] = [];
@@ -253,7 +289,7 @@ export class World {
       mp: Math.min(keep?.mp ?? this.stats.maxMp, this.stats.maxMp), maxMp: this.stats.maxMp,
       hitStun: 0, flash: 0, attackTimer: 0, comboStep: 0, comboWindow: 0,
       anim: null, animT: 0, animDur: 1, moving: false, deadAnim: 0, pending: null,
-      cooldowns: {}, invuln: 0, dead: false, deadTimer: 0, walk: 0, buffered: null, bufferT: 0, jumpBuffer: 0, coyote: 0, climbing: false,
+      cooldowns: {}, invuln: 0, dead: false, deadTimer: 0, walk: 0, buffered: null, bufferT: 0, jumpBuffer: 0, coyote: 0, climbing: false, castAnim: null, castT: 0, castDur: 1, shieldT: 0, empowerT: 0, dash: null,
     };
     this.camX = this.cameraTarget();
     this.camY = this.cameraTargetY();
@@ -320,6 +356,11 @@ export class World {
     this.texts.push({ x: x + (Math.random() - 0.5) * 10, y, text: str, color, life, maxLife: life, size });
   }
 
+  /** poderes nos 4 botões */
+  get slots(): (SkillDef | null)[] {
+    return slotSkills(this.progress);
+  }
+
   /** classe do jogador */
   get cls(): ClassDef {
     return getClass(this.progress.classId);
@@ -347,6 +388,9 @@ export class World {
     for (const id in p.cooldowns) p.cooldowns[id] = Math.max(0, p.cooldowns[id] - dt);
     p.flash = Math.max(0, p.flash - dt);
     p.invuln = Math.max(0, p.invuln - dt);
+    p.shieldT = Math.max(0, p.shieldT - dt);
+    p.empowerT = Math.max(0, p.empowerT - dt);
+    if (p.castAnim) { p.castT += dt; if (p.castT >= p.castDur) p.castAnim = null; }
 
     if (p.dead) {
       moveBody(p, p.vx * dt, dt, this.terrain, 0, this.stage.width);
@@ -366,6 +410,7 @@ export class World {
     this.separateEnemies();
     this.updateProjectiles(dt);
     this.updateEnemyShots(dt);
+    this.updateSpells(dt);
 
     for (const t of this.texts) { t.life -= dt; t.y -= 28 * dt; }
     this.texts = this.texts.filter((t) => t.life > 0);
@@ -434,7 +479,9 @@ export class World {
     const minX = this.waveActive ? this.camX + 16 : 16;
     const maxX = this.waveActive ? this.camX + VIEW_W - 16 : this.stage.width - 16;
     const wasAir = !p.onGround;
-    moveBody(p, (move * PLAYER_SPEED + p.vx) * dt, dt, this.terrain, minX, maxX);
+    const dashVx = p.dash ? p.dash.vx : 0;
+    moveBody(p, (move * PLAYER_SPEED + p.vx + dashVx) * dt, dt, this.terrain, minX, maxX);
+    if (p.dash) this.updateDash(dt);
     if (wasAir && p.onGround) this.sound('land');
     p.vx *= Math.pow(0.002, dt);
     p.moving = move !== 0 && p.onGround;
@@ -523,8 +570,8 @@ export class World {
       p.buffered = { kind: 'attack', count: Math.min(2, queued + 1) };
       p.bufferT = 0.35;
     }
-    this.cls.skills.forEach((skill, i) => {
-      if (input.consume(`skill${i + 1}` as 'skill1')) { p.buffered = { kind: 'skill', skill }; p.bufferT = 0.35; }
+    this.slots.forEach((skill, i) => {
+      if (skill && input.consume(`skill${i + 1}` as 'skill1')) { p.buffered = { kind: 'skill', skill }; p.bufferT = 0.35; }
     });
   }
 
@@ -573,6 +620,7 @@ export class World {
     }
     p.mp -= skill.mpCost;
     p.cooldowns[skill.id] = skill.cooldown;
+    if (skill.anim) return this.castPower(skill);
     p.attackTimer = 0.3;
     switch (skill.kind) {
       case 'projectile':
@@ -626,6 +674,204 @@ export class World {
     }
   }
 
+  // ───────────────────────── poderes (prancha de poderes) ─────────────────────────
+
+  private castPower(skill: SkillDef): void {
+    const p = this.player;
+    const n = Math.max(2, frameCount(skill.anim!));
+    const dur = Math.min(0.6, Math.max(0.32, n * 0.1));
+    p.castAnim = skill.anim!;
+    p.castT = 0;
+    p.castDur = dur;
+    p.attackTimer = dur * 0.8;
+    p.climbing = false;
+    const fx = hasSprite(skill.fx) ? skill.fx! : '';
+    const later = (k: number, run: () => void) => { p.pending = { t: dur * k, run }; };
+    const groundAt = (x: number) => this.terrain.surfacesAt(x).find((y) => y >= p.y - 2) ?? this.terrain.groundAt(x);
+    const spell = (o: Partial<Spell> & Pick<Spell, 'x' | 'dur'>): void => {
+      const g = o.ground ?? groundAt(o.x);
+      this.spells.push({
+        name: fx, y: g, ground: g, dir: p.facing, t: 0, hits: [0.1], hitIdx: 0, radius: skill.radius, mul: skill.damageMul,
+        knock: skill.knockback, color: skill.color, falling: false, landed: false, tick: 0, tickT: 0, ...o,
+      });
+    };
+    this.sound(skill.color === '#ff9a3c' || skill.color === '#ff7a2a' ? 'wind' : skill.kind === 'melee' ? 'swing' : 'whirl');
+    switch (skill.kind) {
+      case 'melee':
+        later(0.45, () => {
+          const hits = this.hitFront(skill.range, skill.damageMul, skill.knockback, skill.radius, true);
+          this.burst(p.x + p.facing * skill.range * 0.6, p.y, 26, 10, skill.color, 200, 2.5);
+          if (hits) { this.freeze(0.07); this.shake(4, 0.15); }
+        });
+        break;
+      case 'projectile': {
+        const count = skill.count ?? 1;
+        later(0.5, () => {
+          for (let k = 0; k < count; k++) {
+            const dy = (k - (count - 1) / 2) * 13;
+            const low = skill.id === 'w_shock' || skill.id === 'm_icestorm';
+            this.projectiles.push({ x: p.x + p.facing * 22, y: p.y - (low ? 22 : 26) + dy, dir: p.facing, dist: 0, skill, hit: new Set() });
+          }
+        });
+        break;
+      }
+      case 'aoe':
+        later(0.5, () => {
+          for (const e of this.enemies) {
+            if (e.dead) continue;
+            const b = enemyBox(e);
+            const dx = e.x - p.x, dy = (b.top + b.bottom) / 2 - (p.y - PLAYER_H / 2);
+            if (dx * dx + dy * dy <= (skill.radius + e.radius) ** 2) this.damageEnemy(e, skill.damageMul, skill.knockback * (Math.sign(dx) || p.facing), true);
+          }
+          if (fx) spell({ x: p.x, ground: p.y, dur: 0.55, hits: [] });
+          else this.effects.push({ kind: 'ring', x: p.x, y: p.y, dir: 1, radius: skill.radius, color: skill.color, life: 0.35, maxLife: 0.35 });
+          this.shake(4, 0.2);
+          this.freeze(0.06);
+          this.burst(p.x, p.y, 20, 18, skill.color, 260, 3, 100);
+        });
+        break;
+      case 'dash':
+        p.dash = { vx: (p.facing * skill.range) / 0.24, t: 0.24, hit: new Set(), skill };
+        p.invuln = Math.max(p.invuln, 0.4);
+        p.attackTimer = 0.3;
+        break;
+      case 'blast':
+        later(0.45, () => spell({ x: p.x + p.facing * skill.range, dur: 0.5, hits: [0.12] }));
+        break;
+      case 'erupt':
+        later(0.4, () => {
+          for (let k = 0; k < 3; k++) spell({ x: p.x + p.facing * skill.range * (0.35 + k * 0.32), dur: 0.45, t: -k * 0.13, hits: [0.1] });
+        });
+        break;
+      case 'strike': {
+        let best: Enemy | null = null;
+        for (const e of this.enemies) {
+          if (e.dead || Math.abs(e.x - p.x) > skill.range) continue;
+          if (!best || Math.abs(e.x - p.x) < Math.abs(best.x - p.x)) best = e;
+        }
+        const tx = best ? best.x : p.x + p.facing * 120;
+        later(0.5, () => { spell({ x: tx, ground: best ? best.y : groundAt(tx), dur: 0.5, hits: [0.1] }); this.shake(5, 0.2); this.sound('thunder'); });
+        break;
+      }
+      case 'rain': {
+        const count = skill.count ?? 5;
+        later(0.5, () => {
+          for (let k = 0; k < count; k++) {
+            const x = p.x + p.facing * (40 + ((skill.range - 40) * k) / Math.max(1, count - 1)) + (Math.random() - 0.5) * 24;
+            const g = groundAt(x);
+            spell({ x, ground: g, y: g - 230 - Math.random() * 40, dur: 0.4, t: -k * 0.12, hits: [0], falling: true });
+          }
+        });
+        break;
+      }
+      case 'cloud':
+        later(0.5, () => spell({ x: p.x + p.facing * skill.range, dur: skill.duration ?? 5, hits: [], tick: 0.5, tickT: 0.1 }));
+        break;
+      case 'heal': {
+        const amount = Math.round(p.maxHp * 0.4);
+        later(0.5, () => {
+          p.hp = Math.min(p.maxHp, p.hp + amount);
+          this.floatText(p.x, p.y - 56, `+${amount}`, '#8fe07a', 16, 1);
+          this.burst(p.x, p.y, 10, 26, '#8fe07a', 120, 3, -60);
+          this.sound('levelup');
+        });
+        break;
+      }
+      case 'shield':
+        later(0.6, () => { p.shieldT = skill.duration ?? 8; this.sound('levelup'); });
+        break;
+      case 'empower':
+        later(0.6, () => { p.empowerT = skill.duration ?? 8; this.sound('wave'); });
+        break;
+    }
+  }
+
+  private updateDash(dt: number): void {
+    const p = this.player, d = p.dash!;
+    d.t -= dt;
+    for (const e of this.enemies) {
+      if (e.dead || d.hit.has(e) || Math.abs(e.x - p.x) > e.radius + 18 || !this.overlapsPlayer(e, 6)) continue;
+      d.hit.add(e);
+      this.damageEnemy(e, d.skill.damageMul, d.skill.knockback * p.facing, true);
+      this.freeze(0.03);
+    }
+    if (Math.random() < 0.8) this.burst(p.x - p.facing * 12, p.y, 20, 2, d.skill.color, 80, 3, 0);
+    if (d.t <= 0) p.dash = null;
+  }
+
+  /** Dano em área num ponto (pés em y). */
+  private hitArea(x: number, y: number, r: number, mul: number, knock: number, dir: number): number {
+    let n = 0;
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const b = enemyBox(e);
+      if (Math.abs(e.x - x) < r + e.radius && b.bottom > y - r * 1.6 && b.top < y + 10) {
+        this.damageEnemy(e, mul, knock * (Math.sign(e.x - x) || dir), true);
+        n++;
+      }
+    }
+    return n;
+  }
+
+  private updateSpells(dt: number): void {
+    for (const s of this.spells) {
+      s.t += dt;
+      if (s.t < 0) continue;
+      if (s.falling && !s.landed) {
+        s.y += 560 * dt;
+        s.t = 0;
+        if (s.y >= s.ground) {
+          s.y = s.ground;
+          s.landed = true;
+          this.hitArea(s.x, s.y, s.radius, s.mul, s.knock, s.dir);
+          this.burst(s.x, s.y, 4, 10, s.color, 200, 3, 300);
+          this.shake(3, 0.1);
+          this.sound('hit');
+        }
+        continue;
+      }
+      while (s.hitIdx < s.hits.length && s.t >= s.hits[s.hitIdx]) {
+        s.hitIdx++;
+        if (this.hitArea(s.x, s.y, s.radius, s.mul, s.knock, s.dir)) this.freeze(0.04);
+        this.burst(s.x, s.y, 10, 8, s.color, 180, 2.5);
+      }
+      if (s.tick > 0) {
+        s.tickT -= dt;
+        if (s.tickT <= 0) { s.tickT = s.tick; this.hitArea(s.x, s.y, s.radius, s.mul, 0, s.dir); }
+      }
+    }
+    this.spells = this.spells.filter((s) => s.t < s.dur || (s.falling && !s.landed));
+  }
+
+  private drawSpells(ctx: CanvasRenderingContext2D): void {
+    for (const s of this.spells) {
+      if (s.t < 0 && !s.falling) continue;
+      if (!s.name) continue;
+      const n = frameCount(s.name);
+      const h = spriteHeight(s.name);
+      let frame: number, alpha = 1, rot = 0, scale = 1;
+      if (s.falling && !s.landed) {
+        if (s.t < 0 && s.y === s.ground - 0) continue;
+        frame = 0;
+        rot = n > 1 ? 0 : Math.PI / 2 * s.dir; // adaga: aponta para baixo
+      } else if (s.falling) {
+        frame = n - 1;
+        alpha = 1 - s.t / s.dur;
+        if (n === 1) { scale = 0.8; alpha *= 0.6; }
+      } else if (s.tick > 0) {
+        frame = n - 1;
+        alpha = Math.min(1, s.t * 4, (s.dur - s.t) * 3);
+        scale = 1 + Math.sin(this.time * 4) * 0.05;
+      } else {
+        frame = Math.min(n - 1, (s.t / s.dur) * n * 1.3);
+        alpha = Math.min(1, (s.dur - s.t) * 6);
+      }
+      if (s.falling && !s.landed && s.t < 0) continue;
+      glow(ctx, s.x, s.y - h * 0.4, h * 0.8, s.color, 0.25 * alpha);
+      drawSprite(ctx, s.name, frame, s.x, s.y - (h * scale) / 2, s.dir, { alpha, rot, scale });
+    }
+  }
+
   private startAnim(kind: ActionAnim, dur: number): void {
     const p = this.player;
     p.anim = kind;
@@ -652,7 +898,8 @@ export class World {
 
   private damageEnemy(e: Enemy, mul: number, knock: number, heavy = false): void {
     const crit = Math.random() < this.stats.crit;
-    const dmg = calcDamage(this.stats.atk, e.armor, mul) * (crit ? 2 : 1);
+    const boost = this.player.empowerT > 0 ? 1.6 : 1;
+    const dmg = calcDamage(this.stats.atk, e.armor, mul * boost) * (crit ? 2 : 1);
     e.hp -= dmg;
     e.flash = 0.1;
     const resist = e.def.boss ? 0.15 : 1;
@@ -992,7 +1239,8 @@ export class World {
   private damagePlayer(atk: number, dir: number, heavy: boolean): void {
     const p = this.player;
     if (p.invuln > 0 || p.dead) return;
-    const dmg = calcDamage(atk, this.stats.def, 1);
+    let dmg = calcDamage(atk, this.stats.def, 1);
+    if (p.shieldT > 0) dmg = Math.max(1, Math.ceil(dmg * 0.3));
     this.damageTaken += Math.min(dmg, Math.max(0, p.hp));
     p.hp -= dmg;
     p.flash = 0.12;
@@ -1169,6 +1417,7 @@ export class World {
     for (const n of this.npcs) this.drawNpc(ctx, n);
     for (const e of this.enemies) this.drawEnemy(ctx, e);
     this.drawPlayer(ctx);
+    this.drawSpells(ctx);
 
     for (const pr of this.projectiles) {
       const y = pr.y;
@@ -1179,6 +1428,13 @@ export class World {
       if (spritesReady()) {
         const fx = pr.skill.fx ?? 'fx_slash';
         if (fx === 'fx_slash') drawSprite(ctx, fx, 0, pr.x, y + 11, pr.dir);
+        else if (pr.skill.anim) {
+          const n = frameCount(fx);
+          // efeitos da prancha de poderes: crescem (bola de fogo) ou giram em loop (tornado, onda)
+          const fr = pr.skill.pierce ? (pr.dist / 30) % n : Math.min(n - 1, pr.dist / 40);
+          glow(ctx, pr.x, y, 26, pr.skill.color, 0.3);
+          drawSprite(ctx, fx, fr, pr.x, y, pr.dir, { scale: pr.skill.count && pr.skill.count > 1 ? 0.6 : 1 });
+        }
         else drawSprite(ctx, fx, 0, pr.x, y, pr.dir, { scale: pr.skill.radius >= 14 ? 1.4 : 1 });
       } else {
         ctx.fillStyle = pr.skill.color;
@@ -1362,14 +1618,16 @@ export class World {
       combo0: 'atk0', combo1: 'atk1', combo2: 'atk2', wind: 'wind', whirl: 'whirl', thunder: 'thunder',
     };
     let anim: string, frame: number;
-    if (p.dead) { anim = 'dead'; frame = Math.min(3, p.deadAnim / 0.12); }
+    let castName: string | null = null;
+    if (p.castAnim && !p.dead && p.hitStun <= 0) { castName = p.castAnim; anim = ''; frame = (p.castT / p.castDur) * frameCount(p.castAnim); }
+    else if (p.dead) { anim = 'dead'; frame = Math.min(3, p.deadAnim / 0.12); }
     else if (p.anim) { anim = ANIM[p.anim]; frame = (p.animT / p.animDur) * frameCount(`${pre}_${anim}`); }
     else if (p.hitStun > 0) { anim = 'hurt'; frame = this.time * 10; }
     else if (p.climbing) { anim = 'jump'; frame = 0; }
     else if (!p.onGround) { anim = p.vy < 0 ? 'jump' : 'fall'; frame = 0; }
     else if (p.moving) { anim = 'walk'; frame = p.walk * (pre === 'hero' ? 0.9 : 0.6); }
     else { anim = 'idle'; frame = this.time * (pre === 'hero' ? 4 : 2); }
-    const name = `${pre}_${anim}`;
+    const name = castName ?? `${pre}_${anim}`;
     // sombra na superfície embaixo (mesmo pulando)
     const below = this.terrain.surfacesAt(p.x).find((y) => y >= p.y - 1) ?? p.y;
     const lift = below - p.y;
@@ -1377,6 +1635,20 @@ export class World {
     ctx.beginPath();
     ctx.ellipse(p.x, below, 13 * Math.max(0.35, 1 - lift / 160), 4 * Math.max(0.35, 1 - lift / 160), 0, 0, Math.PI * 2);
     ctx.fill();
+    if (p.shieldT > 0) {
+      const a = Math.min(1, p.shieldT) * (0.55 + Math.sin(this.time * 6) * 0.1);
+      glow(ctx, p.x, p.y - 24, 46, '#ffe08a', a * 0.6);
+      ctx.strokeStyle = `rgba(255,232,140,${a})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y - 24, 26, 32, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (p.empowerT > 0) {
+      // sombras repetindo o movimento atrás do personagem
+      for (let k = 1; k <= 2; k++) drawSprite(ctx, castName ?? `${pre}_${anim}`, Math.min(frame, frameCount(castName ?? `${pre}_${anim}`) - 1e-3), p.x - p.facing * k * 14, p.y + 1, p.facing, { alpha: 0.35 / k, flash: true });
+      glow(ctx, p.x, p.y - 22, 40, '#a06bff', 0.3);
+    }
     const breathe = !p.anim && !p.moving && p.onGround && !p.dead ? 1 + Math.sin(this.time * 3) * 0.015 : 1;
     // na escada: vira de um lado para o outro ao subir (mão por mão)
     const face = p.climbing ? (Math.floor(p.walk * 0.6) % 2 ? 1 : -1) : p.facing;

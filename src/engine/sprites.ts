@@ -22,8 +22,23 @@ const ATLAS = atlasData as unknown as Record<string, SpriteDef>;
 let img: HTMLImageElement | null = null;
 let white: HTMLCanvasElement | null = null;
 let scenery: HTMLImageElement | null = null;
+let powers: HTMLImageElement | null = null;
+let powersWhite: HTMLCanvasElement | null = null;
 
-const sheetOf = (d: SpriteDef): HTMLImageElement | null => (d.sheet === 1 ? scenery : img);
+const sheetOf = (d: SpriteDef): HTMLImageElement | null => (d.sheet === 1 ? scenery : d.sheet === 2 ? powers : img);
+
+function whiteCopy(im: HTMLImageElement): HTMLCanvasElement | null {
+  const c = document.createElement('canvas');
+  c.width = im.width;
+  c.height = im.height;
+  const g = c.getContext('2d');
+  if (!g) return null;
+  g.drawImage(im, 0, 0);
+  g.globalCompositeOperation = 'source-in';
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, c.width, c.height);
+  return c;
+}
 
 /** Prancha de cenário carregada? */
 export function sceneryReady(): boolean {
@@ -35,6 +50,9 @@ export function loadSprites(): Promise<void> {
   const sc = new Image();
   sc.onload = () => { scenery = sc; };
   sc.src = './sprites/scenery.png';
+  const pw = new Image();
+  pw.onload = () => { powers = pw; powersWhite = whiteCopy(pw); };
+  pw.src = './sprites/powers.png';
   return new Promise((resolve) => {
     const im = new Image();
     im.onload = () => {
@@ -103,9 +121,10 @@ export function drawSprite(ctx: CanvasRenderingContext2D, name: string, frame: n
   // pixel art ampliado fica nítido sem suavização; reduzido fica melhor suavizado
   ctx.imageSmoothingEnabled = Math.abs(s) < 1;
   ctx.drawImage(sheet, f[0], f[1], f[2], f[3], -f[4], -f[5], f[2], f[3]);
-  if (o.flash && white && d.sheet !== 1) {
+  const wh = d.sheet === 2 ? powersWhite : d.sheet === 1 ? null : white;
+  if (o.flash && wh) {
     ctx.globalAlpha *= 0.85;
-    ctx.drawImage(white, f[0], f[1], f[2], f[3], -f[4], -f[5], f[2], f[3]);
+    ctx.drawImage(wh, f[0], f[1], f[2], f[3], -f[4], -f[5], f[2], f[3]);
   }
   ctx.restore();
 }
@@ -153,4 +172,9 @@ export function drawSub(ctx: CanvasRenderingContext2D, name: string, sx: number,
 
 export function panoSky(name: string): [string, string] {
   return ATLAS[name]?.sky ?? ['#6aa8e8', '#9fd0f0'];
+}
+
+/** Prancha de poderes carregada? */
+export function powersReady(): boolean {
+  return !!powers;
 }

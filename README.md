@@ -47,6 +47,12 @@ Guerreiro (equilibrado), Arqueiro (flechas de longe), Maga (orbes, muito MP), Lu
 muita vida) e Lanceiro (alcance longo). Cada uma tem atributos, ataque básico e 3 poderes próprios
 em `src/data/classes.ts`; as animações vêm de `assets-src/sheet-classes.png` (`CLASS_FRAMES` no script).
 
+## Poderes
+
+Guerreiro, Maga e Assassino têm 8 poderes cada (prancha `assets-src/sheet-powers.png`, recortada por
+`tools/powers_cells.py`), com animação do personagem, efeito próprio e ícone. 4 vão nos botões; troque em
+☰ → ✦ Trocar poderes (alguns desbloqueiam com o nível). Teclado: K, L, I, O. Dados em `src/data/classes.ts`.
+
 ## Campanha
 
 90 fases em 9 regiões (10 fases cada): Bosque Sussurrante, Pântano Nebuloso, Ruínas de Ferro,

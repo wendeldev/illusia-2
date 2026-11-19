@@ -491,3 +491,80 @@ allmeta = json.load(open(os.path.join(ROOT, 'src', 'data', 'atlas.json')))
 allmeta.update(meta3)
 json.dump(allmeta, open(os.path.join(ROOT, 'src', 'data', 'atlas.json'), 'w'), separators=(',', ':'))
 print(f'cenário: {atlas3.size[0]}x{atlas3.size[1]}, {len(meta3)} peças')
+
+# ═══════════════════ prancha 4: poderes (animações e ícones) ═══════════════════
+sys.path.insert(0, os.path.join(ROOT, 'tools'))
+import powers_cells as PC
+P_FRAMES, P_ICONS = PC.load()
+# poder: (quadros do personagem lançando, quadros do efeito separado, âncora do personagem)
+POWERS = {
+    'w_slash_h': ([0, 1, 2, 3], [], 'left'), 'w_slash_v': ([0, 1, 2, 3], [], 'left'),
+    'w_dash': ([0, 1, 2, 3], [], 'right'), 'w_whirl': ([0, 1, 2, 3], [], 'left'),
+    'w_shock': ([0, 1, 2, 3], [4], 'left'), 'w_flame': ([0, 1, 2, 3, 4], [], 'left'),
+    'w_quake': ([0, 1, 2], [3, 4], 'left'), 'w_shield': ([0, 1, 2, 3, 4], [], 'center'),
+    'm_fireball': ([0, 1], [2, 3, 4], 'left'), 'm_fireburst': ([0, 1], [2, 3, 4], 'left'),
+    'm_icespear': ([0, 1], [2, 3, 4], 'left'), 'm_icestorm': ([0, 1], [2, 3, 4], 'left'),
+    'm_arcane': ([0, 1], [3, 4], 'left'), 'm_meteor': ([0, 1], [3, 4], 'left'),
+    'm_circle': ([0, 1], [2, 3, 4], 'left'), 'm_heal': ([0, 1, 2, 3, 4], [], 'center'),
+    'a_quick': ([0, 1, 2, 3, 4], [], 'left'), 'a_blades': ([0, 1, 2], [3], 'left'),
+    'a_teleport': ([0, 1, 2, 3], [], 'right'), 'a_thrust': ([0, 1, 2, 3], [], 'left'),
+    'a_shadowburst': ([0, 1, 2, 3], [], 'left'), 'a_daggers': ([0, 1, 2], [4], 'left'),
+    'a_poison': ([0, 1], [4], 'left'), 'a_clone': ([0, 1, 2, 3, 4, 5], [], 'left'),
+}
+pw_extra = {}
+for name, (cast, fx, anchor) in POWERS.items():
+    fr = P_FRAMES[name]
+    ref = fr[0]
+    scale = HERO_H / ref.size[1]
+    ref_ax = feet(ref)[0]
+    lst = []
+    for i in cast:
+        im = fr[i]
+        w, h = im.size
+        ax = min(ref_ax, w - 1) if anchor == 'left' else (max(0, w - (ref.size[0] - ref_ax)) if anchor == 'right' else w // 2)
+        lst.append((im, ax, h))
+    pw_extra['pw_' + name] = (lst, scale)
+    if fx:
+        # efeitos com âncora no centro (o jogo posiciona pelo meio)
+        pw_extra['fx_' + name] = ([(fr[i], fr[i].size[0] // 2, fr[i].size[1] // 2) for i in fx], scale)
+    ic = P_ICONS[name]
+    pw_extra['ic_' + name] = ([(ic, ic.size[0] // 2, ic.size[1])], 1.0)
+
+# bases (parado/andando/dano/nocaute) da maga loira e do assassino, da prancha de classes
+BASES = {
+    'priest': {'idle': [74, 75], 'walk': [74, 75, 76, 77], 'jump': [80], 'fall': [80], 'hurt': [81], 'dead': [82],
+               'atk0': [78, 80], 'atk1': [80, 78], 'atk2': [79], 'wind': [80], 'whirl': [79], 'thunder': [79]},
+    'assassin': {'idle': [55, 56], 'walk': [55, 56, 57, 56], 'jump': [63], 'fall': [63], 'hurt': [62], 'dead': [64],
+                 'atk0': [58, 59], 'atk1': [59, 58], 'atk2': [60, 61], 'wind': [59], 'whirl': [61], 'thunder': [63]},
+}
+for cls, anims in BASES.items():
+    ref = clean(crop2(anims['walk'][0]))
+    ref_ax = feet(ref)[0]
+    scale = HERO_H / ref.size[1]
+    for anim, ks in anims.items():
+        imgs = [clean(crop2(k)) for k in ks]
+        lst = [(im, *feet(im)) for im in imgs] if anim in ('idle', 'walk', 'dead', 'hurt') else [(im, min(ref_ax, im.size[0] - 1), im.size[1]) for im in imgs]
+        pw_extra[f'{cls}_{anim}'] = (lst, scale)
+
+# 3º atlas: poderes
+items4 = [(n, i, im, ax, ay) for n, (lst, _) in pw_extra.items() for i, (im, ax, ay) in enumerate(lst)]
+items4.sort(key=lambda t: -t[2].size[1])
+x = y = row_h = 0
+pl4 = []
+for n, i, im, ax, ay in items4:
+    w, h = im.size
+    if x + w + 2 > 2048:
+        x, y, row_h = 0, y + row_h + 2, 0
+    pl4.append((n, i, im, ax, ay, x, y))
+    x += w + 2
+    row_h = max(row_h, h)
+atlas4 = _I.new('RGBA', (2048, y + row_h), (0, 0, 0, 0))
+meta4 = {n: {'scale': round(sc, 4), 'faces': 1, 'frames': [None] * len(lst), 'sheet': 2} for n, (lst, sc) in pw_extra.items()}
+for n, i, im, ax, ay, px_, py_ in pl4:
+    atlas4.paste(im, (px_, py_))
+    meta4[n]['frames'][i] = [px_, py_, im.size[0], im.size[1], ax, ay]
+atlas4.save(os.path.join(ROOT, 'public', 'sprites', 'powers.png'), optimize=True)
+allmeta = json.load(open(os.path.join(ROOT, 'src', 'data', 'atlas.json')))
+allmeta.update(meta4)
+json.dump(allmeta, open(os.path.join(ROOT, 'src', 'data', 'atlas.json'), 'w'), separators=(',', ':'))
+print(f'poderes: {atlas4.size[0]}x{atlas4.size[1]}, {len(meta4)} peças')

@@ -1,6 +1,6 @@
 import { VIEW_W, type Point } from './view';
 
-export type Action = 'attack' | 'jump' | 'skill1' | 'skill2' | 'skill3' | 'interact' | 'menu';
+export type Action = 'attack' | 'jump' | 'skill1' | 'skill2' | 'skill3' | 'skill4' | 'interact' | 'menu';
 
 export interface TouchButton {
   action: Action;
@@ -15,6 +15,7 @@ const KEY_ACTIONS: Record<string, Action> = {
   KeyK: 'skill1', KeyX: 'skill1',
   KeyL: 'skill2', KeyC: 'skill2',
   KeyI: 'skill3', KeyV: 'skill3',
+  KeyO: 'skill4', KeyB: 'skill4',
   KeyE: 'interact', Enter: 'interact', Space: 'jump',
   Escape: 'menu', KeyM: 'menu', Tab: 'menu',
 };
