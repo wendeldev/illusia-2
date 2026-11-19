@@ -32,6 +32,13 @@ e desenhado em `src/game/art/ground.ts` (um estilo por região).
 No celular dá para "Adicionar à tela inicial": o jogo abre em tela cheia e funciona offline (PWA).
 O progresso é salvo automaticamente no navegador.
 
+## Sprites (pixel art)
+
+As pranchas originais ficam em `assets-src/`. O script `tools/build_sprites.py` recorta cada desenho,
+remove o fundo, gera variações de cor e monta o atlas `public/sprites/atlas.png` + `src/data/atlas.json`.
+Para trocar ou acrescentar sprites: edite as listas `HERO`, `SINGLE` e `VARIANTS` no script e rode
+`python3 -I tools/build_sprites.py`. Qual sprite cada inimigo usa fica em `SPRITES` (`src/data/enemies.ts`).
+
 ## Campanha
 
 90 fases em 9 regiões (10 fases cada): Bosque Sussurrante, Pântano Nebuloso, Ruínas de Ferro,

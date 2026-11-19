@@ -1,9 +1,11 @@
 import { getEnemy, validateContent } from './data';
 import { Input } from './engine/input';
+import { loadSprites } from './engine/sprites';
 import { setupCanvas } from './engine/view';
 import { Game } from './game/game';
 
 validateContent();
+void loadSprites();
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const view = setupCanvas(canvas);

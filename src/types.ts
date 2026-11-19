@@ -125,6 +125,9 @@ export interface EnemyDef {
   enrage?: boolean;
   /** brilho em volta (chefes) */
   aura?: string;
+  /** desenho em pixel art (nome no atlas) e escala extra */
+  sprite?: string;
+  spriteScale?: number;
 }
 
 export type NpcAction = 'talk' | 'shop' | 'heal';
@@ -138,6 +141,8 @@ export interface NpcDef {
   /** ids de equipamentos à venda (action = 'shop') */
   shop?: string[];
   look: Partial<HumanLook>;
+  /** desenho em pixel art (nome no atlas) */
+  sprite?: string;
   /** animação de espera: martelar, apoiar no cajado... */
   idle?: 'hammer' | 'still';
 }

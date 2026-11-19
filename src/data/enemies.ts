@@ -109,3 +109,20 @@ export const ENEMIES: EnemyDef[] = [
     enrage: true, hp: 1100, drops: [{ itemId: 'star_pendant', chance: 0.6 }],
   }),
 ];
+
+// Sprite de cada inimigo (atlas em public/sprites) e escala extra (chefes maiores).
+const SPRITES: Record<string, [string, number?]> = {
+  moss_slime: ['slime_green'], shadow_wolf: ['wolf'], leaf_bat: ['bat_green'], alpha_wolf: ['werewolf', 0.85], moss_guardian: ['treant', 1.7],
+  bog_slime: ['slime_olive'], marsh_bat: ['bat_dark'], swamp_shroom: ['mushroom_purple'], toad_king: ['slime_olive', 2.6], plague_shroom: ['mushroom_purple', 2.6],
+  stone_slime: ['slime_gray'], sand_jackal: ['wolf_sand'], rust_golem: ['golem_rust'], iron_sentinel: ['dark_knight', 0.8], iron_colossus: ['golem_big_rust'],
+  sand_slime: ['slime_sand'], dune_hound: ['wolf_orange'], vulture: ['bat_brown'], scarab: ['boar_teal', 1.8], golden_jackal: ['werewolf_gold', 1.05],
+  cave_bat: ['bat_gray'], crystal_slime: ['slime_blue'], cave_golem: ['golem_small'], crystal_golem: ['golem_big', 0.9], fungus_king: ['mushroom_red', 2.7],
+  frost_slime: ['slime_ice'], snow_wolf: ['wolf_snow'], ice_golem: ['golem_ice'], yeti: ['ogre_white', 1.5], frost_ancient: ['ice_beast', 1.2],
+  magma_slime: ['slime_magma'], fire_bat: ['bat'], magma_golem: ['golem_magma'], salamander: ['fire_wolf', 0.95], lava_lord: ['red_dragon'],
+  shadow_slime: ['slime_shadow'], dread_wolf: ['wolf_dark'], gargoyle: ['bat_dark'], dark_armor: ['skeleton_dark', 1.1], night_knight: ['dark_knight', 0.9], shadow_beast: ['demon_lord'],
+  cloud_slime: ['slime_cloud'], storm_bat: ['bee_storm'], sky_golem: ['golem_sky'], griffin: ['angel', 0.85], storm_emperor: ['blue_dragon', 1.1],
+};
+for (const e of ENEMIES) {
+  const s = SPRITES[e.id];
+  if (s) { e.sprite = s[0]; e.spriteScale = s[1] ?? 1; }
+}

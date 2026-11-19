@@ -7,6 +7,7 @@ import { drawHuman, OUTLINE } from './art/human';
 import { drawMonster } from './art/monsters';
 import { glow } from './art/scene3d';
 import { drawTerrain } from './art/ground';
+import { drawSprite, frameCount, hasSprite, spriteHeight, spritesReady } from '../engine/sprites';
 import { Scenery } from './art/scenery';
 import { npcLook, npcPose, playerLook, playerPose, type ActionAnim } from './art/poses';
 import { bar, text } from './draw';
@@ -182,6 +183,12 @@ export function levelColor(monster: number, player: number): string {
 /** Caixa vertical do corpo do monstro (topo/base), para acertos. */
 function enemyBox(e: { y: number; radius: number; def: EnemyDef }): { top: number; bottom: number } {
   const r = e.radius;
+  if (hasSprite(e.def.sprite)) {
+    // com sprite: a caixa acompanha o tamanho do desenho
+    const h = spriteHeight(e.def.sprite, e.def.spriteScale) * 0.9;
+    const bottom = e.def.shape === 'flyer' ? e.y - 1.8 * r : e.y;
+    return { top: bottom - h, bottom };
+  }
   switch (e.def.shape) {
     case 'flyer': return { top: e.y - 3.4 * r, bottom: e.y - 1.8 * r };
     case 'golem': return { top: e.y - 2.3 * r, bottom: e.y };
@@ -1101,10 +1108,14 @@ export class World {
         this.particles.push({ x: pr.x - pr.dir * 8, y: pr.y, z: 0, vx: -pr.dir * 40, vy: 0, vz: (Math.random() - 0.5) * 60,
           life: 0.2, maxLife: 0.2, size: 2.5, color: pr.skill.color, gravity: 0 });
       }
-      ctx.fillStyle = pr.skill.color;
-      ctx.beginPath();
-      ctx.ellipse(pr.x, y, pr.skill.radius * 1.4, pr.skill.radius * 0.5, 0, 0, Math.PI * 2);
-      ctx.fill();
+      if (spritesReady()) {
+        drawSprite(ctx, 'fx_slash', 0, pr.x, y + 11, pr.dir);
+      } else {
+        ctx.fillStyle = pr.skill.color;
+        ctx.beginPath();
+        ctx.ellipse(pr.x, y, pr.skill.radius * 1.4, pr.skill.radius * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     for (const sh of this.enemyShots) {
       const sy = sh.y + 16;
@@ -1248,7 +1259,16 @@ export class World {
         for (let k = 0; k < 5; k++) ctx.fillRect(ax - 2 + Math.cos(k * 1.3) * (c - 0.6) * 90, ay - 13 - Math.abs(Math.sin(k * 2.1)) * (c - 0.6) * 70, 1.6, 1.6);
       }
     }
-    drawHuman(ctx, n.x, gy, facing, n.look, npcPose(working ? 'hammer' : n.def.idle === 'hammer' ? 'still' : n.def.idle, this.time, n.seed));
+    if (spritesReady() && hasSprite(n.def.sprite)) {
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.beginPath();
+      ctx.ellipse(n.x, gy, 13, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const bob = 1 + Math.sin(this.time * 2.5 + n.seed) * 0.02;
+      drawSprite(ctx, n.def.sprite, 0, n.x, gy + 1, facing, { sy: bob });
+    } else {
+      drawHuman(ctx, n.x, gy, facing, n.look, npcPose(working ? 'hammer' : n.def.idle === 'hammer' ? 'still' : n.def.idle, this.time, n.seed));
+    }
     text(ctx, n.def.name, n.x, gy - 58, { size: 10, align: 'center' });
     const mark = this.hooks.questMark(n.def.id);
     if (mark) {
@@ -1262,6 +1282,66 @@ export class World {
       ctx.stroke();
       text(ctx, mark, n.x, gy - 75 + bob, { size: 12, align: 'center', color: '#1d1a24', outline: false });
     }
+  }
+
+  /** Jogador em pixel art: escolhe a animação pelo estado. */
+  private drawPlayerSprite(ctx: CanvasRenderingContext2D): void {
+    const p = this.player;
+    const ANIM: Record<ActionAnim, string> = {
+      combo0: 'hero_atk0', combo1: 'hero_atk1', combo2: 'hero_atk2', wind: 'hero_wind', whirl: 'hero_whirl', thunder: 'hero_thunder',
+    };
+    let name: string, frame: number;
+    if (p.dead) { name = 'hero_dead'; frame = Math.min(3, p.deadAnim / 0.12); }
+    else if (p.anim) { name = ANIM[p.anim]; frame = (p.animT / p.animDur) * frameCount(name); }
+    else if (p.hitStun > 0) { name = 'hero_hurt'; frame = this.time * 10; }
+    else if (!p.onGround) { name = p.vy < 0 ? 'hero_jump' : 'hero_fall'; frame = 0; }
+    else if (p.moving) { name = 'hero_walk'; frame = p.walk * 0.9; }
+    else { name = 'hero_idle'; frame = this.time * 4; }
+    // sombra na superfície embaixo (mesmo pulando)
+    const below = this.terrain.surfacesAt(p.x).find((y) => y >= p.y - 1) ?? p.y;
+    const lift = below - p.y;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(p.x, below, 13 * Math.max(0.35, 1 - lift / 160), 4 * Math.max(0.35, 1 - lift / 160), 0, 0, Math.PI * 2);
+    ctx.fill();
+    const breathe = !p.anim && !p.moving && p.onGround && !p.dead ? 1 + Math.sin(this.time * 3) * 0.015 : 1;
+    drawSprite(ctx, name, Math.min(frame, frameCount(name) - 1e-3), p.x, p.y + 1, p.facing, { sy: breathe, flash: p.flash > 0 });
+  }
+
+  /** Inimigo em pixel art: um quadro só, animado com quique, preparo, bote e queda. */
+  private drawEnemySprite(ctx: CanvasRenderingContext2D, e: Enemy, windup: number): void {
+    const d = e.def;
+    const name = d.sprite!;
+    const t = this.time + e.seed;
+    let sx = 1, sy = 1, ox = 0, oy = 0, rot = 0;
+    if (d.shape === 'blob') {
+      if (e.moving) { const ph = (t * 2.6) % 1; oy = -Math.sin(ph * Math.PI) * 7; sy = ph < 0.12 || ph > 0.9 ? 0.85 : 1.08; sx = 2 - sy; }
+      else { sy = 1 + Math.sin(t * 4) * 0.04; sx = 2 - sy; }
+    } else if (d.shape === 'flyer') {
+      oy = -e.radius * 1.8 + Math.sin(t * 5) * 4;
+      rot = Math.sin(t * 9) * 0.06;
+    } else if (e.moving) {
+      oy = -Math.abs(Math.sin(t * 10)) * 2.5;
+      rot = Math.sin(t * 10) * 0.04;
+    } else {
+      sy = 1 + Math.sin(t * 2.5) * 0.02;
+    }
+    if (windup > 0) { sx *= 1 + windup * 0.12; sy *= 1 - windup * 0.12; ox += Math.sin(t * 70) * windup * 1.5; }
+    if (e.strike > 0) { ox += e.facing * e.strike * e.radius * 0.7; rot += e.facing * 0.12 * e.strike; }
+    let alpha = 1;
+    if (e.dead) {
+      const k = 1 - Math.max(0, e.deadTimer) / 0.5;
+      alpha = 1 - k;
+      rot += -e.facing * k * 0.8;
+      sy *= 1 - k * 0.3;
+    }
+    if (d.shape !== 'flyer') {
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.beginPath();
+      ctx.ellipse(e.x, e.y, e.radius * 1.1 * (d.spriteScale ?? 1) ** 0.5, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    drawSprite(ctx, name, 0, e.x + ox, e.y + oy + 1, e.facing, { scale: d.spriteScale, sx, sy, rot, alpha, flash: e.flash > 0 });
   }
 
   /** Aviso no chão antes de um ataque especial: dá tempo de fugir. */
@@ -1336,9 +1416,11 @@ export class World {
       glow(ctx, e.x, gy - lift, e.radius * 2.4 * pulse, e.enraged ? '#ff3030' : e.def.aura, e.enraged ? 0.45 : 0.3);
     }
     const abilityK = e.state === 'ability' && e.ability >= 0 ? 1 - Math.max(0, e.timer) / e.def.abilities![e.ability].windup : 0;
-    drawMonster(ctx, e.def.shape, e.x, gy, e.radius, e.def.color, e.facing, {
+    const windupK = e.state === 'windup' ? 1 - Math.max(0, e.timer) / e.def.windup : Math.min(1, abilityK);
+    if (spritesReady() && hasSprite(e.def.sprite)) this.drawEnemySprite(ctx, e, windupK);
+    else drawMonster(ctx, e.def.shape, e.x, gy, e.radius, e.def.color, e.facing, {
       t: this.time + e.seed,
-      windup: e.state === 'windup' ? 1 - Math.max(0, e.timer) / e.def.windup : Math.min(1, abilityK),
+      windup: windupK,
       moving: e.moving,
       strike: e.strike,
       hurt: e.hitStun > 0,
@@ -1346,7 +1428,7 @@ export class World {
       flash: e.flash > 0,
     });
     if (e.dead) return;
-    const top = e.def.shape === 'flyer' ? e.radius * 4 : e.def.shape === 'mushroom' ? e.radius * 2.9 : e.radius * 2.4;
+    const top = gy - enemyBox(e).top + 6;
     if (e.state === 'windup') text(ctx, '!', e.x, gy - top - 6, { size: 16, align: 'center', color: '#ff5050' });
     if (e.state === 'ability') text(ctx, '!!', e.x, gy - top - 8, { size: 20, align: 'center', color: '#ff3030' });
     if (!e.def.boss && e.hp < e.maxHp) bar(ctx, e.x - 16, gy + 6, 32, 4, e.hp / e.maxHp, '#ff5f5f');
@@ -1357,6 +1439,7 @@ export class World {
     const p = this.player;
     const blink = !p.dead && p.invuln > 0 && p.anim !== 'thunder' && Math.floor(this.time * 20) % 2 === 0;
     if (blink) return;
+    if (spritesReady()) return this.drawPlayerSprite(ctx);
     const pose = playerPose({
       action: p.anim, actionT: p.animT, actionDur: p.animDur, moving: p.moving, walk: p.walk, air: !p.onGround && !p.dead, vy: p.vy,
       hurt: p.hitStun > 0, dead: p.dead, deadAnim: p.deadAnim,
