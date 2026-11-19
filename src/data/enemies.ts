@@ -14,7 +14,7 @@ export const ENEMIES: EnemyDef[] = [
     drops: [{ itemId: 'leather_vest', chance: 0.05 }],
   },
   {
-    id: 'rust_golem', name: 'Golem Enferrujado', shape: 'humanoid',
+    id: 'rust_golem', name: 'Golem Enferrujado', shape: 'golem',
     hp: 140, atk: 18, def: 8, speed: 38, exp: 42, gold: 22, radius: 22, color: '#a0603a',
     attackRange: 34, windup: 0.7, attackCooldown: 2.0,
     drops: [{ itemId: 'iron_helm', chance: 0.06 }, { itemId: 'chainmail', chance: 0.03 }],
@@ -26,7 +26,7 @@ export const ENEMIES: EnemyDef[] = [
     drops: [{ itemId: 'sapphire_ring', chance: 0.04 }],
   },
   {
-    id: 'fungus_king', name: 'Rei Fungo', shape: 'blob', boss: true,
+    id: 'fungus_king', name: 'Rei Fungo', shape: 'mushroom', boss: true,
     hp: 700, atk: 26, def: 7, speed: 55, exp: 320, gold: 250, radius: 36, color: '#c4466b',
     attackRange: 52, windup: 0.8, attackCooldown: 1.8,
     drops: [{ itemId: 'falcon_amulet', chance: 0.5 }, { itemId: 'moon_blade', chance: 0.3 }],

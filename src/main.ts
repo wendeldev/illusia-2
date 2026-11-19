@@ -1,4 +1,4 @@
-import { validateContent } from './data';
+import { getEnemy, validateContent } from './data';
 import { Input } from './engine/input';
 import { setupCanvas } from './engine/view';
 import { Game } from './game/game';
@@ -11,7 +11,7 @@ const input = new Input(canvas, view.toLogical);
 const game = new Game(input);
 
 // Para testes/depuração: abra com ?debug e use window.__game no console.
-if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __game: Game }).__game = game;
+if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { __game: game, __getEnemy: getEnemy });
 
 let last = performance.now();
 function frame(now: number) {

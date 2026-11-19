@@ -12,12 +12,52 @@ export interface StatBonus {
   crit?: number;
 }
 
+/** Aparência visual de um personagem humano (jogador e NPCs). */
+export interface HumanLook {
+  skin: string;
+  hair: string;
+  hairStyle: 'short' | 'long' | 'bun' | 'spiky';
+  outfit: string;
+  trim: string;
+  pants: string;
+  boots: string;
+  armor: 'cloth' | 'leather' | 'mail' | 'plate';
+  helmet?: { style: 'hood' | 'helm' | 'captain'; color: string };
+  weapon?: WeaponLook;
+  prop?: 'hammer' | 'staff' | 'spear';
+  apron?: string;
+  pendant?: string;
+}
+
+export interface WeaponLook {
+  blade: string;
+  hilt: string;
+  length: number;
+  width: number;
+  curve?: boolean;
+  /** brilho da lâmina (runas, magia) */
+  glow?: string;
+}
+
+/** Como o equipamento aparece no personagem. */
+export interface EquipmentLook {
+  weapon?: WeaponLook;
+  /** armaduras: cor do tronco, detalhe e tipo */
+  outfit?: string;
+  trim?: string;
+  armor?: HumanLook['armor'];
+  helmet?: HumanLook['helmet'];
+  /** acessórios: pingente no pescoço */
+  pendant?: string;
+}
+
 export interface EquipmentDef extends StatBonus {
   id: string;
   name: string;
   slot: Slot;
   price: number;
   description: string;
+  look?: EquipmentLook;
 }
 
 export type SkillKind = 'melee' | 'projectile' | 'aoe';
@@ -48,7 +88,7 @@ export interface DropDef {
   chance: number;
 }
 
-export type EnemyShape = 'blob' | 'beast' | 'humanoid' | 'flyer';
+export type EnemyShape = 'blob' | 'beast' | 'golem' | 'flyer' | 'mushroom';
 
 export interface EnemyDef {
   id: string;
@@ -80,6 +120,9 @@ export interface NpcDef {
   dialog: string[];
   /** ids de equipamentos à venda (action = 'shop') */
   shop?: string[];
+  look: Partial<HumanLook>;
+  /** animação de espera: martelar, apoiar no cajado... */
+  idle?: 'hammer' | 'still';
 }
 
 export interface PortalDef {

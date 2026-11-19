@@ -2,8 +2,11 @@ import { getEnemy, getItem, getNpc, SKILLS } from '../data';
 import type { SoundName } from '../engine/audio';
 import type { Input } from '../engine/input';
 import { VIEW_W, VIEW_H } from '../engine/view';
-import type { EnemyDef, NpcDef, PortalDef, SkillDef, StageDef } from '../types';
-import { bar, circle, humanoid, monster, shade, text } from './draw';
+import type { EnemyDef, HumanLook, NpcDef, PortalDef, SkillDef, StageDef } from '../types';
+import { drawHuman, OUTLINE } from './art/human';
+import { drawMonster } from './art/monsters';
+import { npcLook, npcPose, playerLook, playerPose, type ActionAnim } from './art/poses';
+import { bar, shade, text } from './draw';
 import type { Progress } from './progress';
 import { calcDamage, computeStats, expToNext, type Stats } from './stats';
 
@@ -44,7 +47,14 @@ export interface Player extends Body {
   mp: number;
   maxMp: number;
   attackTimer: number;
-  swing: number;
+  /** animação da ação atual (golpe/poder) */
+  anim: ActionAnim | null;
+  animT: number;
+  animDur: number;
+  moving: boolean;
+  deadAnim: number;
+  /** ação agendada (ex.: o Golpe Trovão acerta ao aterrissar) */
+  pending: { t: number; run: () => void } | null;
   comboStep: number;
   comboWindow: number;
   cooldowns: Record<string, number>;
@@ -64,6 +74,9 @@ export interface Enemy extends Body {
   dead: boolean;
   deadTimer: number;
   seed: number;
+  /** 1→0 logo após golpear (animação de bote) */
+  strike: number;
+  moving: boolean;
 }
 
 interface Projectile {
@@ -114,7 +127,8 @@ interface Effect {
 export class World {
   player: Player;
   stats: Stats;
-  npcs: { def: NpcDef; x: number; y: number }[];
+  npcs: { def: NpcDef; x: number; y: number; look: HumanLook; seed: number }[];
+  playerLook: HumanLook;
   enemies: Enemy[] = [];
   private projectiles: Projectile[] = [];
   private texts: FloatText[] = [];
@@ -141,12 +155,17 @@ export class World {
   ) {
     this.stats = computeStats(progress);
     this.cleared = stage.waves.length === 0;
-    this.npcs = stage.npcs.map((n) => ({ def: getNpc(n.npcId), x: n.x, y: n.y }));
+    this.npcs = stage.npcs.map((n, i) => {
+      const def = getNpc(n.npcId);
+      return { def, x: n.x, y: n.y, look: npcLook(def.look), seed: i * 1.7 };
+    });
+    this.playerLook = playerLook(progress);
     this.player = {
       x: stage.spawn.x, y: stage.spawn.y, vx: 0, facing: 1, radius: 14,
       hp: Math.min(keep?.hp ?? this.stats.maxHp, this.stats.maxHp), maxHp: this.stats.maxHp,
       mp: Math.min(keep?.mp ?? this.stats.maxMp, this.stats.maxMp), maxMp: this.stats.maxMp,
-      hitStun: 0, flash: 0, attackTimer: 0, swing: 0, comboStep: 0, comboWindow: 0,
+      hitStun: 0, flash: 0, attackTimer: 0, comboStep: 0, comboWindow: 0,
+      anim: null, animT: 0, animDur: 1, moving: false, deadAnim: 0, pending: null,
       cooldowns: {}, invuln: 0, dead: false, deadTimer: 0, walk: 0, buffered: null, bufferT: 0,
     };
     this.camX = this.cameraTarget();
@@ -156,6 +175,7 @@ export class World {
   refreshStats(fullHeal = false): void {
     const old = this.stats;
     this.stats = computeStats(this.progress);
+    this.playerLook = playerLook(this.progress);
     const p = this.player;
     p.maxHp = this.stats.maxHp;
     p.maxMp = this.stats.maxMp;
@@ -230,6 +250,7 @@ export class World {
     p.invuln = Math.max(0, p.invuln - dt);
 
     if (p.dead) {
+      p.deadAnim += dt;
       p.deadTimer -= dt;
       if (p.deadTimer <= 0 && p.deadTimer > -1) {
         p.deadTimer = -1;
@@ -279,11 +300,24 @@ export class World {
       p.x += ax.x * PLAYER_SPEED * dt;
       p.y += ax.y * PLAYER_SPEED * 0.7 * dt;
       if (Math.abs(ax.x) > 0.15) p.facing = Math.sign(ax.x);
-      if (ax.x !== 0 || ax.y !== 0) p.walk += dt * 10;
+      p.moving = ax.x !== 0 || ax.y !== 0;
+      if (p.moving) p.walk += dt * 11;
     }
+    if (p.hitStun > 0 || p.attackTimer > 0) p.moving = false;
     p.x += p.vx * dt;
     p.vx *= Math.pow(0.002, dt);
-    p.swing = Math.max(0, p.swing - dt);
+    if (p.anim) {
+      p.animT += dt;
+      if (p.animT >= p.animDur) p.anim = null;
+    }
+    if (p.pending) {
+      p.pending.t -= dt;
+      if (p.pending.t <= 0) {
+        const run = p.pending.run;
+        p.pending = null;
+        if (!p.dead && p.hitStun <= 0) run();
+      }
+    }
 
     const minX = this.waveActive ? this.camX + 16 : 16;
     const maxX = this.waveActive ? this.camX + VIEW_W - 16 : this.stage.width - 16;
@@ -326,7 +360,7 @@ export class World {
     p.comboStep = (p.comboStep + 1) % COMBO.length;
     p.comboWindow = 0.55;
     p.attackTimer = step.time;
-    p.swing = step.time;
+    this.startAnim((['combo0', 'combo1', 'combo2'] as const)[COMBO.indexOf(step)], step.time + 0.06);
     p.vx = p.facing * 40;
     const finisher = step === COMBO[COMBO.length - 1];
     this.sound('swing');
@@ -335,7 +369,6 @@ export class World {
       this.freeze(finisher ? 0.09 : 0.045);
       if (finisher) { this.shake(4, 0.18); this.sound('heavy'); }
     }
-    this.effects.push({ kind: 'swing', x: p.x, y: p.y, dir: p.facing, radius: step.range, color: finisher ? '#ffe9a8' : '#ffffff', life: 0.15, maxLife: 0.15 });
   }
 
   private useSkill(skill: SkillDef): void {
@@ -353,13 +386,15 @@ export class World {
     p.mp -= skill.mpCost;
     p.cooldowns[skill.id] = skill.cooldown;
     p.attackTimer = 0.3;
-    p.swing = 0.3;
     switch (skill.kind) {
       case 'projectile':
+        this.startAnim('wind', 0.3);
         this.sound('wind');
         this.projectiles.push({ x: p.x + p.facing * 20, y: p.y, dir: p.facing, dist: 0, skill, hit: new Set() });
         break;
       case 'aoe':
+        this.startAnim('whirl', 0.4);
+        p.attackTimer = 0.4;
         for (const e of this.enemies) {
           if (e.dead) continue;
           const dx = e.x - p.x, dy = (e.y - p.y) * 2;
@@ -380,15 +415,32 @@ export class World {
         this.effects.push({ kind: 'ring', x: p.x, y: p.y, dir: 1, radius: skill.radius, color: skill.color, life: 0.35, maxLife: 0.35 });
         break;
       case 'melee':
-        this.sound('thunder');
-        this.hitFront(skill.range, skill.damageMul, skill.knockback, skill.radius, true);
-        this.shake(8, 0.35);
-        this.freeze(0.12);
-        this.hooks.vibrate(60);
-        this.burst(p.x + p.facing * skill.range * 0.6, p.y, 30, 22, skill.color, 260, 3, 200);
-        this.effects.push({ kind: 'swing', x: p.x, y: p.y, dir: p.facing, radius: skill.range, color: skill.color, life: 0.3, maxLife: 0.3 });
+        // pula e o golpe acerta ao aterrissar
+        this.startAnim('thunder', 0.55);
+        p.attackTimer = 0.55;
+        p.invuln = Math.max(p.invuln, 0.4);
+        this.sound('swing');
+        p.pending = {
+          t: 0.27,
+          run: () => {
+            this.sound('thunder');
+            this.hitFront(skill.range, skill.damageMul, skill.knockback, skill.radius, true);
+            this.shake(8, 0.35);
+            this.freeze(0.12);
+            this.hooks.vibrate(60);
+            this.burst(p.x + p.facing * skill.range * 0.6, p.y, 30, 22, skill.color, 260, 3, 200);
+            this.effects.push({ kind: 'swing', x: p.x, y: p.y, dir: p.facing, radius: skill.range, color: skill.color, life: 0.3, maxLife: 0.3 });
+          },
+        };
         break;
     }
+  }
+
+  private startAnim(kind: ActionAnim, dur: number): void {
+    const p = this.player;
+    p.anim = kind;
+    p.animT = 0;
+    p.animDur = dur;
   }
 
   /** Golpe à frente do jogador. Retorna quantos inimigos acertou. */
@@ -470,6 +522,8 @@ export class World {
 
   private updateEnemy(e: Enemy, dt: number): void {
     e.flash = Math.max(0, e.flash - dt);
+    e.strike = Math.max(0, e.strike - dt * 4);
+    e.moving = false;
     e.x += e.vx * dt;
     e.vx *= Math.pow(0.003, dt);
     e.x = Math.max(0, Math.min(this.stage.width, e.x));
@@ -490,6 +544,7 @@ export class World {
         }
         e.state = 'recover';
         e.timer = d.attackCooldown;
+        e.strike = 1;
       }
       return;
     }
@@ -508,6 +563,7 @@ export class World {
     if (ml > 2) {
       e.x += (mx / ml) * speed * dt;
       e.y += (my / ml) * speed * 0.7 * dt;
+      e.moving = true;
     }
     e.y = Math.max(0, Math.min(this.stage.depth, e.y));
     if (e.state === 'chase' && Math.abs(dx) < d.attackRange + p.radius && Math.abs(dy) < 14) {
@@ -603,7 +659,7 @@ export class World {
         this.enemies.push({
           def, x, y: Math.random() * this.stage.depth, vx: 0, facing: fromLeft ? 1 : -1,
           radius: def.radius, hp: def.hp, hitStun: 0, flash: 0,
-          state: 'chase', timer: 0, dead: false, deadTimer: 0, seed: Math.random() * 10,
+          state: 'chase', timer: 0, dead: false, deadTimer: 0, seed: Math.random() * 10, strike: 0, moving: false,
         });
       }
     }
@@ -767,42 +823,64 @@ export class World {
     ctx.stroke();
   }
 
-  private drawNpc(ctx: CanvasRenderingContext2D, n: { def: NpcDef; x: number; y: number }): void {
+  private drawNpc(ctx: CanvasRenderingContext2D, n: World['npcs'][number]): void {
     const gy = GROUND_TOP + n.y;
-    const facing = this.player.x < n.x ? -1 : 1;
-    humanoid(ctx, n.x, gy, 14, n.def.color, '#f1c9a5', facing, false, Math.sin(this.time * 2 + n.x) * 0.8);
-    text(ctx, n.def.name, n.x, gy - 46, { size: 10, align: 'center' });
+    const p = this.player;
+    const near = Math.abs(p.x - n.x) < 90 && Math.abs(p.y - n.y) < 50;
+    const working = n.def.idle === 'hammer' && !near;
+    const facing = working ? 1 : p.x < n.x ? -1 : 1;
+    if (n.def.idle === 'hammer') {
+      // bigorna
+      const ax = n.x + 20, ay = gy + 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(ax, ay, 11, 3.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#4a4f5a';
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(ax - 4, ay); ctx.lineTo(ax - 2, ay - 6); ctx.lineTo(ax - 9, ay - 9); ctx.lineTo(ax - 9, ay - 12);
+      ctx.lineTo(ax + 10, ay - 12); ctx.lineTo(ax + 6, ay - 7); ctx.lineTo(ax + 3, ay - 6); ctx.lineTo(ax + 5, ay);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // faíscas da batida
+      const c = (this.time * 1.3 + n.seed) % 1;
+      if (working && c > 0.62 && c < 0.72) {
+        ctx.fillStyle = '#ffd36b';
+        for (let k = 0; k < 5; k++) ctx.fillRect(ax - 2 + Math.cos(k * 1.3) * (c - 0.6) * 90, ay - 13 - Math.abs(Math.sin(k * 2.1)) * (c - 0.6) * 70, 1.6, 1.6);
+      }
+    }
+    drawHuman(ctx, n.x, gy, facing, n.look, npcPose(working ? 'hammer' : n.def.idle === 'hammer' ? 'still' : n.def.idle, this.time, n.seed));
+    text(ctx, n.def.name, n.x, gy - 58, { size: 10, align: 'center' });
   }
 
   private drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     const gy = GROUND_TOP + e.y;
-    if (e.dead) ctx.globalAlpha = Math.max(0, e.deadTimer / 0.5);
-    monster(ctx, e.def.shape, e.x, gy, e.radius, e.def.color, e.facing, e.flash > 0, this.time + e.seed);
-    ctx.globalAlpha = 1;
+    drawMonster(ctx, e.def.shape, e.x, gy, e.radius, e.def.color, e.facing, {
+      t: this.time + e.seed,
+      moving: e.moving,
+      windup: e.state === 'windup' ? 1 - Math.max(0, e.timer) / e.def.windup : 0,
+      strike: e.strike,
+      hurt: e.hitStun > 0,
+      dying: e.dead ? 1 - Math.max(0, e.deadTimer) / 0.5 : 0,
+      flash: e.flash > 0,
+    });
     if (e.dead) return;
-    if (e.state === 'windup') text(ctx, '!', e.x, gy - e.radius * 3 - 6, { size: 16, align: 'center', color: '#ff5050' });
+    const top = e.def.shape === 'flyer' ? e.radius * 4 : e.def.shape === 'mushroom' ? e.radius * 2.9 : e.radius * 2.4;
+    if (e.state === 'windup') text(ctx, '!', e.x, gy - top - 6, { size: 16, align: 'center', color: '#ff5050' });
     if (!e.def.boss && e.hp < e.def.hp) bar(ctx, e.x - 16, gy + 6, 32, 4, e.hp / e.def.hp, '#ff5f5f');
   }
 
   private drawPlayer(ctx: CanvasRenderingContext2D): void {
     const p = this.player;
-    const gy = GROUND_TOP + p.y;
-    const blink = p.invuln > 0 && Math.floor(this.time * 20) % 2 === 0;
-    if (p.dead) ctx.globalAlpha = 0.5;
-    if (!blink) {
-      const bob = p.dead ? 0 : Math.abs(Math.sin(p.walk)) * -1.5;
-      humanoid(ctx, p.x, gy, p.radius, '#3d6fd6', '#f1c9a5', p.facing, p.flash > 0, bob);
-      // espada
-      const ang = p.swing > 0 ? (-1.4 + (1 - p.swing / 0.3) * 2.4) : 0.9;
-      const hx = p.x + p.facing * 9, hy = gy - 20;
-      ctx.strokeStyle = '#dfe8f5';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(hx, hy);
-      ctx.lineTo(hx + p.facing * Math.cos(ang) * 22, hy + Math.sin(ang) * 22);
-      ctx.stroke();
-      circle(ctx, hx, hy, 2.5, '#c99a3c');
-    }
-    ctx.globalAlpha = 1;
+    const blink = !p.dead && p.invuln > 0 && p.anim !== 'thunder' && Math.floor(this.time * 20) % 2 === 0;
+    if (blink) return;
+    const pose = playerPose({
+      action: p.anim, actionT: p.animT, actionDur: p.animDur, moving: p.moving, walk: p.walk,
+      hurt: p.hitStun > 0, dead: p.dead, deadAnim: p.deadAnim,
+    }, this.time);
+    drawHuman(ctx, p.x, GROUND_TOP + p.y, p.facing, this.playerLook, pose, p.flash > 0);
   }
 }
