@@ -62,6 +62,8 @@ const BACK_ROW: Partial<Record<SceneryTheme, [string, number][]>> = {
   sky: [['o_tree1', 82], ['o_tree_pink', 82], ['o_column', 62], ['o_arch2', 56], ['o_bush_g', 26], ['o_flowers3', 24]],
 };
 
+const WATERFALL_THEMES = new Set<SceneryTheme>(['forest', 'sky', 'snow', 'cave']);
+
 const PROPS_BY_THEME: Record<StageDef['theme'], PropKind[]> = {
   village: ['barrel', 'crate', 'lamp', 'barrel', 'well'],
   forest: ['stump', 'log', 'mushrooms', 'rock', 'mushrooms'],
@@ -237,6 +239,87 @@ export class Scenery {
         ctx.globalAlpha = 1;
       }
     }
+  }
+
+  /** Escadas, cachoeiras animadas e placas (desenhadas logo depois do terreno). */
+  drawFixtures(ctx: Ctx, camX: number, camY: number, t: number): void {
+    const vis = (x: number) => x - camX > -60 && x - camX < VIEW_W + 60;
+    const pixel = sceneryReady();
+    // cachoeiras nos degraus do chão
+    if (WATERFALL_THEMES.has(this.stage.theme)) {
+      const g = this.terrain.ground;
+      for (let i = 0; i < g.length; i++) {
+        const sgm = g[i];
+        for (const [nb, edge, dir] of [[g[i + 1], sgm.x1, 1], [g[i - 1], sgm.x0, -1]] as const) {
+          if (!nb || nb.y <= sgm.y || !vis(edge) || rnd(this.seed, i * 2 + (dir > 0 ? 1 : 0), 300) > 0.8) continue;
+          this.waterfall(ctx, edge - camX + (dir > 0 ? -4 : -22), sgm.y - camY - 6, nb.y - camY + 4, t, pixel);
+        }
+      }
+    }
+    // escadas
+    for (const l of this.terrain.ladders) {
+      if (!vis(l.x)) continue;
+      const x = l.x - camX, top = l.top - camY - 4, bottom = l.bottom - camY;
+      if (pixel) {
+        const [lw, lh] = frameSize('o_ladder');
+        const w = 24, segH = (w * lh) / lw;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x - w, top, w * 2, bottom - top);
+        ctx.clip();
+        for (let y = top; y < bottom; y += segH - 2) drawSub(ctx, 'o_ladder', 0, 0, lw, lh, Math.round(x - w / 2), Math.round(y), w, Math.ceil(segH));
+        ctx.restore();
+      } else {
+        ctx.strokeStyle = '#7a5030';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(x - 9, top); ctx.lineTo(x - 9, bottom); ctx.moveTo(x + 9, top); ctx.lineTo(x + 9, bottom);
+        for (let y = top + 6; y < bottom; y += 12) { ctx.moveTo(x - 9, y); ctx.lineTo(x + 9, y); }
+        ctx.stroke();
+      }
+    }
+    // placas: seta no começo e placa perto do portal final
+    if (pixel && this.stage.id !== 'lumen') {
+      const sx = this.stage.spawn.x + 42;
+      if (vis(sx)) drawSpriteH(ctx, 'o_arrow_sign', sx - camX, this.terrain.groundAt(sx) - camY + 1, 24);
+      const ex = this.stage.width - 130;
+      if (vis(ex)) drawSpriteH(ctx, 'o_sign', ex - camX, this.terrain.groundAt(ex) - camY + 1, 28);
+    }
+  }
+
+  /** Cachoeira: a água "desce" rolando a textura; respingos e névoa embaixo. */
+  private waterfall(ctx: Ctx, x: number, top: number, bottom: number, t: number, pixel: boolean): void {
+    const w = 26, h = bottom - top;
+    if (h < 10) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, top, w, h);
+    ctx.clip();
+    if (pixel) {
+      const [fw, fh] = frameSize('o_waterfall');
+      // pega uma faixa só de água (meio do desenho) e repete rolando para baixo
+      const sx = fw * 0.12, sw = fw * 0.5, sy = fh * 0.12, sh = fh * 0.62;
+      const tileH = (w * sh) / sw;
+      const off = (t * 70) % tileH;
+      for (let y = top - tileH + off; y < bottom; y += tileH) drawSub(ctx, 'o_waterfall', sx, sy, sw, sh, x, Math.floor(y), w, Math.ceil(tileH) + 1);
+    } else {
+      ctx.fillStyle = 'rgba(120,200,255,0.85)';
+      ctx.fillRect(x, top, w, h);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      for (let k = 0; k < 4; k++) ctx.fillRect(x + 3 + k * 6, top + ((t * 90 + k * 23) % h), 2, 10);
+    }
+    ctx.restore();
+    // borda da água no topo
+    ellipse(ctx, x + w / 2, top + 2, w / 2 + 2, 3, 'rgba(200,240,255,0.9)');
+    // respingos
+    for (let k = 0; k < 6; k++) {
+      const ph = (t * 1.6 + k / 6) % 1;
+      ctx.globalAlpha = (1 - ph) * 0.9;
+      ellipse(ctx, x + w / 2 + Math.sin(k * 2.3) * (6 + ph * 12), bottom - 2 - ph * 10, 2.2, 2.2, '#e8f8ff');
+    }
+    ctx.globalAlpha = 0.5;
+    ellipse(ctx, x + w / 2, bottom, w * 0.9 + Math.sin(t * 4) * 2, 5, '#dff4ff');
+    ctx.globalAlpha = 1;
   }
 
   /** Construções fixas (vila) em pé no chão de verdade. */

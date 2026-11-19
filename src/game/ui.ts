@@ -371,7 +371,7 @@ export class Ui {
     const input = this.input;
     const { world, progress } = this.game;
     if (!input.touchMode) {
-      text(ctx, 'Andar: A/D ←→ · Pular: Espaço/W · Descer: S+Espaço · Atacar: J · Poderes: K L I · Falar/Entrar: E ou ↑ · Menu: M', VIEW_W / 2, VIEW_H - 10,
+      text(ctx, 'Andar: A/D ←→ · Pular: Espaço · Escada: W/S ↑↓ · Descer: S+Espaço · Atacar: J · Poderes: K L I · Falar: E · Menu: M', VIEW_W / 2, VIEW_H - 10,
         { size: 10, align: 'center', color: 'rgba(255,255,255,0.85)' });
       return;
     }

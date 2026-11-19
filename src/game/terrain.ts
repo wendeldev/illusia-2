@@ -14,10 +14,12 @@ const MAX_FALL = 900;
 export class Terrain {
   readonly ground: TerrainSeg[];
   readonly platforms: TerrainSeg[];
+  readonly ladders: { x: number; top: number; bottom: number }[];
 
   constructor(def: TerrainDef | undefined, readonly width: number) {
     this.ground = def?.ground.length ? def.ground : [{ x0: 0, x1: width, y: BASE_GROUND }];
     this.platforms = def?.platforms ?? [];
+    this.ladders = def?.ladders ?? [];
   }
 
   /** Topo do chão na posição x. */
@@ -150,5 +152,14 @@ export function generateTerrain(seed: number, width: number, hilly = 1): Terrain
       px += 160 + r() * 120;
     }
   }
-  return { ground, platforms };
+  // escadas: ligam o chão (ou a plataforma de baixo) a cerca de metade das plataformas
+  const ladders: { x: number; top: number; bottom: number }[] = [];
+  for (const p of platforms) {
+    if (r() > 0.5 || p.x1 - p.x0 < 90) continue;
+    const x = Math.round(r() < 0.5 ? p.x0 + 22 : p.x1 - 22);
+    const below = platforms.filter((q) => q !== p && q.y > p.y + 20 && x >= q.x0 + 8 && x <= q.x1 - 8).map((q) => q.y);
+    const bottom = Math.min(groundAt(x), ...below);
+    if (bottom - p.y > 40) ladders.push({ x, top: p.y, bottom });
+  }
+  return { ground, platforms, ladders };
 }

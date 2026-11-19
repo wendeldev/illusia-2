@@ -80,6 +80,8 @@ export interface Player extends Body {
   /** pulo "guardado" e tempo extra para pular logo após sair da beirada */
   jumpBuffer: number;
   coyote: number;
+  /** subindo/descendo uma escada */
+  climbing: boolean;
 }
 
 export interface Enemy extends Body {
@@ -251,7 +253,7 @@ export class World {
       mp: Math.min(keep?.mp ?? this.stats.maxMp, this.stats.maxMp), maxMp: this.stats.maxMp,
       hitStun: 0, flash: 0, attackTimer: 0, comboStep: 0, comboWindow: 0,
       anim: null, animT: 0, animDur: 1, moving: false, deadAnim: 0, pending: null,
-      cooldowns: {}, invuln: 0, dead: false, deadTimer: 0, walk: 0, buffered: null, bufferT: 0, jumpBuffer: 0, coyote: 0,
+      cooldowns: {}, invuln: 0, dead: false, deadTimer: 0, walk: 0, buffered: null, bufferT: 0, jumpBuffer: 0, coyote: 0, climbing: false,
     };
     this.camX = this.cameraTarget();
     this.camY = this.cameraTargetY();
@@ -409,6 +411,7 @@ export class World {
     const up = ax.y < -0.75;
     const upEdge = up && !this.prevUp;
     this.prevUp = up;
+    if (this.updateClimb(dt, input, free)) return;
     let jump = input.consume('jump');
     if (upEdge) {
       if (this.nearby()) this.interact();
@@ -466,6 +469,51 @@ export class World {
       else this.useSkill(cmd.skill);
     }
     if (input.consume('interact')) this.interact();
+  }
+
+  /** Escada perto dos pés do jogador (ou null). */
+  private ladderHere(): { x: number; top: number; bottom: number } | null {
+    const p = this.player;
+    return this.terrain.ladders.find((l) => Math.abs(p.x - l.x) < 14 && p.y >= l.top - 3 && p.y <= l.bottom + 3) ?? null;
+  }
+
+  /** Subir/descer escada: ↑/↓ perto de uma escada. Pulo solta. Retorna true enquanto estiver na escada. */
+  private updateClimb(dt: number, input: Input, free: boolean): boolean {
+    const p = this.player;
+    const ay = input.axis.y;
+    const l = this.ladderHere();
+    if (!p.climbing) {
+      if (!l || !free) return false;
+      const wantUp = ay < -0.6 && p.y > l.top + 2;
+      const wantDown = ay > 0.6 && p.y <= l.top + 2;
+      if (!wantUp && !wantDown) return false;
+      p.climbing = true;
+      p.x = l.x;
+      p.vx = 0;
+      p.vy = 0;
+    }
+    if (!l || p.hitStun > 0) { p.climbing = false; return false; }
+    if (input.consume('jump')) {
+      p.climbing = false;
+      p.vy = -JUMP_SPEED * 0.6;
+      p.onGround = false;
+      this.sound('jump');
+      return false;
+    }
+    p.x = l.x;
+    p.vy = 0;
+    p.y = Math.max(l.top, Math.min(l.bottom, p.y + ay * 110 * dt));
+    if (Math.abs(ay) > 0.2) p.walk += dt * 8;
+    p.moving = false;
+    // chegou ao topo subindo, ou ao chão descendo: solta da escada
+    if ((p.y <= l.top && ay < -0.2) || (p.y >= l.bottom && ay > 0.2)) {
+      p.climbing = false;
+      p.onGround = true;
+    }
+    p.onGround = !p.climbing;
+    // ataques não saem na escada, mas os comandos não ficam presos
+    input.consume('attack');
+    return true;
   }
 
   private readCommands(input: Input): void {
@@ -1105,6 +1153,7 @@ export class World {
     this.scenery.drawBackground(ctx, camX, camY, this.time);
     this.scenery.drawLandmarks(ctx, camX, camY, this.time);
     drawTerrain(ctx, this.terrain, s.theme, camX, camY, this.time, this.scenery.props.length + s.width);
+    this.scenery.drawFixtures(ctx, camX, camY, this.time);
 
     ctx.save();
     ctx.translate(-camX, -camY);
@@ -1316,6 +1365,7 @@ export class World {
     if (p.dead) { anim = 'dead'; frame = Math.min(3, p.deadAnim / 0.12); }
     else if (p.anim) { anim = ANIM[p.anim]; frame = (p.animT / p.animDur) * frameCount(`${pre}_${anim}`); }
     else if (p.hitStun > 0) { anim = 'hurt'; frame = this.time * 10; }
+    else if (p.climbing) { anim = 'jump'; frame = 0; }
     else if (!p.onGround) { anim = p.vy < 0 ? 'jump' : 'fall'; frame = 0; }
     else if (p.moving) { anim = 'walk'; frame = p.walk * (pre === 'hero' ? 0.9 : 0.6); }
     else { anim = 'idle'; frame = this.time * (pre === 'hero' ? 4 : 2); }
@@ -1328,7 +1378,9 @@ export class World {
     ctx.ellipse(p.x, below, 13 * Math.max(0.35, 1 - lift / 160), 4 * Math.max(0.35, 1 - lift / 160), 0, 0, Math.PI * 2);
     ctx.fill();
     const breathe = !p.anim && !p.moving && p.onGround && !p.dead ? 1 + Math.sin(this.time * 3) * 0.015 : 1;
-    drawSprite(ctx, name, Math.min(frame, frameCount(name) - 1e-3), p.x, p.y + 1, p.facing, { sy: breathe, flash: p.flash > 0 });
+    // na escada: vira de um lado para o outro ao subir (mão por mão)
+    const face = p.climbing ? (Math.floor(p.walk * 0.6) % 2 ? 1 : -1) : p.facing;
+    drawSprite(ctx, name, Math.min(frame, frameCount(name) - 1e-3), p.x, p.y + 1, face, { sy: breathe, flash: p.flash > 0 });
   }
 
   /** Inimigo em pixel art: um quadro só, animado com quique, preparo, bote e queda. */

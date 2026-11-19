@@ -195,6 +195,8 @@ export interface TerrainDef {
   ground: TerrainSeg[];
   /** plataformas flutuantes (sobe-se por baixo, pousa-se em cima) */
   platforms: TerrainSeg[];
+  /** escadas: x e topo/base (y) */
+  ladders?: { x: number; top: number; bottom: number }[];
 }
 
 export interface StageDef {

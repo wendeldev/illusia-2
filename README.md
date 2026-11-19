@@ -20,6 +20,7 @@ Para depurar, abra com `?debug` e use `window.__game` no console.
 | Andar | A/D ou ←/→ | direcional virtual (metade esquerda da tela) |
 | Pular | Espaço, W ou ↑ | botão ▲ |
 | Descer de uma plataforma | S + Espaço | direcional para baixo + ▲ |
+| Subir/descer escada | W/S ou ↑/↓ perto da escada | direcional para cima/baixo |
 | Atacar (combo de 3 golpes) | J | ⚔ |
 | Poderes 1, 2, 3 | K, L, I | botões coloridos |
 | Falar / entrar no portal | E (ou ↑ perto) | ✋ |
