@@ -2,6 +2,7 @@ import { getEnemy, getItem, getStage, REGIONS, SKILLS, STAGES_PER_REGION, stageI
 import type { Sfx } from '../engine/audio';
 import type { Music } from '../engine/music';
 import { rewardText, type QuestBook } from './quests';
+import { countStars, DAMAGE_LIMIT, drawStar, drawStars, formatTime, type StageResult } from './stars';
 import type { Input, TouchButton } from '../engine/input';
 import { VIEW_H, VIEW_W } from '../engine/view';
 import type { NpcDef, SceneryTheme } from '../types';
@@ -29,6 +30,7 @@ type Modal =
   | { kind: 'dialog'; npc: NpcDef; lines: string[]; line: number; after: () => void }
   | { kind: 'offer'; npc: NpcDef; quest: QuestDef; sel: number }
   | { kind: 'quests' }
+  | { kind: 'result'; r: StageResult; t: number; shown: number }
   | { kind: 'shop'; npc: NpcDef; sel: number; scroll: number }
   | { kind: 'menu'; sel: number; scroll: number }
   | { kind: 'map'; region: number; sel: number }
@@ -176,6 +178,10 @@ export class Ui {
     }
   }
 
+  showResult(r: StageResult): void {
+    this.modal = { kind: 'result', r, t: 0, shown: 0 };
+  }
+
   showDead(): void {
     this.modal = { kind: 'dead' };
   }
@@ -242,6 +248,17 @@ export class Ui {
       case 'quests':
         if (confirm || back) this.close();
         break;
+      case 'result': {
+        m.t += dt;
+        // as estrelas aparecem uma a uma, com som
+        const due = Math.min(3, Math.floor((m.t - 0.25) / 0.35) + 1);
+        while (m.shown < due) {
+          if (m.r.stars[m.shown]) this.game.sfx.play(m.r.newStars[m.shown] ? 'levelup' : 'coin');
+          m.shown++;
+        }
+        if ((confirm || back) && m.t > 0.6) this.close();
+        break;
+      }
       case 'dead':
         if (confirm) this.game.returnToTown();
         break;
@@ -281,6 +298,7 @@ export class Ui {
       case 'map': return this.drawMap(ctx, m);
       case 'offer': return this.drawOffer(ctx, m);
       case 'quests': return this.drawQuests(ctx);
+      case 'result': return this.drawResult(ctx, m);
       case 'dead': return this.drawDead(ctx);
     }
   }
@@ -306,6 +324,17 @@ export class Ui {
     });
 
     text(ctx, world.stage.name, VIEW_W / 2, 16, { size: 12, align: 'center' });
+    // cronômetro e dano da fase (metas das estrelas)
+    const par = world.stage.parTime;
+    if (par) {
+      const fast = world.elapsed <= par;
+      const dmg = world.damageTaken / world.player.maxHp;
+      const rx = VIEW_W - 48;
+      text(ctx, `⏱ ${formatTime(world.elapsed)} / ${formatTime(par)}`, rx, 14, { size: 10, align: 'right', color: fast ? '#9ff0a0' : '#ff9b9b' });
+      text(ctx, `💔 ${Math.round(dmg * 100)}% / ${Math.round(DAMAGE_LIMIT * 100)}%`, rx, 28, { size: 10, align: 'right', color: dmg <= DAMAGE_LIMIT ? '#9ff0a0' : '#ff9b9b' });
+      const bits = this.game.progress.stars[world.stage.id] ?? 0;
+      if (bits) drawStars(ctx, rx - 22, 42, 9, bits);
+    }
     const boss = world.boss;
     if (boss) {
       text(ctx, boss.enraged ? `${boss.def.name} (furioso!)` : boss.def.name, VIEW_W / 2, 32, { size: 11, align: 'center', color: boss.enraged ? '#ff6b6b' : '#ffb3c4' });
@@ -516,7 +545,11 @@ export class Ui {
 
   private drawMap(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'map' }>): void {
     const x = 16, y = 12, w = VIEW_W - 32, h = VIEW_H - 24;
-    this.panel(ctx, x, y, w, h, 'Mapa do mundo');
+    const stars = this.game.progress.stars;
+    const total = Object.values(stars).reduce((a, b) => a + countStars(b), 0);
+    this.panel(ctx, x, y, w, h, `Mapa do mundo  ·  ★ ${total}/${REGIONS.length * STAGES_PER_REGION * 3}`);
+    let regionStars = 0;
+    for (let k = 1; k <= STAGES_PER_REGION; k++) regionStars += countStars(stars[stageId(m.region * STAGES_PER_REGION + k)]);
     const region = REGIONS[m.region];
     const [c1, c2] = THEME_COLORS[region.theme];
     // faixa da região
@@ -525,7 +558,7 @@ export class Ui {
     g.addColorStop(1, c2);
     ctx.fillStyle = g;
     ctx.fillRect(x + 12, y + 34, w - 24, 40);
-    text(ctx, `Região ${m.region + 1} de ${REGIONS.length}`, VIEW_W / 2, y + 46, { size: 10, align: 'center' });
+    text(ctx, `Região ${m.region + 1} de ${REGIONS.length}  ·  ★ ${regionStars}/${STAGES_PER_REGION * 3}`, VIEW_W / 2, y + 46, { size: 10, align: 'center' });
     text(ctx, region.name, VIEW_W / 2, y + 62, { size: 15, align: 'center', color: '#ffe9a8' });
     const arrow = (ax: number, label: string, delta: number, enabled: boolean) => {
       ctx.globalAlpha = enabled ? 1 : 0.3;
@@ -553,8 +586,8 @@ export class Ui {
       ctx.lineWidth = s === m.sel ? 2 : 1;
       ctx.strokeRect(cx, cy, cw, ch);
       text(ctx, `${m.region + 1}-${s + 1}`, cx + cw / 2, cy + 18, { size: 15, align: 'center', color: open ? '#ffffff' : '#666e80' });
-      const status = done ? '✔ Concluída' : open ? '▶ Jogar' : '🔒';
-      text(ctx, status, cx + cw / 2, cy + 36, { size: 9, align: 'center', outline: false, color: done ? '#8fe07a' : open ? '#9cc4ff' : '#666e80' });
+      if (done) drawStars(ctx, cx + cw / 2, cy + 37, 12, stars[stageId(n)] ?? 1);
+      else text(ctx, open ? '▶ Jogar' : '🔒', cx + cw / 2, cy + 36, { size: 9, align: 'center', outline: false, color: open ? '#9cc4ff' : '#666e80' });
       if (isBoss || isElite) text(ctx, isBoss ? '☠ CHEFE' : '★ Chefe', cx + cw / 2, cy + 52, { size: 9, align: 'center', outline: false, color: isBoss ? '#ff8aa0' : '#ffc070' });
       this.regions.push({ x: cx, y: cy, w: cw, h: ch, fn: () => {
         if (m.sel === s) this.mapEnter(m);
@@ -572,6 +605,8 @@ export class Ui {
     const mood = st.mood === 'night' ? 'Noite' : st.mood === 'dusk' ? 'Entardecer' : 'Dia';
     text(ctx, `${st.waves.length} ondas · ${mood} · Força ${(st.power ?? 1).toFixed(1)}×${bossDef ? ` · Chefe: ${bossDef.name}` : ''}`,
       x + 16, iy + 28, { size: 9, color: '#aab4cc', outline: false, bold: false });
+    text(ctx, `Estrelas: ★ vencer · ★ em até ${formatTime(st.parTime ?? 0)} · ★ perdendo no máximo ${Math.round(DAMAGE_LIMIT * 100)}% da vida`,
+      x + 16, iy + 44, { size: 9, color: '#ffd36b', outline: false, bold: false });
     const open = this.unlocked(n);
     const bw = 110, bx = x + w - bw - 14, by = iy + 2;
     ctx.fillStyle = open ? '#3f8a45' : '#3a3f4a';
@@ -622,6 +657,38 @@ export class Ui {
       bar(ctx, x + w - 150, ry + 18, 120, 8, c / t, ready ? '#8fe07a' : '#9cc4ff');
       text(ctx, `${c}/${t}`, x + w - 90, ry + 34, { size: 10, align: 'center', outline: false });
     });
+  }
+
+  private drawResult(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'result' }>): void {
+    const w = 400, h = 250, x = (VIEW_W - w) / 2, y = (VIEW_H - h) / 2;
+    const r = m.r;
+    this.panel(ctx, x, y, w, h, 'Fase concluída!', false);
+    this.regions.push({ x: 0, y: 0, w: VIEW_W, h: VIEW_H, fn: () => { if (m.t > 0.6) this.close(); } });
+    // estrelas grandes que "saltam" ao aparecer
+    for (let i = 0; i < 3; i++) {
+      const appear = m.t - (0.25 + i * 0.35);
+      const on = r.stars[i] && appear >= 0;
+      const pop = on ? 1 + Math.max(0, 0.5 - appear * 2.5) : 1;
+      drawStar(ctx, x + w / 2 + (i - 1) * 54, y + 64, 21 * pop, on);
+    }
+    const rows: [string, string, boolean, boolean][] = [
+      ['Vencer a fase', '', r.stars[0], r.newStars[0]],
+      ['Rapidez', `${formatTime(r.time)}  (meta ${formatTime(r.par)})`, r.stars[1], r.newStars[1]],
+      ['Pouco dano', `perdeu ${Math.round(r.damage * 100)}%  (meta ${Math.round(DAMAGE_LIMIT * 100)}%)`, r.stars[2], r.newStars[2]],
+    ];
+    rows.forEach(([label, info, ok, isNew], i) => {
+      const ry = y + 108 + i * 26;
+      if (m.t < 0.25 + i * 0.35) return;
+      text(ctx, ok ? '✔' : '✘', x + 26, ry, { size: 13, color: ok ? '#8fe07a' : '#ff7b7b', outline: false });
+      text(ctx, label, x + 46, ry, { size: 12, outline: false });
+      text(ctx, info, x + 150, ry, { size: 10, outline: false, bold: false, color: '#aab4cc' });
+      if (isNew) text(ctx, 'NOVA!', x + w - 24, ry, { size: 10, align: 'right', color: '#ffd36b', outline: false });
+    });
+    if (m.t > 1.2) {
+      if (r.bonusGold) text(ctx, `Bônus das estrelas novas: +${r.bonusGold} G`, x + w / 2, y + h - 40, { size: 12, align: 'center', color: '#ffd36b' });
+      else if (r.stars.every(Boolean)) text(ctx, 'Perfeito! Todas as estrelas.', x + w / 2, y + h - 40, { size: 12, align: 'center', color: '#ffd36b' });
+      text(ctx, 'Toque ou aperte J para continuar', x + w / 2, y + h - 18, { size: 10, align: 'center', color: '#aab4cc', outline: false });
+    }
   }
 
   private drawDead(ctx: CanvasRenderingContext2D): void {

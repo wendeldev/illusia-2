@@ -197,4 +197,6 @@ export interface StageDef {
   /** região e número da fase (mapa do mundo) */
   region?: number;
   index?: number;
+  /** tempo-limite (segundos) para a estrela de rapidez */
+  parTime?: number;
 }

@@ -10,6 +10,7 @@ import { Scenery } from './art/scenery';
 import { npcLook, npcPose, playerLook, playerPose, type ActionAnim } from './art/poses';
 import { bar, text } from './draw';
 import type { Progress } from './progress';
+import { DAMAGE_LIMIT, type StageResult } from './stars';
 import { calcDamage, computeStats, expToNext, type Stats } from './stats';
 
 /** Y da tela onde começa o chão; y do mundo (0..depth) é somado a isto. */
@@ -35,6 +36,8 @@ export interface WorldHooks {
   stageCleared(stageId: string): void;
   /** marca sobre o NPC: '!' tem missão nova, '?' missão pronta para entregar */
   questMark(npcId: string): '!' | '?' | null;
+  /** resultado da fase (estrelas) */
+  stageResult(r: Pick<StageResult, 'stageId' | 'time' | 'par' | 'damage' | 'stars'>): void;
   save(): void;
   sound(name: SoundName): void;
   vibrate(ms: number): void;
@@ -180,6 +183,10 @@ export class World {
   private shakeDur = 1;
   private shakeMag = 0;
   private hurtFlash = 0;
+  /** tempo de jogo nesta fase (estrela de rapidez) */
+  elapsed = 0;
+  /** dano total recebido nesta fase (estrela de pouco dano) */
+  damageTaken = 0;
   private soundsThisFrame = new Set<SoundName>();
   camX = 0;
   waveIndex = 0;
@@ -285,6 +292,7 @@ export class World {
     }
     this.time += dt;
     const p = this.player;
+    if (active && !this.cleared && !p.dead) this.elapsed += dt;
     p.mp = Math.min(p.maxMp, p.mp + dt * 2.5);
     for (const id in p.cooldowns) p.cooldowns[id] = Math.max(0, p.cooldowns[id] - dt);
     p.flash = Math.max(0, p.flash - dt);
@@ -793,6 +801,7 @@ export class World {
     const p = this.player;
     if (p.invuln > 0 || p.dead) return;
     const dmg = calcDamage(atk, this.stats.def, 1);
+    this.damageTaken += Math.min(dmg, Math.max(0, p.hp));
     p.hp -= dmg;
     p.flash = 0.12;
     p.hitStun = 0.3;
@@ -858,6 +867,14 @@ export class World {
         this.cleared = true;
         if (!this.progress.cleared.includes(this.stage.id)) this.progress.cleared.push(this.stage.id);
         this.hooks.stageCleared(this.stage.id);
+        const par = this.stage.parTime;
+        if (par) {
+          const damage = this.damageTaken / this.player.maxHp;
+          this.hooks.stageResult({
+            stageId: this.stage.id, time: this.elapsed, par, damage,
+            stars: [true, this.elapsed <= par, damage <= DAMAGE_LIMIT],
+          });
+        }
         this.hooks.save();
         this.hooks.toast('Fase concluída! Siga até o portal.');
         // fôlego: recupera parte da vida para seguir direto para a próxima fase

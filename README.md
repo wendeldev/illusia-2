@@ -49,6 +49,14 @@ pancada (círculo vermelho), investida (faixa com setas), disparos, chamar ajuda
   em tempo real pelo navegador (`src/engine/music.ts`); as "partituras" ficam em `src/data/music.ts`.
   Som e música podem ser desligados separadamente no menu.
 
+## Estrelas
+
+Cada fase tem 3 estrelas: ★ vencer, ★ vencer dentro do tempo-limite e ★ perder no máximo 50% da vida.
+O cronômetro e o dano aparecem no canto superior direito durante a fase. As estrelas conquistadas
+ficam salvas (somam entre tentativas) e cada estrela nova dá ouro de bônus. O mapa mostra as estrelas
+de cada fase e o total por região. Tempo-limite: `parTime` em `src/data/campaign.ts`; limite de dano:
+`DAMAGE_LIMIT` em `src/game/stars.ts`.
+
 ## Estrutura
 
 ```
@@ -71,5 +79,4 @@ que não existe, o erro aparece no console com o nome do que falta.
 ## Próximos passos sugeridos
 
 - Arte própria (sprites) no lugar das formas provisórias (`src/game/draw.ts`)
-- Estrelas por fase (tempo e dano recebido)
 - PvP online (precisa de um servidor)

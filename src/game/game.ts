@@ -4,6 +4,7 @@ import { Sfx, vibrate } from '../engine/audio';
 import type { Input } from '../engine/input';
 import { Music } from '../engine/music';
 import { QuestBook, rewardText } from './quests';
+import { starBits, type StageResult } from './stars';
 import { loadProgress, saveProgress, type Progress } from './progress';
 import { Ui, type GameApi } from './ui';
 import { World, type WorldHooks } from './world';
@@ -32,7 +33,21 @@ export class Game implements GameApi {
     killed: (def) => this.questsReady(this.quests.onKill(def, this.world.stage.region)),
     stageCleared: (id) => this.questsReady(this.quests.onClear(id)),
     questMark: (npcId) => this.quests.mark(npcId),
+    stageResult: (r) => this.recordStars(r),
   };
+
+  /** Salva as estrelas (somando às que já tinha) e dá bônus pelas novas. */
+  private recordStars(r: Pick<StageResult, 'stageId' | 'time' | 'par' | 'damage' | 'stars'>): void {
+    const before = this.progress.stars[r.stageId] ?? 0;
+    const now = starBits(r.stars);
+    const newStars = r.stars.map((on, i) => on && !((before >> i) & 1)) as [boolean, boolean, boolean];
+    const power = this.world.stage.power ?? 1;
+    const bonusGold = newStars.filter(Boolean).length * Math.round(20 * power);
+    this.progress.stars[r.stageId] = before | now;
+    this.progress.gold += bonusGold;
+    saveProgress(this.progress);
+    this.ui.showResult({ ...r, newStars, bonusGold });
+  }
 
   private questsReady(list: QuestDef[]): void {
     for (const q of list) {

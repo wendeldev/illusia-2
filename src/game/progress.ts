@@ -12,6 +12,8 @@ export interface Progress {
   cleared: string[];
   /** estado das missões: ativa (com contagem) ou entregue */
   quests: Record<string, QuestState>;
+  /** estrelas por fase (bits: 1 = vencer, 2 = rapidez, 4 = pouco dano) */
+  stars: Record<string, number>;
 }
 
 export interface QuestState {
@@ -28,6 +30,7 @@ export function newProgress(): Progress {
     equipped: { weapon: 'training_sword' },
     cleared: [],
     quests: {},
+    stars: {},
   };
 }
 

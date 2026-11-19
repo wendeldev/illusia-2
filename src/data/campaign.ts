@@ -85,6 +85,8 @@ function makeStage(r: number, s: number): StageDef {
     theme: region.theme,
     mood: moodFor(region.theme, s),
     power: 1 + (n - 1) * 0.11,
+    // tempo-limite da estrela de rapidez: cresce com o tamanho, as ondas e os chefes
+    parTime: Math.round(30 + waveCount * 20 + width / 100 + (s === STAGES_PER_REGION ? 45 : s === 5 ? 25 : 0)),
     region: r,
     index: n,
     spawn: { x: 90, y: 75 },
