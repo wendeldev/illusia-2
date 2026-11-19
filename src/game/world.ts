@@ -11,7 +11,7 @@ import { npcLook, npcPose, playerLook, playerPose, type ActionAnim } from './art
 import { bar, text } from './draw';
 import type { Progress } from './progress';
 import { DAMAGE_LIMIT, type StageResult } from './stars';
-import { calcDamage, computeStats, expToNext, type Stats } from './stats';
+import { calcDamage, computeStats, expToNext, levelPower, type Stats } from './stats';
 
 /** Y da tela onde começa o chão; y do mundo (0..depth) é somado a isto. */
 export const GROUND_TOP = 200;
@@ -82,6 +82,8 @@ export interface Player extends Body {
 export interface Enemy extends Body {
   def: EnemyDef;
   state: 'chase' | 'windup' | 'recover' | 'ability' | 'charging';
+  /** nível do monstro (define a força) */
+  level: number;
   /** atributos já multiplicados pela força da fase */
   maxHp: number;
   atk: number;
@@ -163,6 +165,15 @@ interface Effect {
   color: string;
   life: number;
   maxLife: number;
+}
+
+/** Cor do nível do monstro comparado ao do jogador: cinza = fácil, branco = parelho, laranja/vermelho = perigoso. */
+export function levelColor(monster: number, player: number): string {
+  const d = monster - player;
+  if (d <= -3) return '#a8b0c0';
+  if (d <= 1) return '#ffffff';
+  if (d <= 4) return '#ffb060';
+  return '#ff5f5f';
 }
 
 export class World {
@@ -729,7 +740,7 @@ export class World {
         const def = getEnemy(a.enemyId);
         for (let i = 0; i < a.count; i++) {
           const side = i % 2 === 0 ? 1 : -1;
-          const m = this.spawnEnemy(def, e.x + side * (50 + Math.random() * 30), Math.max(0, Math.min(this.stage.depth, e.y + (Math.random() - 0.5) * 70)), -side);
+          const m = this.spawnEnemy(def, e.x + side * (50 + Math.random() * 30), Math.max(0, Math.min(this.stage.depth, e.y + (Math.random() - 0.5) * 70)), -side, true);
           this.burst(m.x, m.y, 10, 14, '#c49bff', 140, 2.5);
         }
         this.sound('wave');
@@ -776,12 +787,15 @@ export class World {
   }
 
   /** Cria um inimigo com atributos ajustados à força da fase. */
-  private spawnEnemy(def: EnemyDef, x: number, y: number, facing: number): Enemy {
-    const pw = this.stage.power ?? 1;
+  private spawnEnemy(def: EnemyDef, x: number, y: number, facing: number, summoned = false): Enemy {
+    // nível: o da fase, às vezes +1; chefe intermediário +2; chefe da região +3
+    const base = this.stage.level ?? 1;
+    const level = def.boss ? base + (def.hp >= 600 ? 3 : 2) : base + (!summoned && Math.random() < 0.35 ? 1 : 0);
+    const pw = levelPower(level);
     // a vida e o ataque crescem um pouco mais rápido que a força, para acompanhar o nível do jogador
     const hp = Math.round(def.hp * Math.pow(pw, 1.4));
     const e: Enemy = {
-      def, x, y, vx: 0, facing, radius: def.radius, hp, maxHp: hp,
+      def, level, x, y, vx: 0, facing, radius: def.radius, hp, maxHp: hp,
       atk: def.atk * Math.pow(pw, 1.3), armor: def.def * Math.sqrt(pw),
       exp: Math.round(def.exp * pw * 1.2), gold: Math.round(def.gold * pw),
       speed: def.speed * (1 + Math.min(0.3, (pw - 1) * 0.03)),
@@ -1232,6 +1246,7 @@ export class World {
     if (e.state === 'windup') text(ctx, '!', e.x, gy - top - 6, { size: 16, align: 'center', color: '#ff5050' });
     if (e.state === 'ability') text(ctx, '!!', e.x, gy - top - 8, { size: 20, align: 'center', color: '#ff3030' });
     if (!e.def.boss && e.hp < e.maxHp) bar(ctx, e.x - 16, gy + 6, 32, 4, e.hp / e.maxHp, '#ff5f5f');
+    if (!e.def.boss) text(ctx, `Nv ${e.level}`, e.x, gy + 16, { size: 8, align: 'center', color: levelColor(e.level, this.progress.level) });
   }
 
   private drawPlayer(ctx: CanvasRenderingContext2D): void {

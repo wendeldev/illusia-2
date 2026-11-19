@@ -9,7 +9,7 @@ import type { NpcDef, SceneryTheme } from '../types';
 import { bar, circle, text, wrapText } from './draw';
 import type { Progress } from './progress';
 import { describeBonus, expToNext, SLOT_NAMES } from './stats';
-import type { World } from './world';
+import { levelColor, type World } from './world';
 
 export interface GameApi {
   progress: Progress;
@@ -337,7 +337,7 @@ export class Ui {
     }
     const boss = world.boss;
     if (boss) {
-      text(ctx, boss.enraged ? `${boss.def.name} (furioso!)` : boss.def.name, VIEW_W / 2, 32, { size: 11, align: 'center', color: boss.enraged ? '#ff6b6b' : '#ffb3c4' });
+      text(ctx, `${boss.def.name} · Nv ${boss.level}${boss.enraged ? ' (furioso!)' : ''}`, VIEW_W / 2, 32, { size: 11, align: 'center', color: boss.enraged ? '#ff6b6b' : '#ffb3c4' });
       bar(ctx, VIEW_W / 2 - 130, 40, 260, 8, boss.hp / boss.maxHp, boss.enraged ? '#e03030' : '#c4466b');
     }
 
@@ -586,6 +586,8 @@ export class Ui {
       ctx.lineWidth = s === m.sel ? 2 : 1;
       ctx.strokeRect(cx, cy, cw, ch);
       text(ctx, `${m.region + 1}-${s + 1}`, cx + cw / 2, cy + 18, { size: 15, align: 'center', color: open ? '#ffffff' : '#666e80' });
+      const lv = getStage(stageId(n)).level ?? 1;
+      text(ctx, `Nv ${lv}`, cx + cw - 5, cy + 9, { size: 8, align: 'right', outline: false, color: open ? levelColor(lv, this.game.progress.level) : '#666e80' });
       if (done) drawStars(ctx, cx + cw / 2, cy + 37, 12, stars[stageId(n)] ?? 1);
       else text(ctx, open ? '▶ Jogar' : '🔒', cx + cw / 2, cy + 36, { size: 9, align: 'center', outline: false, color: open ? '#9cc4ff' : '#666e80' });
       if (isBoss || isElite) text(ctx, isBoss ? '☠ CHEFE' : '★ Chefe', cx + cw / 2, cy + 52, { size: 9, align: 'center', outline: false, color: isBoss ? '#ff8aa0' : '#ffc070' });
@@ -603,7 +605,8 @@ export class Ui {
     const bossDef = lastWave.enemies.map((e) => getEnemy(e.enemyId)).find((d) => d.boss);
     text(ctx, st.name, x + 16, iy + 10, { size: 12, color: '#ffe9a8', outline: false });
     const mood = st.mood === 'night' ? 'Noite' : st.mood === 'dusk' ? 'Entardecer' : 'Dia';
-    text(ctx, `${st.waves.length} ondas · ${mood} · Força ${(st.power ?? 1).toFixed(1)}×${bossDef ? ` · Chefe: ${bossDef.name}` : ''}`,
+    const lvl = st.level ?? 1;
+    text(ctx, `Monstros Nv ${lvl}–${lvl + 1}${bossDef ? ` · Chefe: ${bossDef.name} (Nv ${lvl + (bossDef.hp >= 600 ? 3 : 2)})` : ''} · ${st.waves.length} ondas · ${mood}`,
       x + 16, iy + 28, { size: 9, color: '#aab4cc', outline: false, bold: false });
     text(ctx, `Estrelas: ★ vencer · ★ em até ${formatTime(st.parTime ?? 0)} · ★ perdendo no máximo ${Math.round(DAMAGE_LIMIT * 100)}% da vida`,
       x + 16, iy + 44, { size: 9, color: '#ffd36b', outline: false, bold: false });

@@ -197,6 +197,8 @@ export interface StageDef {
   /** região e número da fase (mapa do mundo) */
   region?: number;
   index?: number;
+  /** nível base dos monstros desta fase */
+  level?: number;
   /** tempo-limite (segundos) para a estrela de rapidez */
   parTime?: number;
 }

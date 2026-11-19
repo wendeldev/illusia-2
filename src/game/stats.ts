@@ -17,13 +17,27 @@ export const SLOT_NAMES: Record<Slot, string> = {
   accessory: 'Acessório',
 };
 
+/** EXP para passar do nível `level` para o seguinte (curva pensada para o jogador acompanhar o nível dos monstros). */
 export function expToNext(level: number): number {
+  return Math.floor(34 * Math.pow(level, 1.27));
+}
+
+/** Curva da versão anterior (só para converter saves antigos). */
+export function legacyExpToNext(level: number): number {
   return Math.floor(40 * Math.pow(level, 1.6));
+}
+
+/** Nível do monstro → multiplicador de força (vida, ataque, recompensa). */
+export function levelPower(level: number): number {
+  return 1 + (level - 1) * 0.105;
 }
 
 export function computeStats(p: Progress): Stats {
   const lv = p.level - 1;
-  const s: Stats = { maxHp: 100 + 22 * lv, maxMp: 40 + 8 * lv, atk: 10 + 3 * lv, def: 3 + lv, crit: 0.05 };
+  const s: Stats = {
+    maxHp: Math.round(100 + 11 * lv), maxMp: Math.round(40 + 4 * lv),
+    atk: Math.round(10 + 1.5 * lv), def: Math.round(3 + 0.5 * lv), crit: 0.05,
+  };
   for (const id of Object.values(p.equipped)) {
     if (!id) continue;
     const e = getItem(id);

@@ -38,6 +38,11 @@ function rand(n: number): number {
   return x - Math.floor(x);
 }
 
+/** Nível base dos monstros na fase n (1..90). */
+export function monsterLevel(n: number): number {
+  return n <= 5 ? n : n + 2;
+}
+
 function moodFor(theme: SceneryTheme, s: number): Mood {
   if (theme === 'cave') return 'day';
   if (s <= 4) return 'day';
@@ -84,7 +89,9 @@ function makeStage(r: number, s: number): StageDef {
     width, depth,
     theme: region.theme,
     mood: moodFor(region.theme, s),
-    power: 1 + (n - 1) * 0.11,
+    // nível dos monstros: fases 1–5 = níveis 1–5; depois começa no 8 e sobe 1 por fase
+    level: monsterLevel(n),
+    power: 1 + (monsterLevel(n) - 1) * 0.105,
     // tempo-limite da estrela de rapidez: cresce com o tamanho, as ondas e os chefes
     parTime: Math.round(30 + waveCount * 20 + width / 100 + (s === STAGES_PER_REGION ? 45 : s === 5 ? 25 : 0)),
     region: r,

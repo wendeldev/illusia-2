@@ -49,6 +49,13 @@ pancada (círculo vermelho), investida (faixa com setas), disparos, chamar ajuda
   em tempo real pelo navegador (`src/engine/music.ts`); as "partituras" ficam em `src/data/music.ts`.
   Som e música podem ser desligados separadamente no menu.
 
+## Níveis
+
+Cada monstro tem nível (aparece embaixo dele). Fases 1–5: monstros nível 1–5; a partir da fase 6
+começam no nível 8 e sobem 1 por fase (fase 90 = nível 92). Alguns vêm 1 nível acima; o chefe
+intermediário tem +2 e o chefe da região +3. A cor compara com o seu nível: cinza = fácil,
+branco = parelho, laranja/vermelho = perigoso. Regra em `monsterLevel()` (`src/data/campaign.ts`).
+
 ## Estrelas
 
 Cada fase tem 3 estrelas: ★ vencer, ★ vencer dentro do tempo-limite e ★ perder no máximo 50% da vida.

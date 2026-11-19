@@ -1,4 +1,5 @@
 import { hasItem, hasStage, LEGACY_STAGE_IDS } from '../data';
+import { expToNext, legacyExpToNext } from './stats';
 import type { Slot } from '../types';
 
 const SAVE_KEY = 'lumen-save-v1';
@@ -14,6 +15,8 @@ export interface Progress {
   quests: Record<string, QuestState>;
   /** estrelas por fase (bits: 1 = vencer, 2 = rapidez, 4 = pouco dano) */
   stars: Record<string, number>;
+  /** versão do save (2 = nova curva de níveis) */
+  version: number;
 }
 
 export interface QuestState {
@@ -31,6 +34,7 @@ export function newProgress(): Progress {
     cleared: [],
     quests: {},
     stars: {},
+    version: 2,
   };
 }
 
@@ -38,7 +42,9 @@ export function loadProgress(): Progress {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return newProgress();
-    const p = { ...newProgress(), ...(JSON.parse(raw) as Partial<Progress>) };
+    const parsed = JSON.parse(raw) as Partial<Progress>;
+    const p = { ...newProgress(), ...parsed };
+    if (!parsed.version || parsed.version < 2) migrateLevels(p);
     // descarta itens que não existem mais (conteúdo mudou entre versões)
     p.owned = p.owned.filter(hasItem);
     p.cleared = [...new Set(p.cleared.map((id) => LEGACY_STAGE_IDS[id] ?? id).filter(hasStage))];
@@ -50,6 +56,16 @@ export function loadProgress(): Progress {
   } catch {
     return newProgress();
   }
+}
+
+/** Converte o nível de saves antigos para a nova curva mantendo toda a EXP já ganha. */
+function migrateLevels(p: Progress): void {
+  let total = p.exp;
+  for (let l = 1; l < p.level; l++) total += legacyExpToNext(l);
+  p.level = 1;
+  while (total >= expToNext(p.level)) { total -= expToNext(p.level); p.level++; }
+  p.exp = total;
+  p.version = 2;
 }
 
 export function saveProgress(p: Progress): void {
