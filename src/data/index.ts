@@ -51,7 +51,7 @@ export function validateContent(): void {
     if (q.reward.item) getItem(q.reward.item);
     if (q.requiresStage) getStage(q.requiresStage);
     if (q.goal.kind === 'clear') getStage(q.goal.stageId);
-    else q.goal.enemyIds?.forEach(getEnemy);
+    else if (q.goal.kind === 'kill') q.goal.enemyIds?.forEach(getEnemy);
   }
   if (SKILLS.length > 3) throw new Error('No máximo 3 poderes (3 botões).');
 }

@@ -9,10 +9,11 @@ export class QuestBook {
   constructor(private progress: Progress) {}
 
   target(q: QuestDef): number {
-    return q.goal.kind === 'kill' ? q.goal.count : 1;
+    return q.goal.kind === 'clear' ? 1 : q.goal.count;
   }
 
   count(q: QuestDef): number {
+    if (q.goal.kind === 'collect') return Math.min(this.target(q), this.progress.bag[q.goal.itemId] ?? 0);
     return Math.min(this.target(q), this.progress.quests[q.id]?.count ?? 0);
   }
 
@@ -79,6 +80,7 @@ export class QuestBook {
   }
 
   complete(q: QuestDef): void {
+    if (q.goal.kind === 'collect') this.progress.bag[q.goal.itemId] = Math.max(0, (this.progress.bag[q.goal.itemId] ?? 0) - q.goal.count);
     this.progress.quests[q.id] = { status: 'done', count: this.target(q) };
   }
 

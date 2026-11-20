@@ -1,7 +1,7 @@
 // Tipos de conteúdo. Fases, poderes, equipamentos, inimigos e NPCs são DADOS (src/data/),
 // então dá para criar conteúdo novo sem mexer no motor.
 
-export type Slot = 'weapon' | 'armor' | 'helmet' | 'accessory';
+export type Slot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'boots' | 'accessory' | 'wings';
 
 export interface StatBonus {
   atk?: number;
@@ -58,6 +58,12 @@ export interface EquipmentDef extends StatBonus {
   price: number;
   description: string;
   look?: EquipmentLook;
+  /** ícone no atlas (sem isso: icon_<id>) */
+  icon?: string;
+  /** só cai de baús/chefes (não aparece na loja) */
+  dropOnly?: boolean;
+  /** 0 comum · 1 incomum · 2 raro · 3 épico · 4 lendário */
+  rarity?: number;
 }
 
 export type SkillKind =

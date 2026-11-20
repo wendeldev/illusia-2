@@ -105,6 +105,7 @@ ICONS = {
     'frost_guard': 43, 'aegis_plate': 61,
     'cloth_hood': 70, 'iron_helm': 69,
     'sapphire_ring': 82, 'falcon_amulet': 84, 'ember_ring': 83, 'star_pendant': 81,
+    'leather_boots': 66, 'iron_boots': 65, 'winged_boots': 68, 'gold_boots': 67,
 }
 ICON_VARIANTS = {'horned_helm': ('iron_helm', 0.08, 1.6, 1.0), 'crown_helm': ('iron_helm', 0.13, 2.5, 1.3)}
 
@@ -645,3 +646,80 @@ allmeta = json.load(open(os.path.join(ROOT, 'src', 'data', 'atlas.json')))
 allmeta.update(meta5)
 json.dump(allmeta, open(os.path.join(ROOT, 'src', 'data', 'atlas.json'), 'w'), separators=(',', ':'))
 print(f'chefes: {atlas5.size[0]}x{atlas5.size[1]}, {len(meta5)} peças')
+
+# ═══════════════════ prancha 7: itens e coletáveis ═══════════════════
+import item_cells as IC
+I_DATA = IC.load()
+I_NAMES = {
+    'coins': ['coin', 'coins', 'coin_pile', 'coin_bag', 'gem_blue', 'gem_red', 'gem_purple', 'gem_gold', 'gem_rainbow'],
+    'potions': ['pot_hp', 'pot_mp', 'pot_hp2', 'pot_mp2', 'pot_mp3', 'pot_elixir', 'pot_divine'],
+    'chests': ['chest_wood', 'chest_iron', 'chest_blue', 'chest_purple', 'chest_gold', 'chest_red', 'chest_angel'],
+    'keys': ['key_bronze', 'key_silver', 'key_ruby', 'key_amethyst', 'key_angel'],
+    'crystals': ['cry_blue', 'cry_red', 'cry_green', 'cry_gold', 'cry_purple', 'cry_white'],
+    'quest': ['q_map', 'q_scroll', 'q_letter', 'q_book', 'q_orb', 'q_seal', 'q_amulet'],
+    'materials': ['m_ore', 'm_iron', 'm_gold', 'm_sapphire', 'm_ruby', 'm_amethyst', 'm_herb', 'm_wood', 'm_leather', 'm_bone', 'm_essence'],
+    'buffs': ['buff_atk', 'buff_def', 'buff_regen', 'buff_speed', 'buff_crit', 'buff_exp', 'buff_luck'],
+    'orbs': ['orb_fire', 'orb_water', 'orb_wind', 'orb_thunder', 'orb_arcane', 'orb_star', 'orb_prism'],
+    'cards': ['card_blade', 'card_guard', 'card_life', 'card_star', 'card_death', 'rune_silver', 'rune_green', 'rune_purple', 'rune_gold'],
+    'food': ['f_drumstick', 'f_steak', 'f_bread', 'f_apple', 'f_grapes', 'f_cheese', 'f_juice', 'f_honey', 'f_fish'],
+    'tickets': ['t_bronze', 't_blue', 't_purple', 't_gold', 't_key', 't_vip'],
+    'others': ['o_clover', 'o_star', 'o_star_blue', 'wing_white', 'wing_angel', 'wing_bat', 'wing_fire'],
+    'drops': ['d_orb_blue', 'd_orb_fire', 'd_orb_purple', 'd_orb_green', 'd_amber', 'd_moon', 'd_feather', 'd_eye', 'd_spike', 'd_fang', 'd_horn', 'd_batwing', 'd_redfeather', 'd_flame', 'd_icecrystal', 'd_void'],
+    'souls': ['s_blue', 's_red', 's_green', 's_gold', 's_purple', 's_white', 's_pink', 's_void'],
+    'status': ['st_alert', 'st_question', 'st_ok', 'st_no', 'st_refresh', 'st_bag'],
+    'events': ['e_wings', 'e_crown', 'e_rose', 'e_ring', 'e_tome', 'e_hourglass', 'e_snowflake', 'e_pumpkin'],
+    'evolution': ['ev_green', 'ev_blue', 'ev_purple', 'ev_gold', 'ev_red', 'ev_crest', 'ev_prism'],
+}
+item_extra = {}
+for panel, names in I_NAMES.items():
+    for name, im in zip(names, I_DATA[panel]):
+        item_extra['it_' + name] = im
+# luvas: não existem nas pranchas; desenhadas aqui em pixel art (16x16, ampliadas 4x)
+GLOVE = [
+    "......oooo......",
+    ".....oaaaao.....",
+    "....oaaaaaaoo...",
+    "...oaaaaaaaaao..",
+    "...oaabaabaabo..",
+    "...oaabaabaabo..",
+    "...oaaaaaaaaaoo.",
+    "...oaaaaaaaaaaao",
+    "...oaaaaaaaaaaao",
+    "...oaaaaaaaaaao.",
+    "...occcccccccco.",
+    "...ocddcddcddco.",
+    "...occcccccccco.",
+    "....oaaaaaaaao..",
+    "....oaaaaaaaao..",
+    ".....oooooooo...",
+]
+def glove(a, b, c, d):
+    im = _I.new('RGBA', (16, 16), (0, 0, 0, 0))
+    pal = {'o': (29, 26, 36, 255), 'a': a, 'b': b, 'c': c, 'd': d}
+    for y, row in enumerate(GLOVE):
+        for x, ch in enumerate(row):
+            if ch in pal:
+                im.putpixel((x, y), pal[ch])
+    return im.resize((64, 64), _I.NEAREST)
+item_extra['it_glove_leather'] = glove((150, 98, 58, 255), (110, 70, 40, 255), (200, 160, 90, 255), (240, 210, 120, 255))
+item_extra['it_glove_iron'] = glove((170, 178, 190, 255), (110, 118, 130, 255), (90, 96, 110, 255), (220, 230, 240, 255))
+item_extra['it_glove_rune'] = glove((80, 60, 150, 255), (50, 36, 110, 255), (220, 176, 79, 255), (140, 220, 255, 255))
+item_extra['it_glove_dragon'] = glove((180, 40, 40, 255), (120, 20, 30, 255), (240, 176, 60, 255), (255, 230, 120, 255))
+items7 = sorted(item_extra.items(), key=lambda t: -t[1].size[1])
+x = y = row_h = 0
+pl7 = []
+for n, im in items7:
+    w, h = im.size
+    if x + w + 2 > 2048:
+        x, y, row_h = 0, y + row_h + 2, 0
+    pl7.append((n, im, x, y)); x += w + 2; row_h = max(row_h, h)
+atlas7 = _I.new('RGBA', (2048, y + row_h), (0, 0, 0, 0))
+meta7 = {}
+for n, im, px_, py_ in pl7:
+    atlas7.paste(im, (px_, py_))
+    meta7[n] = {'scale': 1, 'faces': 1, 'frames': [[px_, py_, im.size[0], im.size[1], im.size[0] // 2, im.size[1]]], 'sheet': 4}
+atlas7.save(os.path.join(ROOT, 'public', 'sprites', 'items.png'), optimize=True)
+allmeta = json.load(open(os.path.join(ROOT, 'src', 'data', 'atlas.json')))
+allmeta.update(meta7)
+json.dump(allmeta, open(os.path.join(ROOT, 'src', 'data', 'atlas.json'), 'w'), separators=(',', ':'))
+print(f'itens: {atlas7.size[0]}x{atlas7.size[1]}, {len(meta7)} ícones')

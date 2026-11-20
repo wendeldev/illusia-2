@@ -5,7 +5,9 @@ export type QuestGoal =
   /** derrotar inimigos (de uma lista de tipos e/ou de uma região; vazio = qualquer um) */
   | { kind: 'kill'; count: number; enemyIds?: string[]; region?: number; label: string }
   /** vencer uma fase */
-  | { kind: 'clear'; stageId: string; label: string };
+  | { kind: 'clear'; stageId: string; label: string }
+  /** juntar itens de missão (caem de inimigos enquanto a missão está ativa) */
+  | { kind: 'collect'; itemId: string; count: number; region?: number; label: string };
 
 export interface QuestReward {
   gold?: number;
@@ -153,5 +155,25 @@ export const QUESTS: QuestDef[] = [
     intro: ['Nas Ilhas Celestes caem pedaços de estrela.', 'Os golens celestes guardam esse metal.'],
     goal: { kind: 'kill', count: 12, enemyIds: ['sky_golem', 'griffin'], label: 'Derrote 12 golens celestes ou magos sombrios' },
     reward: { gold: 9000, item: 'sun_greatsword' }, thanks: 'O Montante Solar brilha como o meio-dia. É seu!', requiresStage: 's83',
+  },
+
+  // ── missões de coleta (itens de missão caem dos inimigos) ──
+  {
+    id: 'ivy_map', giver: 'ivy', title: 'O mapa rasgado', requiresStage: 's03',
+    intro: ['Um mapa do reino foi rasgado e os pedaços caíram nas mãos dos monstros do bosque.', 'Recupere 5 pedaços.'],
+    goal: { kind: 'collect', itemId: 'q_map', count: 5, region: 0, label: 'Junte 5 Mapas Rasgados no Bosque' },
+    reward: { gold: 400, exp: 300 }, thanks: 'O mapa está completo! Agora sei onde os monstros se escondem.',
+  },
+  {
+    id: 'taro_book', giver: 'taro', title: 'O grimório perdido', requiresStage: 's22',
+    intro: ['Meu grimório de curas foi roubado por criaturas das ruínas.', 'Traga de volta as 4 partes.'],
+    goal: { kind: 'collect', itemId: 'q_book', count: 4, region: 2, label: 'Junte 4 Grimórios Antigos nas Ruínas' },
+    reward: { gold: 1500, exp: 1200, item: 'leather_gloves' }, thanks: 'Meu grimório! Tome estas luvas de agradecimento.',
+  },
+  {
+    id: 'brida_seal', giver: 'brida', title: 'O selo solar', requiresStage: 's52',
+    intro: ['Com o Selo Solar eu forjaria qualquer coisa.', 'Ele se partiu em 6 pedaços nos Picos Gelados.'],
+    goal: { kind: 'collect', itemId: 'q_seal', count: 6, region: 5, label: 'Junte 6 Selos Solares nos Picos Gelados' },
+    reward: { gold: 5000, item: 'iron_boots' }, thanks: 'O selo está inteiro! Forjei estas botas com ele.',
   },
 ];

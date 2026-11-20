@@ -26,8 +26,9 @@ let powers: HTMLImageElement | null = null;
 let powersWhite: HTMLCanvasElement | null = null;
 let bosses: HTMLImageElement | null = null;
 let bossesWhite: HTMLCanvasElement | null = null;
+let itemsImg: HTMLImageElement | null = null;
 
-const sheetOf = (d: SpriteDef): HTMLImageElement | null => (d.sheet === 1 ? scenery : d.sheet === 2 ? powers : d.sheet === 3 ? bosses : img);
+const sheetOf = (d: SpriteDef): HTMLImageElement | null => (d.sheet === 1 ? scenery : d.sheet === 2 ? powers : d.sheet === 3 ? bosses : d.sheet === 4 ? itemsImg : img);
 
 function whiteCopy(im: HTMLImageElement): HTMLCanvasElement | null {
   const c = document.createElement('canvas');
@@ -58,6 +59,9 @@ export function loadSprites(): Promise<void> {
   const bs = new Image();
   bs.onload = () => { bosses = bs; bossesWhite = whiteCopy(bs); };
   bs.src = './sprites/bosses.png';
+  const it = new Image();
+  it.onload = () => { itemsImg = it; };
+  it.src = './sprites/items.png';
   return new Promise((resolve) => {
     const im = new Image();
     im.onload = () => {

@@ -8,7 +8,8 @@ export const NPCS: NpcDef[] = [
     shop: [
       'bronze_sword', 'moon_blade', 'rune_greatsword', 'storm_saber', 'ember_blade', 'sun_greatsword',
       'leather_vest', 'chainmail', 'warden_plate', 'scale_mail', 'ember_plate', 'frost_guard', 'aegis_plate',
-      'cloth_hood', 'iron_helm', 'horned_helm', 'crown_helm', 'sapphire_ring', 'ember_ring',
+      'cloth_hood', 'iron_helm', 'horned_helm', 'crown_helm', 'leather_gloves', 'iron_gauntlets', 'leather_boots', 'iron_boots',
+      'sapphire_ring', 'ember_ring',
     ],
   },
   {

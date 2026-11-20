@@ -1,5 +1,7 @@
 import { getClass, getEnemy, getItem, getNpc, MAP_PORTAL, type ClassDef } from '../data';
 import { slotSkills } from './skillslots';
+import { EVENT_ITEMS, rollEnemyDrops, type Drop } from './loot';
+import { bagItem } from '../data/items';
 import type { SoundName } from '../engine/audio';
 import type { Input } from '../engine/input';
 import { VIEW_W, VIEW_H } from '../engine/view';
@@ -8,7 +10,7 @@ import { drawHuman, OUTLINE } from './art/human';
 import { drawMonster } from './art/monsters';
 import { glow } from './art/scene3d';
 import { drawTerrain } from './art/ground';
-import { drawSprite, frameCount, hasSprite, spriteHeight, spritesReady } from '../engine/sprites';
+import { drawSprite, drawSpriteH, frameCount, hasSprite, spriteHeight, spritesReady } from '../engine/sprites';
 import { Scenery } from './art/scenery';
 import { npcLook, npcPose, playerLook, playerPose, type ActionAnim } from './art/poses';
 import { bar, text } from './draw';
@@ -42,6 +44,8 @@ export interface WorldHooks {
   questMark(npcId: string): '!' | '?' | null;
   /** resultado da fase (estrelas) */
   stageResult(r: Pick<StageResult, 'stageId' | 'time' | 'par' | 'damage' | 'stars'>): void;
+  /** um item foi pego do chão (o jogo guarda no progresso) */
+  pickup(d: Drop): void;
   save(): void;
   sound(name: SoundName): void;
   vibrate(ms: number): void;
@@ -93,6 +97,30 @@ export interface Player extends Body {
   /** investida/teleporte em andamento */
   dash: { vx: number; t: number; hit: Set<Enemy>; skill: SkillDef } | null;
 }
+
+/** Item caído no chão esperando ser pego. */
+interface Pickup {
+  drop: Drop;
+  icon: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  t: number;
+  landed: boolean;
+}
+
+/** Bônus temporários ganhos com sequência de abates. */
+export const BUFFS: Record<string, { name: string; icon: string; color: string }> = {
+  atk: { name: 'Fúria (+30% dano)', icon: 'it_buff_atk', color: '#ff6b6b' },
+  def: { name: 'Proteção (-30% dano recebido)', icon: 'it_buff_def', color: '#7fc8ff' },
+  regen: { name: 'Regeneração', icon: 'it_buff_regen', color: '#8fe07a' },
+  speed: { name: 'Velocidade (+30%)', icon: 'it_buff_speed', color: '#ffd36b' },
+  crit: { name: 'Precisão (+20% crítico)', icon: 'it_buff_crit', color: '#ffb060' },
+  exp: { name: 'Sabedoria (+50% EXP)', icon: 'it_buff_exp', color: '#c49bff' },
+  luck: { name: 'Sorte (+50% drops)', icon: 'it_buff_luck', color: '#9ff07a' },
+};
+const BUFF_TIME = 15;
 
 /** Efeito de poder no mundo: explosão, espinhos, raio, meteoro, nuvem... */
 interface Spell {
@@ -274,6 +302,13 @@ export class World {
   playerLook: HumanLook;
   enemies: Enemy[] = [];
   private projectiles: Projectile[] = [];
+  private pickups: Pickup[] = [];
+  /** bônus ativos: nome -> segundos restantes */
+  buffs: Record<string, number> = {};
+  private streak = 0;
+  private streakT = 0;
+  /** evento de tesouro ativo nesta fase (nome do item-tema) */
+  event: string | null = null;
   private spells: Spell[] = [];
   private enemyShots: EnemyShot[] = [];
   private texts: FloatText[] = [];
@@ -321,6 +356,11 @@ export class World {
     };
     this.camX = this.cameraTarget();
     this.camY = this.cameraTargetY();
+    // eventos de tesouro: chance em fases da campanha (ou garantido pelo Passe de Evento)
+    if (stage.index && (progress.eventPass || Math.random() < 0.18)) {
+      progress.eventPass = false;
+      this.event = EVENT_ITEMS[Math.floor(Math.random() * EVENT_ITEMS.length)];
+    }
   }
 
   /** Posição de um portal (em cima do chão). */
@@ -412,7 +452,12 @@ export class World {
     this.time += dt;
     const p = this.player;
     if (active && !this.cleared && !p.dead) this.elapsed += dt;
-    p.mp = Math.min(p.maxMp, p.mp + dt * 2.5);
+    p.mp = Math.min(p.maxMp, p.mp + dt * 2.5 + p.maxMp * this.stats.regenMp * dt);
+    if (!p.dead) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * (this.stats.regenHp + (this.buffs.regen ? 0.02 : 0)) * dt);
+    for (const k in this.buffs) { this.buffs[k] -= dt; if (this.buffs[k] <= 0) delete this.buffs[k]; }
+    this.streakT -= dt;
+    if (this.streakT <= 0) this.streak = 0;
+    this.updatePickups(dt);
     for (const id in p.cooldowns) p.cooldowns[id] = Math.max(0, p.cooldowns[id] - dt);
     p.flash = Math.max(0, p.flash - dt);
     p.invuln = Math.max(0, p.invuln - dt);
@@ -508,7 +553,7 @@ export class World {
     const maxX = this.waveActive ? this.camX + VIEW_W - 16 : this.stage.width - 16;
     const wasAir = !p.onGround;
     const dashVx = p.dash ? p.dash.vx : 0;
-    moveBody(p, (move * PLAYER_SPEED + p.vx + dashVx) * dt, dt, this.terrain, minX, maxX);
+    moveBody(p, (move * PLAYER_SPEED * (this.buffs.speed ? 1.3 : 1) + p.vx + dashVx) * dt, dt, this.terrain, minX, maxX);
     if (p.dash) this.updateDash(dt);
     if (wasAir && p.onGround) this.sound('land');
     p.vx *= Math.pow(0.002, dt);
@@ -647,7 +692,9 @@ export class World {
       return;
     }
     p.mp -= skill.mpCost;
-    p.cooldowns[skill.id] = skill.cooldown;
+    p.cooldowns[skill.id] = skill.cooldown * this.stats.cdMul;
+    // cartas/orbes/runas aumentam o dano dos poderes
+    skill = { ...skill, damageMul: skill.damageMul * this.stats.skillMul };
     if (skill.anim) return this.castPower(skill);
     p.attackTimer = 0.3;
     switch (skill.kind) {
@@ -933,8 +980,8 @@ export class World {
   }
 
   private damageEnemy(e: Enemy, mul: number, knock: number, heavy = false): void {
-    const crit = Math.random() < this.stats.crit;
-    const boost = this.player.empowerT > 0 ? 1.6 : 1;
+    const crit = Math.random() < this.stats.crit + (this.buffs.crit ? 0.2 : 0);
+    const boost = (this.player.empowerT > 0 ? 1.6 : 1) * (this.buffs.atk ? 1.3 : 1);
     const dmg = calcDamage(this.stats.atk, e.armor, mul * boost) * (crit ? 2 : 1);
     e.hp -= dmg;
     e.flash = 0.1;
@@ -955,9 +1002,25 @@ export class World {
     e.dead = true;
     e.deadTimer = e.def.bossAnim ? 1.1 : 0.5;
     const pr = this.progress;
-    pr.gold += e.gold;
+    const gold = Math.round(e.gold * this.stats.goldMul * (this.event ? 1.5 : 1));
+    const exp = Math.round(e.exp * this.stats.expMul * (this.buffs.exp ? 1.5 : 1));
     const recent = this.texts.filter((t) => t.color === '#9ff0a0' && t.life > 0.5).length;
-    this.floatText(e.x, e.y - 10 + recent * 12, `+${e.exp} EXP  +${e.gold} G`, '#9ff0a0', 10, 0.9);
+    this.floatText(e.x, e.y - 10 + recent * 12, `+${exp} EXP`, '#9ff0a0', 10, 0.9);
+    // moedas e itens saltam do inimigo; o personagem pega passando perto
+    this.spawnPickup({ kind: 'gold', amount: gold }, e.x, e.y - 20);
+    const luck = this.buffs.luck ? 1.5 : 1;
+    for (const d of rollEnemyDrops(e.def, e.level, luck, !!this.event, pr, this.stage.region)) this.spawnPickup(d, e.x, e.y - 20);
+    // sequência de abates: a cada 3 seguidos, um bônus temporário
+    this.streak++;
+    this.streakT = 4;
+    if (this.streak % 3 === 0) {
+      const keys = Object.keys(BUFFS);
+      const k = keys[Math.floor(Math.random() * keys.length)];
+      this.buffs[k] = BUFF_TIME;
+      this.hooks.toast(`Sequência x${this.streak}! ${BUFFS[k].name}`);
+      this.sound('levelup');
+      this.burst(this.player.x, this.player.y, 30, 20, BUFFS[k].color, 160, 3, -40);
+    }
     this.burst(e.x, e.y, e.radius, e.def.boss ? 60 : 16, e.def.color, e.def.boss ? 320 : 180, e.def.boss ? 4 : 3, 260);
     this.sound('kill');
     this.sound('coin');
@@ -972,9 +1035,79 @@ export class World {
         this.hooks.toast(`Obtido: ${getItem(d.itemId).name}`);
       }
     }
-    this.gainExp(e.exp, false);
+    this.gainExp(exp, false);
     this.hooks.killed(e.def);
     this.hooks.save();
+  }
+
+  private spawnPickup(drop: Drop, x: number, y: number): void {
+    const icon = drop.kind === 'gold' ? (drop.amount > 200 ? 'it_coin_pile' : drop.amount > 40 ? 'it_coins' : 'it_coin')
+      : drop.kind === 'gems' ? 'it_' + drop.icon
+      : drop.kind === 'gear' ? (getItem(drop.id).icon ?? 'icon_' + drop.id) : 'it_' + drop.id;
+    this.pickups.push({ drop, icon, x, y, vx: (Math.random() - 0.5) * 160, vy: -220 - Math.random() * 120, t: 0, landed: false });
+  }
+
+  private updatePickups(dt: number): void {
+    const p = this.player;
+    for (const k of this.pickups) {
+      k.t += dt;
+      const dx = p.x - k.x, dy = p.y - 18 - k.y;
+      const d = Math.hypot(dx, dy);
+      if (k.t > 0.5 && !p.dead && d < 90) {
+        // ímã: vem até o personagem
+        const sp = 260 + (90 - d) * 6;
+        k.x += (dx / d) * sp * dt;
+        k.y += (dy / d) * sp * dt;
+        if (d < 16) { k.t = -1; this.collect(k); }
+        continue;
+      }
+      if (!k.landed) {
+        k.vy += 900 * dt;
+        k.x += k.vx * dt;
+        const g = this.terrain.surfacesAt(k.x).find((y) => y >= k.y - 2) ?? this.terrain.groundAt(k.x);
+        k.y += k.vy * dt;
+        if (k.vy > 0 && k.y >= g - 8) { k.y = g - 8; k.landed = true; }
+      }
+    }
+    // some depois de 25 s (os valiosos ficam mais)
+    this.pickups = this.pickups.filter((k) => k.t >= 0 && k.t < (k.drop.kind === 'gold' ? 25 : 60));
+  }
+
+  private collect(k: Pickup): void {
+    const d = k.drop;
+    if (d.kind === 'bag' && bagItem(d.id)?.kind === 'food') {
+      const p = this.player;
+      const heal = Math.round(p.maxHp * 0.12);
+      p.hp = Math.min(p.maxHp, p.hp + heal);
+      this.floatText(p.x, p.y - 50, `+${heal}`, '#8fe07a', 12, 0.8);
+      this.sound('coin');
+      return;
+    }
+    this.hooks.pickup(d);
+    this.sound('coin');
+    const label = d.kind === 'gold' ? `+${d.amount} G` : d.kind === 'gems' ? `+${d.amount} 💎` : '';
+    if (label) this.floatText(k.x, k.y - 10, label, d.kind === 'gems' ? '#9fd3ff' : '#ffd36b', 10, 0.8);
+  }
+
+  /** Usa uma poção da bolsa. Retorna true se usou. */
+  usePotion(id: string): boolean {
+    const p = this.player;
+    if (p.dead || (this.progress.bag[id] ?? 0) <= 0) return false;
+    switch (id) {
+      case 'pot_hp': p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.4); break;
+      case 'pot_hp2': p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.7); break;
+      case 'pot_mp': p.mp = Math.min(p.maxMp, p.mp + p.maxMp * 0.4); break;
+      case 'pot_mp2': p.mp = Math.min(p.maxMp, p.mp + p.maxMp * 0.7); break;
+      case 'pot_mp3': p.mp = p.maxMp; p.cooldowns = {}; break;
+      case 'pot_elixir': p.hp = p.maxHp; p.mp = p.maxMp; break;
+      case 'pot_divine': p.hp = p.maxHp; p.mp = p.maxMp; p.invuln = 5; break;
+      default: return false;
+    }
+    this.progress.bag[id]--;
+    const c = id.includes('hp') || id === 'pot_elixir' || id === 'pot_divine' ? '#ff6b6b' : '#7fc8ff';
+    this.burst(p.x, p.y, 20, 18, c, 120, 3, -60);
+    this.sound('levelup');
+    return true;
   }
 
   /** Soma experiência e trata a subida de nível (usado por inimigos e recompensas de missão). */
@@ -1282,6 +1415,7 @@ export class World {
     if (p.invuln > 0 || p.dead) return;
     let dmg = calcDamage(atk, this.stats.def, 1);
     if (p.shieldT > 0) dmg = Math.max(1, Math.ceil(dmg * 0.3));
+    dmg = Math.max(1, Math.round(dmg * this.stats.dmgTaken * (this.buffs.def ? 0.7 : 1)));
     this.damageTaken += Math.min(dmg, Math.max(0, p.hp));
     p.hp -= dmg;
     p.flash = 0.12;
@@ -1459,6 +1593,13 @@ export class World {
     for (const e of this.enemies) this.drawEnemy(ctx, e);
     this.drawPlayer(ctx);
     this.drawSpells(ctx);
+    for (const k of this.pickups) {
+      const bob = k.landed ? Math.sin(this.time * 4 + k.x) * 2 : 0;
+      const rare = k.drop.kind !== 'gold' && k.drop.kind !== 'bag' || (k.drop.kind === 'bag' && /^(chest|key|card|rune|orb|e_|gem|ev_|pot_mp3|pot_elixir)/.test(k.drop.id));
+      if (rare) glow(ctx, k.x, k.y - 6, 22 + Math.sin(this.time * 5) * 3, k.drop.kind === 'gear' ? '#ffd36b' : '#c49bff', 0.45);
+      const blink = k.t > 20 && Math.floor(this.time * 8) % 2 === 0;
+      if (!blink) drawSpriteH(ctx, k.icon, k.x, k.y + 4 + bob, k.drop.kind === 'gold' ? 14 : 18);
+    }
 
     for (const pr of this.projectiles) {
       const y = pr.y;
@@ -1657,6 +1798,22 @@ export class World {
   }
 
   /** Jogador em pixel art: escolhe a animação pelo estado. */
+  /** Asas equipadas nas costas (batendo) e brilho de aprimoramento da arma. */
+  private drawWingsAndAura(ctx: CanvasRenderingContext2D, p: Player): void {
+    const up = this.progress.upgrades?.[this.progress.equipped.weapon ?? ''] ?? 0;
+    if (up >= 4) {
+      const c = up >= 10 ? '#ff5fd0' : up >= 7 ? '#ffd36b' : '#7fc8ff';
+      glow(ctx, p.x, p.y - 24, 30 + up * 2 + Math.sin(this.time * 4) * 3, c, 0.18 + up * 0.02);
+    }
+    const wid = this.progress.equipped.wings;
+    if (!wid) return;
+    const icon = getItem(wid).icon;
+    if (!icon || !hasSprite(icon)) return;
+    const flap = 0.75 + Math.abs(Math.sin(this.time * (p.onGround ? 3 : 9))) * 0.3;
+    if (wid === 'wings_angel' || wid === 'wings_white') glow(ctx, p.x - p.facing * 6, p.y - 30, 30, '#ffffff', 0.15);
+    drawSpriteH(ctx, icon, p.x - p.facing * 7, p.y - 14, 38, p.facing, { sx: flap, alpha: 0.95 });
+  }
+
   private drawPlayerSprite(ctx: CanvasRenderingContext2D): void {
     const p = this.player;
     const pre = this.cls.sprite;
@@ -1695,6 +1852,7 @@ export class World {
       for (let k = 1; k <= 2; k++) drawSprite(ctx, castName ?? `${pre}_${anim}`, Math.min(frame, frameCount(castName ?? `${pre}_${anim}`) - 1e-3), p.x - p.facing * k * 14, p.y + 1, p.facing, { alpha: 0.35 / k, flash: true });
       glow(ctx, p.x, p.y - 22, 40, '#a06bff', 0.3);
     }
+    this.drawWingsAndAura(ctx, p);
     const breathe = !p.anim && !p.moving && p.onGround && !p.dead ? 1 + Math.sin(this.time * 3) * 0.015 : 1;
     // na escada: vira de um lado para o outro ao subir (mão por mão)
     const face = p.climbing ? (Math.floor(p.walk * 0.6) % 2 ? 1 : -1) : p.facing;

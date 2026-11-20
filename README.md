@@ -65,6 +65,21 @@ Chefes da fase 5 (prancha `assets-src/sheet-minibosses.png`, `tools/miniboss_cel
 Golem de Pedra, Serpente Gigante, Aranha Gigante, Troll Bruto, Orc Comandante, Cavaleiro Caído e Mago Sombrio;
 Minotauro Guerreiro na fase 3-8. Mapa em `MINI_BOSSES` (`src/data/enemies.ts`).
 
+## Itens, baús e recompensas
+
+Prancha `assets-src/sheet-items.png` (recortada por `tools/item_cells.py`). Regras em `src/game/loot.ts`, catálogo em `src/data/items.ts`.
+- **Drops**: itens saltam dos inimigos e o personagem pega passando perto. Inimigos comuns: poções, baús e chaves
+  do nível deles, materiais, orbes, coletáveis, comida e (raramente) equipamentos. **Gemas só de chefes**; Mana Rara e
+  Elixir também. Equipamento melhor que o atual é equipado sozinho.
+- **Baús** (madeira → angelical) abrem com a chave do mesmo nível ou maior (Bolsa → Itens).
+- **Sequência de abates**: a cada 3 abates seguidos, um bônus temporário de 15 s.
+- **Eventos de tesouro**: 18% das fases (ou com o Passe de Evento): drops +50% e itens raros de evento.
+- **Orbes, cartas (2) e runa (1)**: bônus permanentes; cada classe aproveita alguns mais (★).
+- **Coleção**: álbum de coletáveis e itens de evento, com bônus de ataque e vida.
+- **Ferreira**: abas Equipamentos, Materiais (poções, chaves, materiais, tíquetes) e Aprimorar (+1 a +10).
+- **Arena dos Chefes** (mapa do mundo): gasta um tíquete, enfrenta um chefe no seu nível e dá gemas e baús.
+- **Novos espaços**: luvas, botas e asas. As asas aparecem nas costas e a arma +4 ou mais brilha.
+
 ## Campanha
 
 90 fases em 9 regiões (10 fases cada): Bosque Sussurrante, Pântano Nebuloso, Ruínas de Ferro,

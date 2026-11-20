@@ -2,8 +2,13 @@ import { CLASSES, getClass, getEnemy, getItem, getStage, REGIONS, STAGES_PER_REG
 import type { Sfx } from '../engine/audio';
 import type { Music } from '../engine/music';
 import { drawSprite, drawSpriteH, hasSprite, spritesReady } from '../engine/sprites';
+import { glow } from './art/scene3d';
 import { rewardText, type QuestBook } from './quests';
 import { assignSlot, SLOT_COUNT, slotSkills } from './skillslots';
+import { affinity, BAG_ITEMS, bagItem, SHOP_GOODS, type BagKind } from '../data/items';
+import { collectionCount, upgradeMul } from './stats';
+import { BUFFS } from './world';
+import type { Slot } from '../types';
 import { countStars, DAMAGE_LIMIT, drawStar, drawStars, formatTime, type StageResult } from './stars';
 import type { Input, TouchButton } from '../engine/input';
 import { VIEW_H, VIEW_W } from '../engine/view';
@@ -28,6 +33,12 @@ export interface GameApi {
   travel(stageId: string): void;
   chooseClass(id: string): void;
   save(): void;
+  useBagItem(id: string): void;
+  buyGood(id: string): void;
+  upgradeCost(itemId: string): { level: number; gold: number; needs: [string, string[], number][] } | null;
+  have(ids: string[]): number;
+  upgrade(itemId: string): void;
+  startArena(tier: number): void;
 }
 
 type Modal =
@@ -37,7 +48,10 @@ type Modal =
   | { kind: 'classes'; sel: number; first: boolean }
   | { kind: 'skills'; slot: number; sel: number }
   | { kind: 'result'; r: StageResult; t: number; shown: number }
-  | { kind: 'shop'; npc: NpcDef; sel: number; scroll: number }
+  | { kind: 'shop'; npc: NpcDef; sel: number; scroll: number; tab: number }
+  | { kind: 'bag'; tab: number; sel: string | null }
+  | { kind: 'reward'; title: string; items: { icon: string; label: string }[]; t: number }
+  | { kind: 'arena' }
   | { kind: 'menu'; sel: number; scroll: number }
   | { kind: 'map'; region: number; sel: number }
   | { kind: 'dead' };
@@ -60,10 +74,14 @@ const BUTTON_LAYOUT: TouchButton[] = [
   { action: 'skill4', x: 140, y: 186, r: 22, label: '4' },
   { action: 'interact', x: 214, y: 330, r: 16, label: '✋' },
   { action: 'menu', x: 26, y: 24, r: 16, label: '☰' },
+  { action: 'potHp', x: 26, y: 66, r: 15, label: 'HP' },
+  { action: 'potMp', x: 26, y: 102, r: 15, label: 'MP' },
+  { action: 'bag', x: 26, y: 138, r: 15, label: '🎒' },
 ];
 const BUTTONS: TouchButton[] = BUTTON_LAYOUT.map((b) => ({ ...b }));
 
 const SHOP_ROWS = 9;
+const RARITY_COLORS = ['#8a92a8', '#7fe07a', '#5fb0ff', '#c49bff', '#ffb040'];
 const MENU_ROWS = 11;
 
 const THEME_COLORS: Record<SceneryTheme, [string, string]> = {
@@ -173,7 +191,7 @@ export class Ui {
   private npcAction(npc: NpcDef): void {
     switch (npc.action) {
       case 'shop':
-        this.modal = { kind: 'shop', npc, sel: 0, scroll: 0 };
+        this.modal = { kind: 'shop', npc, sel: 0, scroll: 0, tab: 0 };
         break;
       case 'heal':
         this.game.heal();
@@ -196,6 +214,15 @@ export class Ui {
     this.modal = { kind: 'result', r, t: 0, shown: 0 };
   }
 
+  showReward(title: string, items: { icon: string; label: string }[]): void {
+    this.modal = { kind: 'reward', title, items, t: 0 };
+  }
+
+  openBag(tab = 0): void {
+    this.modal = { kind: 'bag', tab, sel: null };
+    this.game.sfx.play('ui');
+  }
+
   showDead(): void {
     this.modal = { kind: 'dead' };
   }
@@ -216,6 +243,7 @@ export class Ui {
     }
 
     if (!this.modal && input.consume('menu')) this.openMenu();
+    if (!this.modal && input.consume('bag')) this.openBag();
     input.buttonsEnabled = !this.modal;
     const m = this.modal;
     if (!m) return false;
@@ -237,7 +265,12 @@ export class Ui {
         break;
       case 'shop':
       case 'menu': {
-        const list = m.kind === 'shop' ? m.npc.shop ?? [] : this.game.progress.owned;
+        if (m.kind === 'shop') {
+          if (left) { m.tab = (m.tab + 2) % 3; m.sel = 0; m.scroll = 0; }
+          if (right) { m.tab = (m.tab + 1) % 3; m.sel = 0; m.scroll = 0; }
+          if (m.tab !== 0) { if (back) this.close(); break; }
+        }
+        const list = m.kind === 'shop' ? this.shopList(m.npc) : this.game.progress.owned;
         if (up) m.sel = Math.max(0, m.sel - 1);
         if (down) m.sel = Math.min(list.length - 1, m.sel + 1);
         if (up || down) this.keepVisible(m, m.kind === 'shop' ? SHOP_ROWS : MENU_ROWS);
@@ -261,6 +294,18 @@ export class Ui {
         break;
       case 'quests':
         if (confirm || back) this.close();
+        break;
+      case 'bag':
+        if (left) m.tab = (m.tab + 4) % 5;
+        if (right) m.tab = (m.tab + 1) % 5;
+        if (back) this.close();
+        break;
+      case 'reward':
+        m.t += dt;
+        if ((confirm || back) && m.t > 0.4) this.close();
+        break;
+      case 'arena':
+        if (back) this.close();
         break;
       case 'skills': {
         const list = this.game.world.cls.skills;
@@ -330,6 +375,9 @@ export class Ui {
       case 'quests': return this.drawQuests(ctx);
       case 'classes': return this.drawClasses(ctx, m);
       case 'skills': return this.drawSkills(ctx, m);
+      case 'bag': return this.drawBag(ctx, m);
+      case 'reward': return this.drawReward(ctx, m);
+      case 'arena': return this.drawArena(ctx);
       case 'result': return this.drawResult(ctx, m);
       case 'dead': return this.drawDead(ctx);
     }
@@ -347,12 +395,30 @@ export class Ui {
     text(ctx, `${Math.floor(p.mp)}/${p.maxMp}`, 114, 30, { size: 7, align: 'center' });
     bar(ctx, 12, 42, 164, 4, progress.exp / expToNext(progress.level), '#8fe07a');
     text(ctx, `${progress.gold} G`, 12, 66, { size: 11, color: '#ffd36b' });
+    drawSpriteH(ctx, 'it_gem_blue', 82, 73, 13);
+    text(ctx, `${progress.gems}`, 92, 66, { size: 11, color: '#9fd3ff' });
+    // bônus temporários (sequência de abates)
+    let bx = 116;
+    for (const [k, t] of Object.entries(world.buffs)) {
+      const b = BUFFS[k];
+      if (!b) continue;
+      ctx.globalAlpha = t < 3 && Math.floor(t * 6) % 2 ? 0.4 : 1;
+      drawSpriteH(ctx, b.icon, bx + 9, 66, 18);
+      ctx.globalAlpha = 1;
+      text(ctx, `${Math.ceil(t)}`, bx + 9, 79, { size: 7, align: 'center' });
+      bx += 21;
+    }
+    if (world.event) {
+      const ev = bagItem(world.event);
+      drawSpriteH(ctx, 'it_' + world.event, VIEW_W / 2 - 70, 56, 14);
+      text(ctx, `Evento do Tesouro: ${ev?.name ?? ''} · drops +50%`, VIEW_W / 2 + 6, 50, { size: 9, align: 'center', color: '#ffd36b' });
+    }
     // missões em andamento
     const qb = this.game.quests;
     qb.active().slice(0, 3).forEach((q, i) => {
       const ready = qb.isReady(q);
       const label = ready ? `✔ ${q.title} · ${qb.giverName(q)}` : `📜 ${q.title} ${qb.count(q)}/${qb.target(q)}`;
-      text(ctx, label, 12, 84 + i * 14, { size: 9, color: ready ? '#8fe07a' : '#e8ecf4' });
+      text(ctx, label, 12, 92 + i * 14, { size: 9, color: ready ? '#8fe07a' : '#e8ecf4' });
     });
 
     text(ctx, world.stage.name, VIEW_W / 2, 16, { size: 12, align: 'center' });
@@ -400,6 +466,22 @@ export class Ui {
     const slots = slotSkills(progress);
     for (const b of BUTTONS) {
       if (b.action === 'menu') continue;
+      if (b.action === 'potHp' || b.action === 'potMp' || b.action === 'bag') {
+        const id = b.action === 'bag' ? '' : this.bestPotion(b.action === 'potHp' ? 'hp' : 'mp');
+        const n = id ? progress.bag[id] ?? 0 : 0;
+        ctx.globalAlpha = 0.6;
+        circle(ctx, b.x, b.y, b.r, '#14101c');
+        ctx.globalAlpha = n || b.action === 'bag' ? 1 : 0.35;
+        drawSpriteH(ctx, b.action === 'bag' ? 'it_st_bag' : 'it_' + (id || (b.action === 'potHp' ? 'pot_hp' : 'pot_mp')), b.x, b.y + b.r * 0.8, b.r * 1.6);
+        ctx.globalAlpha = 1;
+        if (b.action !== 'bag') text(ctx, `${n}`, b.x + b.r * 0.7, b.y + b.r * 0.7, { size: 8, align: 'center' });
+        ctx.strokeStyle = '#e0b04f';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.stroke();
+        continue;
+      }
       const skillIdx = b.action.startsWith('skill') ? Number(b.action.slice(5)) - 1 : -1;
       const skill = skillIdx >= 0 ? slots[skillIdx] : null;
       if (skillIdx >= 0 && !skill) continue;
@@ -490,11 +572,11 @@ export class Ui {
     ctx.fillRect(x, y, w, h - 3);
     // ícone do item (pixel art)
     let tx = x + 8;
-    if (hasSprite('icon_' + itemId)) {
+    if (hasSprite(item.icon ?? 'icon_' + itemId)) {
       const sz = h - 6;
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.fillRect(x + 4, y + 1.5, sz, sz);
-      drawSpriteH(ctx, 'icon_' + itemId, x + 4 + sz / 2, y + 1.5 + sz - 1, sz - 3);
+      drawSpriteH(ctx, item.icon ?? 'icon_' + itemId, x + 4 + sz / 2, y + 1.5 + sz - 1, sz - 3);
       tx = x + sz + 10;
     }
     text(ctx, item.name, tx, y + h / 2 - 5, { size: 11, outline: false });
@@ -508,15 +590,258 @@ export class Ui {
     this.regions.push({ x, y, w, h: h - 3, fn: onTap });
   }
 
+  /** Equipamentos à venda (sem os que só caem de baús/chefes). */
+  private shopList(npc: NpcDef): string[] {
+    return (npc.shop ?? []).filter((id) => !getItem(id).dropOnly);
+  }
+
+  /** Melhor poção do tipo que o jogador tem (a mais fraca primeiro, para não desperdiçar). */
+  bestPotion(kind: 'hp' | 'mp'): string {
+    const order = kind === 'hp' ? ['pot_hp', 'pot_hp2', 'pot_elixir', 'pot_divine'] : ['pot_mp', 'pot_mp2', 'pot_mp3', 'pot_elixir'];
+    return order.find((id) => (this.game.progress.bag[id] ?? 0) > 0) ?? '';
+  }
+
+  private tabs(ctx: CanvasRenderingContext2D, x: number, y: number, names: string[], cur: number, set: (i: number) => void): void {
+    const w = Math.min(110, 460 / names.length);
+    names.forEach((n, i) => {
+      const tx = x + i * (w + 4);
+      ctx.fillStyle = i === cur ? '#4a5a90' : '#252e45';
+      ctx.fillRect(tx, y, w, 20);
+      if (i === cur) { ctx.fillStyle = '#ffd36b'; ctx.fillRect(tx, y + 18, w, 2); }
+      text(ctx, n, tx + w / 2, y + 10, { size: 10, align: 'center', outline: false, color: i === cur ? '#ffffff' : '#aab4cc' });
+      this.regions.push({ x: tx, y: y - 2, w, h: 24, fn: () => { set(i); this.game.sfx.play('ui'); } });
+    });
+  }
+
+  private icon(ctx: CanvasRenderingContext2D, name: string, cx: number, cy: number, size: number, alpha = 1): void {
+    if (!hasSprite(name)) return;
+    ctx.globalAlpha = alpha;
+    drawSpriteH(ctx, name, cx, cy + size / 2, size);
+    ctx.globalAlpha = 1;
+  }
+
   private drawShop(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'shop' }>): void {
-    const w = 500, h = 316, x = (VIEW_W - w) / 2, y = 22;
-    this.panel(ctx, x, y, w, h, `${m.npc.name} — Loja`);
-    text(ctx, `${this.game.progress.gold} G`, x + w - 44, y + 16, { size: 12, align: 'right', color: '#ffd36b' });
-    const list = m.npc.shop ?? [];
-    this.scrollList(ctx, m, list.length, SHOP_ROWS, x + w - 26, y + 34, SHOP_ROWS * 30);
-    list.slice(m.scroll, m.scroll + SHOP_ROWS).forEach((id, k) => {
-      const i = m.scroll + k;
-      this.itemRow(ctx, x + 10, y + 34 + k * 30, w - 42, 30, id, i === m.sel, () => { m.sel = i; this.itemAction(id); }, true);
+    const { progress } = this.game;
+    const w = 520, h = 326, x = (VIEW_W - w) / 2, y = 16;
+    this.panel(ctx, x, y, w, h, `${m.npc.name} — Ferreira`);
+    text(ctx, `${progress.gold} G`, x + w - 110, y + 16, { size: 12, align: 'right', color: '#ffd36b' });
+    this.icon(ctx, 'it_gem_blue', x + w - 98, y + 16, 12);
+    text(ctx, `${progress.gems}`, x + w - 88, y + 16, { size: 12, color: '#9fd3ff' });
+    this.tabs(ctx, x + 10, y + 30, ['Equipamentos', 'Materiais', 'Aprimorar'], m.tab, (i) => { m.tab = i; m.sel = 0; m.scroll = 0; });
+    const top = y + 56;
+    if (m.tab === 0) {
+      const list = this.shopList(m.npc);
+      const rows = 9;
+      this.scrollList(ctx, m, list.length, rows, x + w - 26, top, rows * 29);
+      list.slice(m.scroll, m.scroll + rows).forEach((id, k) => {
+        const i = m.scroll + k;
+        this.itemRow(ctx, x + 10, top + k * 29, w - 42, 29, id, i === m.sel, () => { m.sel = i; this.itemAction(id); }, true);
+      });
+      return;
+    }
+    if (m.tab === 1) {
+      // grade de materiais, poções, chaves e tíquetes
+      const cols = 4, cw = (w - 20) / cols, ch = 38;
+      const list = SHOP_GOODS;
+      const rows = 7;
+      const total = Math.ceil(list.length / cols);
+      m.scroll = Math.max(0, Math.min(Math.max(0, total - rows), m.scroll));
+      if (total > rows) this.scrollList(ctx, m, total, rows, x + w - 26, top, rows * ch);
+      list.slice(m.scroll * cols, (m.scroll + rows) * cols).forEach((id, k) => {
+        const it = bagItem(id)!;
+        const cx = x + 10 + (k % cols) * cw, cy = top + Math.floor(k / cols) * ch;
+        ctx.fillStyle = '#252e45';
+        ctx.fillRect(cx, cy, cw - (total > rows ? 8 : 4), ch - 4);
+        this.icon(ctx, 'it_' + id, cx + 17, cy + 17, 28);
+        text(ctx, it.name, cx + 34, cy + 10, { size: 9, outline: false });
+        const pr = it.price!;
+        const ok = pr.gems ? progress.gems >= pr.gems : progress.gold >= (pr.gold ?? 0);
+        text(ctx, pr.gems ? `${pr.gems} gemas` : `${pr.gold} G`, cx + 34, cy + 24, { size: 9, outline: false, color: ok ? (pr.gems ? '#9fd3ff' : '#ffd36b') : '#e0524f' });
+        text(ctx, `x${progress.bag[id] ?? 0}`, cx + cw - 10, cy + 24, { size: 8, align: 'right', outline: false, color: '#aab4cc' });
+        this.regions.push({ x: cx, y: cy, w: cw - 4, h: ch - 4, fn: () => this.game.buyGood(id) });
+      });
+      return;
+    }
+    // aprimorar o que está equipado
+    const slots = Object.entries(progress.equipped).filter(([, id]) => id) as [Slot, string][];
+    text(ctx, 'Toque para aprimorar (+10% dos atributos do item por nível, até +10)', x + 14, top + 4, { size: 9, outline: false, color: '#aab4cc' });
+    slots.forEach(([slot, id], k) => {
+      const e = getItem(id);
+      const cy = top + 14 + k * 36;
+      const c = this.game.upgradeCost(id);
+      const lv = progress.upgrades[id] ?? 0;
+      ctx.fillStyle = '#252e45';
+      ctx.fillRect(x + 10, cy, w - 20, 33);
+      this.icon(ctx, e.icon ?? 'icon_' + id, x + 28, cy + 16, 28);
+      text(ctx, `${e.name} +${lv}`, x + 48, cy + 10, { size: 11, outline: false, color: lv >= 7 ? '#ffd36b' : lv >= 4 ? '#9fd3ff' : '#ffffff' });
+      text(ctx, SLOT_NAMES[slot], x + 48, cy + 24, { size: 8, outline: false, color: '#aab4cc', bold: false });
+      if (!c) { text(ctx, 'MÁXIMO', x + w - 20, cy + 16, { size: 11, align: 'right', color: '#ffd36b', outline: false }); return; }
+      let nx = x + 210;
+      const okGold = progress.gold >= c.gold;
+      text(ctx, `${c.gold} G`, nx, cy + 16, { size: 10, outline: false, color: okGold ? '#ffd36b' : '#e0524f' });
+      nx += 62;
+      for (const [label, ids, n] of c.needs) {
+        const have = this.game.have(ids);
+        const ic = ids[0] === '$gems' ? 'it_gem_blue' : 'it_' + (ids.find((i2) => (progress.bag[i2] ?? 0) > 0) ?? ids[0]);
+        this.icon(ctx, ic, nx + 8, cy + 16, 18);
+        text(ctx, `${have}/${n}`, nx + 20, cy + 16, { size: 9, outline: false, color: have >= n ? '#8fe07a' : '#e0524f' });
+        void label;
+        nx += 58;
+      }
+      ctx.fillStyle = '#3f8a45';
+      ctx.fillRect(x + w - 74, cy + 5, 58, 23);
+      text(ctx, `+${lv + 1}`, x + w - 45, cy + 16, { size: 11, align: 'center' });
+      this.regions.push({ x: x + 10, y: cy, w: w - 20, h: 33, fn: () => this.game.upgrade(id) });
+    });
+  }
+
+  // ───────────────────────── bolsa ─────────────────────────
+
+  private drawBag(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'bag' }>): void {
+    const { progress, world } = this.game;
+    const x = 12, y = 8, w = VIEW_W - 24, h = VIEW_H - 16;
+    this.panel(ctx, x, y, w, h, '🎒 Bolsa');
+    text(ctx, `${progress.gold} G`, x + w - 120, y + 16, { size: 11, align: 'right', color: '#ffd36b' });
+    this.icon(ctx, 'it_gem_blue', x + w - 108, y + 16, 12);
+    text(ctx, `${progress.gems}`, x + w - 98, y + 16, { size: 11, color: '#9fd3ff' });
+    this.tabs(ctx, x + 10, y + 30, ['Equipado', 'Itens', 'Materiais', 'Cartas e Orbes', 'Coleção'], m.tab, (i) => { m.tab = i; m.sel = null; });
+    const top = y + 58;
+    if (m.tab === 0) return this.drawEquipped(ctx, x, top, w);
+    const kinds: Record<number, BagKind[]> = { 1: ['potion', 'chest', 'key', 'ticket'], 2: ['material', 'crystal', 'evolution', 'quest'], 3: ['card', 'rune', 'orb'], 4: ['collectible', 'event'] };
+    const showAll = m.tab === 4;
+    let list = BAG_ITEMS.filter((b) => kinds[m.tab].includes(b.kind) && (showAll || (progress.bag[b.id] ?? 0) > 0));
+    if (m.tab === 3) {
+      // espaços de cartas e runa + bônus da classe
+      const cls = getClass(progress.classId);
+      text(ctx, `Cartas (2) e Runa (1) · bônus para ${cls.name}:`, x + 14, top + 6, { size: 10, outline: false, color: '#ffe9a8' });
+      const slots = [progress.cards[0], progress.cards[1], progress.rune];
+      slots.forEach((id, k) => {
+        const sx = x + 14 + k * 50, sy = top + 16;
+        ctx.fillStyle = '#252e45';
+        ctx.fillRect(sx, sy, 44, 44);
+        ctx.strokeStyle = k === 2 ? '#c49bff' : '#e0b04f';
+        ctx.strokeRect(sx, sy, 44, 44);
+        if (id) this.icon(ctx, 'it_' + id, sx + 22, sy + 22, 38);
+        else text(ctx, k === 2 ? 'Runa' : 'Carta', sx + 22, sy + 22, { size: 8, align: 'center', outline: false, color: '#667' });
+      });
+      const s = world.stats;
+      text(ctx, `Poderes ${Math.round(s.skillMul * 100)}% · Recarga ${Math.round(s.cdMul * 100)}% · Dano recebido ${Math.round(s.dmgTaken * 100)}% · Ouro/EXP ${Math.round(s.goldMul * 100)}%`, x + 170, top + 26, { size: 9, outline: false, color: '#9cc4ff', bold: false });
+      text(ctx, 'Orbes somam pontos permanentes. ★ = sua classe aproveita mais.', x + 170, top + 44, { size: 9, outline: false, color: '#aab4cc', bold: false });
+      list = list.sort((a, b) => (a.kind === 'orb' ? 1 : 0) - (b.kind === 'orb' ? 1 : 0));
+      this.grid(ctx, m, list, x + 10, top + 68, w - 20, 3);
+      return;
+    }
+    if (m.tab === 4) {
+      const col = collectionCount(progress);
+      text(ctx, `Álbum: ${col.normal}/27 coletáveis · ${col.event}/8 itens de evento · bônus atual: +${Math.floor(col.normal / 4) * 2 + col.event * 3}% ataque e vida`, x + 14, top + 6, { size: 10, outline: false, color: '#ffe9a8' });
+      this.grid(ctx, m, list, x + 10, top + 18, w - 20, 4, true);
+      return;
+    }
+    if (!list.length) text(ctx, 'Nada aqui ainda. Derrote inimigos e abra baús!', x + w / 2, top + 80, { size: 12, align: 'center', outline: false, color: '#aab4cc' });
+    this.grid(ctx, m, list, x + 10, top, w - 20, 4);
+  }
+
+  /** Grade de ícones da bolsa; tocar seleciona, tocar de novo usa. */
+  private grid(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'bag' }>, list: { id: string; name: string; kind: BagKind; description: string }[], x: number, y: number, w: number, rows: number, album = false): void {
+    const { progress } = this.game;
+    const cell = 50, cols = Math.floor(w / cell);
+    list.slice(0, cols * rows).forEach((it, k) => {
+      const cx = x + (k % cols) * cell, cy = y + Math.floor(k / cols) * cell;
+      const n = progress.bag[it.id] ?? 0;
+      const sel = m.sel === it.id;
+      const equipped = progress.cards.includes(it.id) || progress.rune === it.id;
+      ctx.fillStyle = sel ? '#4a5a90' : '#252e45';
+      ctx.fillRect(cx, cy, cell - 4, cell - 4);
+      if (equipped) { ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 2; ctx.strokeRect(cx + 1, cy + 1, cell - 6, cell - 6); }
+      this.icon(ctx, 'it_' + it.id, cx + (cell - 4) / 2, cy + (cell - 4) / 2, 36, album && n === 0 ? 0.25 : 1);
+      if (album) this.icon(ctx, n > 0 ? 'it_st_ok' : 'it_st_question', cx + cell - 12, cy + 9, 13);
+      else text(ctx, `${n}`, cx + cell - 8, cy + cell - 12, { size: 9, align: 'right' });
+      if ((it.kind === 'card' || it.kind === 'rune' || it.kind === 'orb') && affinity(progress.classId, it.id) > 1) text(ctx, '★', cx + 6, cy + 8, { size: 10, color: '#ffd36b' });
+      this.regions.push({ x: cx, y: cy, w: cell - 4, h: cell - 4, fn: () => {
+        if (m.sel === it.id && !album) this.game.useBagItem(it.id);
+        else { m.sel = it.id; this.game.sfx.play('ui'); }
+      } });
+    });
+    // descrição do selecionado
+    const it = list.find((b) => b.id === m.sel);
+    const fy = VIEW_H - 40;
+    if (it) {
+      text(ctx, it.name, x + 4, fy, { size: 11, outline: false, color: '#ffe9a8' });
+      const hint = album ? '' : it.kind === 'potion' ? ' · toque de novo para usar' : it.kind === 'chest' ? ' · toque de novo para abrir' : it.kind === 'card' || it.kind === 'rune' ? ' · toque de novo para equipar/tirar' : it.kind === 'ticket' ? ' · toque de novo para usar' : '';
+      text(ctx, it.description + hint, x + 4, fy + 14, { size: 9, outline: false, color: '#aab4cc', bold: false });
+    }
+  }
+
+  /** Personagem com asas e os 7 espaços de equipamento em volta. */
+  private drawEquipped(ctx: CanvasRenderingContext2D, x: number, top: number, w: number): void {
+    const { progress, world } = this.game;
+    const cx = x + w / 2, cy = top + 132;
+    glow(ctx, cx, cy - 40, 80, '#7fc8ff', 0.15);
+    const wid = progress.equipped.wings;
+    if (wid) this.icon(ctx, getItem(wid).icon ?? '', cx - 10, cy - 52, 80);
+    const pre = world.cls.sprite;
+    drawSprite(ctx, `${pre}_idle`, performance.now() / 500, cx, cy, 1, { scale: 2.2 });
+    const SL: [Slot, number, number][] = [
+      ['helmet', -160, -126], ['armor', -160, -56], ['gloves', -160, 14], ['weapon', 160, -126], ['accessory', 160, -56], ['boots', 160, 14], ['wings', 0, 20],
+    ];
+    for (const [slot, dx, dy] of SL) {
+      const sx = cx + dx - 26, sy = cy + dy - 6;
+      const id = progress.equipped[slot];
+      ctx.fillStyle = '#252e45';
+      ctx.fillRect(sx, sy, 52, 52);
+      ctx.strokeStyle = id ? RARITY_COLORS[getItem(id).rarity ?? 0] : '#3a4560';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, 52, 52);
+      if (id) {
+        const e = getItem(id);
+        this.icon(ctx, e.icon ?? 'icon_' + id, sx + 26, sy + 26, 40);
+        const lv = progress.upgrades[id] ?? 0;
+        if (lv) text(ctx, `+${lv}`, sx + 48, sy + 8, { size: 9, align: 'right', color: '#ffd36b' });
+        text(ctx, e.name, sx + 26, sy + 60, { size: 8, align: 'center', outline: true });
+      } else text(ctx, SLOT_NAMES[slot], sx + 26, sy + 26, { size: 8, align: 'center', outline: false, color: '#667' });
+    }
+    const s = world.stats;
+    text(ctx, `ATQ ${s.atk} · DEF ${s.def} · HP ${s.maxHp} · MP ${s.maxMp} · CRÍT ${Math.round(s.crit * 100)}%`, cx, top + 236, { size: 10, align: 'center', color: '#9cc4ff' });
+    void upgradeMul;
+  }
+
+  private drawReward(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'reward' }>): void {
+    const w = 440, h = 60 + Math.ceil(m.items.length / 2) * 34 + 30, x = (VIEW_W - w) / 2, y = Math.max(8, (VIEW_H - h) / 2);
+    this.panel(ctx, x, y, w, h, m.title, false);
+    this.regions.push({ x: 0, y: 0, w: VIEW_W, h: VIEW_H, fn: () => { if (m.t > 0.4) this.close(); } });
+    m.items.forEach((it, i) => {
+      const appear = m.t - i * 0.08;
+      if (appear < 0) return;
+      const ix = x + 16 + (i % 2) * (w / 2 - 10), iy = y + 40 + Math.floor(i / 2) * 34;
+      const pop = 1 + Math.max(0, 0.3 - appear) * 2;
+      glow(ctx, ix + 14, iy + 14, 18, '#ffd36b', 0.25);
+      this.icon(ctx, it.icon, ix + 14, iy + 14, 26 * pop);
+      text(ctx, it.label, ix + 34, iy + 14, { size: 10, outline: false });
+    });
+    text(ctx, 'Toque para continuar', x + w / 2, y + h - 14, { size: 9, align: 'center', outline: false, color: '#aab4cc' });
+  }
+
+  private drawArena(ctx: CanvasRenderingContext2D): void {
+    const { progress } = this.game;
+    const w = 480, h = 260, x = (VIEW_W - w) / 2, y = (VIEW_H - h) / 2;
+    this.panel(ctx, x, y, w, h, '⚔ Arena dos Chefes');
+    text(ctx, 'Enfrente um chefe no seu nível. Precisa de um tíquete (loja da ferreira).', x + 14, y + 38, { size: 10, outline: false, color: '#aab4cc' });
+    const tiers = [
+      ['t_bronze', 'Fácil', 'Chefe intermediário', 'Baú Azul + 3 gemas'],
+      ['t_blue', 'Normal', 'Chefe intermediário +3 níveis', 'Baú Arcano + 6 gemas'],
+      ['t_purple', 'Difícil', 'Chefe final +6 níveis', 'Baú Dourado + 9 gemas'],
+      ['t_gold', 'Lendária', 'Chefe final +9 níveis', 'Baú Angelical + 12 gemas'],
+    ];
+    tiers.forEach(([ticket, name, foe, reward], i) => {
+      const ry = y + 54 + i * 46;
+      const n = progress.bag[ticket] ?? 0;
+      ctx.fillStyle = n ? '#2c3a5a' : '#22283a';
+      ctx.fillRect(x + 12, ry, w - 24, 42);
+      this.icon(ctx, 'it_' + ticket, x + 34, ry + 21, 32);
+      text(ctx, `${name} · ${foe}`, x + 60, ry + 13, { size: 11, outline: false });
+      text(ctx, `Prêmio: ${reward}${progress.vipPass ? ' (VIP x2)' : ''}`, x + 60, ry + 29, { size: 9, outline: false, color: '#ffd36b', bold: false });
+      text(ctx, `x${n}`, x + w - 24, ry + 21, { size: 11, align: 'right', color: n ? '#8fe07a' : '#e0524f', outline: false });
+      this.regions.push({ x: x + 12, y: ry, w: w - 24, h: 42, fn: () => this.game.startArena(i) });
     });
   }
 
@@ -553,9 +878,13 @@ export class Ui {
     }
     const bx2 = lx, by2 = y + 250;
     ctx.fillStyle = '#3f5fb0';
-    ctx.fillRect(bx2, by2, 180, 20);
-    text(ctx, '✦ Trocar poderes', bx2 + 90, by2 + 10, { size: 10, align: 'center', outline: false });
-    this.regions.push({ x: bx2, y: by2 - 2, w: 180, h: 24, fn: () => { this.modal = { kind: 'skills', slot: 0, sel: 0 }; this.game.sfx.play('ui'); } });
+    ctx.fillRect(bx2, by2, 112, 20);
+    text(ctx, '✦ Trocar poderes', bx2 + 56, by2 + 10, { size: 10, align: 'center', outline: false });
+    this.regions.push({ x: bx2, y: by2 - 2, w: 112, h: 24, fn: () => { this.modal = { kind: 'skills', slot: 0, sel: 0 }; this.game.sfx.play('ui'); } });
+    ctx.fillStyle = '#8a5a2b';
+    ctx.fillRect(bx2 + 118, by2, 92, 20);
+    text(ctx, '🎒 Bolsa', bx2 + 164, by2 + 10, { size: 10, align: 'center', outline: false });
+    this.regions.push({ x: bx2 + 118, y: by2 - 2, w: 92, h: 24, fn: () => this.openBag() });
 
     // som, música e diário de missões
     const { sfx, music } = this.game;
@@ -685,6 +1014,10 @@ export class Ui {
     ctx.fillRect(bx, by, bw, 32);
     text(ctx, open ? 'Entrar ▶' : 'Bloqueada', bx + bw / 2, by + 16, { size: 13, align: 'center', color: open ? '#ffffff' : '#888' });
     this.regions.push({ x: bx, y: by, w: bw, h: 32, fn: () => this.mapEnter(m) });
+    ctx.fillStyle = '#8a2a3a';
+    ctx.fillRect(bx - 104, by, 96, 32);
+    text(ctx, '⚔ Arena', bx - 56, by + 16, { size: 12, align: 'center' });
+    this.regions.push({ x: bx - 104, y: by, w: 96, h: 32, fn: () => { this.modal = { kind: 'arena' }; this.game.sfx.play('ui'); } });
   }
 
   private pickSkill(m: Extract<Modal, { kind: 'skills' }>, id: string): void {
