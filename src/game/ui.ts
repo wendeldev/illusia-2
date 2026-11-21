@@ -1,9 +1,9 @@
 import { CLASSES, EQUIPMENT, getClass, getEnemy, getItem, getStage, REGIONS, STAGES_PER_REGION, stageId, type QuestDef } from '../data';
 import type { Sfx } from '../engine/audio';
 import type { Music } from '../engine/music';
-import { drawSprite, drawSpriteH, drawSub, frameSize, hasSprite, spriteHeight, spritesReady, tileAspect } from '../engine/sprites';
+import { drawSprite, drawSpriteH, drawSub, frameSize, hasSprite, spritesReady, tileAspect } from '../engine/sprites';
 import { glow } from './art/scene3d';
-import { drawLayered } from './art/layers';
+import { drawDollIdle } from './art/layers';
 import { RARITY_COLORS, RARITY_NAMES, SET_NAMES, SET_OF, SHOP_CATEGORIES, setFor } from '../data/gear';
 import { DIFFICULTIES, EVENT_PHASES, MYTHIC_BOSSES, rewardRarity, TICKET_OF, type MythicBoss } from '../data/mythic';
 import { rewardText, type QuestBook } from './quests';
@@ -849,9 +849,8 @@ export class Ui {
     const { progress, world } = this.game;
     const cx = x + w / 2, cy = top + 168;
     glow(ctx, cx, cy - 50, 90, '#7fc8ff', 0.15);
-    const pre = world.cls.sprite;
     const t = performance.now() / 1000;
-    drawLayered(ctx, progress, `${pre}_idle`, t * 2, cx, cy, 1, 2.2, spriteHeight(`${pre}_idle`, 2.2) || 114, t);
+    drawDollIdle(ctx, progress, cx, cy, 1, 2.2, t);
     const o = w / 2 - 36, i = w / 2 - 98;
     const SL: [Slot, number, number][] = [
       ['helmet', -o, -150], ['armor', -o, -92], ['pants', -o, -34],
@@ -969,10 +968,9 @@ export class Ui {
     // prévia do personagem com o set (camadas)
     const preview: Progress = { ...progress, equipped: { ...progress.equipped }, upgrades: {} };
     for (const id of ids) preview.equipped[getItem(id).slot] = id;
-    const pre = this.game.world.cls.sprite;
     const px = rx + 190, pyy = ry + 124;
     glow(ctx, px, pyy - 40, 50, RARITY_COLORS[r], 0.25);
-    drawLayered(ctx, preview, `${pre}_idle`, t * 2, px, pyy, 1, 1.3, spriteHeight(`${pre}_idle`, 1.3) || 68, t);
+    drawDollIdle(ctx, preview, px, pyy, 1, 1.5, t);
     const mont = ({ 4: 'legendary', 6: 'divine', 7: 'celestial' } as Record<number, string>)[r];
     const mname = [`mont_${cls}_${mont}`].find(hasSprite);
     if (mname) { this.icon(ctx, mname, rx + 56, ry + 98, 84); text(ctx, 'arte do set', rx + 56, ry + 144, { size: 7, align: 'center', outline: false, color: '#aab4cc', bold: false }); }

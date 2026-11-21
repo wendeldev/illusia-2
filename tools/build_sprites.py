@@ -778,6 +778,14 @@ for key, short in (('boots', 'gb'), ('wings_back', 'gwb'), ('wings_front', 'gwf'
         put(f'{short}_{r}', [base if hue is None else recolor(base, *hue)])
 for (row, key), im in LY.items():
     put(f'ly_{key}_{row}', [im])
+# corpos base (boneco em camadas) + anatomia de cada quadro → src/data/paperdoll.json
+import anatomy as AN
+PD = {}
+for cls, frs in MY.load_bodies().items():
+    put(f'pd_{cls}', frs)
+    PD[cls] = [AN.anatomy(im) for im in frs]
+with open(os.path.join(ROOT, 'src', 'data', 'paperdoll.json'), 'w') as f:
+    json.dump(PD, f, separators=(',', ':'))
 # montagens prontas (prévias das recompensas)
 for name, im in MY.load_montages().items():
     put(f'mont_{name}', [im])

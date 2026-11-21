@@ -230,3 +230,36 @@ export function headOf(name: string, frame: number, facing: number, scale = 1): 
 export function mythicReady(): boolean {
   return !!mythic;
 }
+
+/**
+ * Desenha o quadro encaixado na caixa (x0,y0)-(x1,y1), no sistema de coordenadas atual do contexto
+ * (boneco em camadas). `fill` estica; `contain` mantém a proporção. `align` posiciona na vertical.
+ */
+export function drawFit(
+  ctx: CanvasRenderingContext2D, name: string, x0: number, y0: number, x1: number, y1: number,
+  mode: 'fill' | 'contain' = 'contain', align: 'top' | 'mid' | 'bottom' = 'mid', frame = 0, flash = false,
+): void {
+  const d = ATLAS[name];
+  const sheet = d && sheetOf(d);
+  if (!d || !sheet) return;
+  const f = d.frames[Math.max(0, Math.floor(frame)) % d.frames.length];
+  const bw = x1 - x0, bh = y1 - y0;
+  let w = bw, h = bh;
+  if (mode === 'contain') { const s = Math.min(bw / f[2], bh / f[3]); w = f[2] * s; h = f[3] * s; }
+  const dx = x0 + (bw - w) / 2;
+  const dy = align === 'top' ? y0 : align === 'bottom' ? y1 - h : y0 + (bh - h) / 2;
+  ctx.drawImage(sheet, f[0], f[1], f[2], f[3], dx, dy, w, h);
+  const wh = d.sheet === 5 ? mythicWhite : null;
+  if (flash && wh) {
+    const a = ctx.globalAlpha;
+    ctx.globalAlpha = a * 0.85;
+    ctx.drawImage(wh, f[0], f[1], f[2], f[3], dx, dy, w, h);
+    ctx.globalAlpha = a;
+  }
+}
+
+/** Tamanho (px da prancha) e âncora do quadro. */
+export function frameRect(name: string, frame = 0): [number, number, number, number] | null {
+  const f = ATLAS[name]?.frames[Math.max(0, Math.floor(frame)) % ATLAS[name].frames.length];
+  return f ? [f[2], f[3], f[4], f[5]] : null;
+}

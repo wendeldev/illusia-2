@@ -9,7 +9,7 @@ import type { EnemyDef, HumanLook, NpcDef, PortalDef, SkillDef, StageDef } from 
 import { drawHuman, OUTLINE } from './art/human';
 import { drawMonster } from './art/monsters';
 import { glow } from './art/scene3d';
-import { drawBackLayers, drawFrontLayers, gearLook } from './art/layers';
+import { dollLook, drawDoll, walkFrame, type DollPose } from './art/layers';
 import { drawTerrain } from './art/ground';
 import { drawSprite, drawSpriteH, frameCount, hasSprite, spriteHeight, spritesReady } from '../engine/sprites';
 import { Scenery } from './art/scenery';
@@ -1801,21 +1801,38 @@ export class World {
   /** Jogador em pixel art: escolhe a animação pelo estado. */
   private drawPlayerSprite(ctx: CanvasRenderingContext2D): void {
     const p = this.player;
-    const pre = this.cls.sprite;
-    const ANIM: Record<ActionAnim, string> = {
-      combo0: 'atk0', combo1: 'atk1', combo2: 'atk2', wind: 'wind', whirl: 'whirl', thunder: 'thunder',
-    };
-    let anim: string, frame: number;
-    let castName: string | null = null;
-    if (p.castAnim && !p.dead && p.hitStun <= 0) { castName = p.castAnim; anim = ''; frame = (p.castT / p.castDur) * frameCount(p.castAnim); }
-    else if (p.dead) { anim = 'dead'; frame = Math.min(3, p.deadAnim / 0.12); }
-    else if (p.anim) { anim = ANIM[p.anim]; frame = (p.animT / p.animDur) * frameCount(`${pre}_${anim}`); }
-    else if (p.hitStun > 0) { anim = 'hurt'; frame = this.time * 10; }
-    else if (p.climbing) { anim = 'jump'; frame = 0; }
-    else if (!p.onGround) { anim = p.vy < 0 ? 'jump' : 'fall'; frame = 0; }
-    else if (p.moving) { anim = 'walk'; frame = p.walk * (pre === 'hero' ? 0.9 : 0.6); }
-    else { anim = 'idle'; frame = this.time * (pre === 'hero' ? 4 : 2); }
-    const name = castName ?? `${pre}_${anim}`;
+    const L = dollLook(this.progress);
+    const kind = L.weaponKind;
+    const ease = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 2);
+    const pose: DollPose = { frame: 0, weapon: -0.15 };
+    // pose de acordo com o estado (o boneco em camadas não tem quadros de ataque: arma e corpo se movem)
+    if (p.dead) {
+      const k = Math.min(1, p.deadAnim / 0.4);
+      Object.assign(pose, { frame: 0, rot: -1.45 * k, oy: -4 * k, weapon: 0.8 * k });
+    } else if (p.castAnim && p.hitStun <= 0) {
+      const t = p.castT / p.castDur;
+      const up = Math.sin(Math.min(1, t * 1.4) * Math.PI);
+      Object.assign(pose, { frame: 0, weapon: -0.15 - 1.3 * up, sy: 1 + 0.04 * up, charge: up, oy: -2 * up });
+    } else if (p.anim) {
+      const t = p.animT / p.animDur;
+      const arc = Math.sin(Math.min(1, t) * Math.PI);
+      if (kind === 'bow') Object.assign(pose, { frame: 0, weapon: -0.5, thrust: 7 - 3 * arc, ox: -1.5 * arc });
+      else if (kind === 'spear' || kind === 'staff' && p.anim.startsWith('combo')) Object.assign(pose, { frame: 2, weapon: kind === 'spear' ? 0.78 : 0.3 * arc, thrust: 9 * arc, ox: 4 * arc, rot: 0.06 * arc });
+      else if (p.anim === 'combo0') Object.assign(pose, { frame: 2, weapon: -2.3 + 3.3 * ease(t), ox: 4 * arc, rot: 0.08 * arc });
+      else if (p.anim === 'combo1') Object.assign(pose, { frame: 3, weapon: 1.0 - 2.8 * ease(t), ox: 3 * arc, rot: -0.04 * arc });
+      else if (p.anim === 'combo2') Object.assign(pose, { frame: 2, weapon: -2.8 + 4.4 * ease(t), ox: 7 * arc, rot: 0.12 * arc, sy: 1 - 0.04 * arc });
+      else Object.assign(pose, { frame: 0, weapon: -2 + t * Math.PI * 2, sy: 1 + 0.03 * arc, charge: arc * 0.6 });
+    } else if (p.hitStun > 0) {
+      Object.assign(pose, { frame: 0, rot: -0.18, ox: -2, weapon: 0.4 });
+    } else if (p.climbing) {
+      Object.assign(pose, { frame: walkFrame(L, p.walk * 0.6), weapon: 0.6 });
+    } else if (!p.onGround) {
+      Object.assign(pose, p.vy < 0 ? { frame: 2, sy: 1.05, weapon: -0.6 } : { frame: 3, sy: 0.98, weapon: -0.3 });
+    } else if (p.moving) {
+      Object.assign(pose, { frame: walkFrame(L, p.walk * 0.5), weapon: -0.1 + Math.sin(p.walk * 0.8) * 0.08, oy: -Math.abs(Math.sin(p.walk * 1.6)) * 1.2 });
+    } else {
+      Object.assign(pose, { frame: 0, sy: 1 + Math.sin(this.time * 3) * 0.015, weapon: -0.15 + Math.sin(this.time * 2) * 0.03 });
+    }
     // sombra na superfície embaixo (mesmo pulando)
     const below = this.terrain.surfacesAt(p.x).find((y) => y >= p.y - 1) ?? p.y;
     const lift = below - p.y;
@@ -1832,20 +1849,27 @@ export class World {
       ctx.ellipse(p.x, p.y - 24, 26, 32, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
-    if (p.empowerT > 0) {
-      // sombras repetindo o movimento atrás do personagem
-      for (let k = 1; k <= 2; k++) drawSprite(ctx, castName ?? `${pre}_${anim}`, Math.min(frame, frameCount(castName ?? `${pre}_${anim}`) - 1e-3), p.x - p.facing * k * 14, p.y + 1, p.facing, { alpha: 0.35 / k, flash: true });
-      glow(ctx, p.x, p.y - 22, 40, '#a06bff', 0.3);
-    }
-    const L = gearLook(this.progress);
-    const ph = spriteHeight(`${pre}_idle`) || 52;
-    drawBackLayers(ctx, L, p.x, p.y + 1, p.facing, ph, this.time, !p.onGround);
-    const breathe = !p.anim && !p.moving && p.onGround && !p.dead ? 1 + Math.sin(this.time * 3) * 0.015 : 1;
     // na escada: vira de um lado para o outro ao subir (mão por mão)
     const face = p.climbing ? (Math.floor(p.walk * 0.6) % 2 ? 1 : -1) : p.facing;
-    const fr = Math.min(frame, frameCount(name) - 1e-3);
-    drawSprite(ctx, name, fr, p.x, p.y + 1, face, { sy: breathe, flash: p.flash > 0, tint: L.tint });
-    if (!p.dead) drawFrontLayers(ctx, L, name, fr, p.x, p.y + 1, face, ph, this.time);
+    if (p.empowerT > 0) {
+      // sombras repetindo o movimento atrás do personagem
+      for (let k = 1; k <= 2; k++) drawDoll(ctx, L, p.x - p.facing * k * 14, p.y + 1, face, 1, { ...pose, alpha: 0.3 / k, flash: true }, this.time);
+      glow(ctx, p.x, p.y - 22, 40, '#a06bff', 0.3);
+    }
+    // rastro da arma no golpe
+    if (p.anim && !p.dead && kind !== 'bow') {
+      const t = p.animT / p.animDur;
+      if (t > 0.15 && t < 0.75) {
+        ctx.strokeStyle = L.weaponColor;
+        ctx.globalAlpha = 0.45 * Math.sin(((t - 0.15) / 0.6) * Math.PI);
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(p.x + p.facing * 6, p.y - 24, 24, p.facing > 0 ? -1.6 : Math.PI + 1.6, p.facing > 0 ? 0.9 : Math.PI - 0.9, p.facing < 0);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+    drawDoll(ctx, L, p.x, p.y + 1, face, 1, { ...pose, flash: p.flash > 0 }, this.time);
   }
 
   /** Inimigo em pixel art: um quadro só, animado com quique, preparo, bote e queda. */

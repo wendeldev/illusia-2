@@ -96,9 +96,11 @@ Dados em `src/data/mythic.ts`; prancha em `assets-src/sheet-mythic-*.png` (`tool
 
 8 raridades: Comum, Incomum, Raro, Épico, Lendário, Mítico, Divino (e Celestial, só de eventos). Espaços:
 arma, capacete, armadura, braços, calças, botas, capa, asas traseiras, asas frontais, aura e acessório.
-Tudo o que é equipado aparece no personagem ("layered sprites", `src/game/art/layers.ts`): aura e asas
-atrás, capa nas costas, capacete preso à cabeça de cada quadro da animação, armadura/calças/botas pintam
-o corpo na cor da raridade. Sets: 3 peças = +6%, 5 peças = +15% (mais com raridade; 1,5× no set da própria
+O personagem é um boneco em camadas ("layered sprites", `src/game/art/layers.ts`): o corpo base sem
+equipamento da prancha (`pd_<classe>`) e, por cima, cada peça equipada no lugar do corpo: aura, asas traseiras,
+capa, calças, botas, armadura, braços, capacete, arma na mão e asas frontais. A posição de cabeça, pescoço,
+quadril, mãos e pés de cada quadro é medida por `tools/anatomy.py` (`src/data/paperdoll.json`). Golpes e poderes
+movem a arma e o corpo. Itens antigos aparecem com a peça do set da classe na mesma raridade. Sets: 3 peças = +6%, 5 peças = +15% (mais com raridade; 1,5× no set da própria
 classe). Arma preferida da classe: +25% no ataque da arma. A loja tem categorias (espadas, machados, lanças,
 adagas, arcos, cajados, capacetes, armaduras, braços, calças, capas, botas, asas, auras); Mítico e Divino
 custam gemas. Catálogo gerado em `src/data/gear.ts`.

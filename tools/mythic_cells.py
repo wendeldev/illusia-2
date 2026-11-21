@@ -247,3 +247,15 @@ def load_montages():
         bb = im.getbbox()
         out[name] = im.crop(bb) if bb else im
     return out
+
+# corpos base (sem equipamento): 4 classes × 5 quadros
+BODY_CLASSES = ['warrior', 'assassin', 'mage', 'archer']
+def load_bodies():
+    S = sheet('layers')
+    cols = [155, 215, 276, 337, 399, 462]
+    rows = [108, 177, 238, 293, 350]
+    g = grid_cells(S, (155, 108, 462, 350), cols, rows, 30)
+    out = {}
+    for (r, c), im in g.items():
+        out.setdefault(BODY_CLASSES[r], [None] * 5)[c] = im
+    return out

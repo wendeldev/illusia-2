@@ -1,98 +1,194 @@
-// Equipamento em camadas ("layered sprites"): as peças equipadas são desenhadas por cima da animação
-// do personagem. Atrás: aura, asas traseiras, capa. Corpo: armadura/calças/botas pintam o corpo na cor
-// da raridade. Na frente: capacete (preso à cabeça do quadro atual) e asas frontais.
+// Personagem em camadas ("layered sprites"), como na prancha de camadas: corpo base sem equipamento
+// e cada peça vestida por cima, no lugar certo do corpo (a anatomia de cada quadro vem de
+// tools/anatomy.py → src/data/paperdoll.json). Ordem: aura, asas traseiras, capa, corpo, calças,
+// botas, armadura, braços, capacete, arma na mão e asas frontais.
 import { getItem } from '../../data';
-import { RARITY_COLORS } from '../../data/gear';
-import { drawSprite, drawSpriteH, hasSprite, headOf } from '../../engine/sprites';
+import { PREFERRED, RARITY_COLORS, RARITY_KEYS, SET_OF } from '../../data/gear';
+import PD from '../../data/paperdoll.json';
+import { drawFit, frameRect, hasSprite } from '../../engine/sprites';
 import type { Slot } from '../../types';
 import type { Progress } from '../progress';
 import { glow } from './scene3d';
 
-export interface GearLook {
-  aura?: string; auraColor?: string;
-  wings?: string; wingsGlow?: boolean;
-  wingsFront?: string;
-  cape?: string;
-  helmet?: string;
-  tint: [number, number, string, number][];
-  weaponColor?: string; weaponUp: number;
+interface Anatomy {
+  W: number; H: number; head: number[]; neck: number; hips: number[]; feet: number[]; hands: number[]; hand_y: number;
+}
+const ANAT = PD as unknown as Record<string, Anatomy[]>;
+
+/** Altura do personagem no jogo (px lógicos). */
+export const DOLL_H = 56;
+/** Até onde o capacete desce na cabeça (fração da altura da cabeça, cabelo incluído). */
+const HELM: Record<string, number> = { warrior: 0.56, assassin: 0.58, mage: 0.4, archer: 0.42 };
+const WALK: Record<string, number[]> = { warrior: [1, 2, 3, 4], assassin: [1, 2, 3, 4], mage: [0, 1, 2, 1], archer: [0, 1, 2, 1] };
+
+export interface DollLook {
+  body: string; cls: string;
+  helmet?: string; armor?: string; arms?: string; pants?: string; cape?: string; boots?: string;
+  wings?: string; wingsFront?: string; aura?: string; auraColor: string; wingsGlow: boolean;
+  weapon: string; weaponKind: string; weaponColor: string; weaponRarity: number; weaponUp: number;
 }
 
-function icon(p: Progress, slot: Slot): string | undefined {
+export interface DollPose {
+  frame: number;
+  /** inclinação do corpo (rad), deslocamento e achatamento */
+  rot?: number; ox?: number; oy?: number; sy?: number;
+  /** ângulo da arma (rad, 0 = como no desenho) */
+  weapon?: number;
+  /** estocada da arma para frente (px) */
+  thrust?: number;
+  alpha?: number; flash?: boolean;
+  /** brilho na ponta da arma (poderes) */
+  charge?: number;
+}
+
+const rarityOf = (p: Progress, slot: Slot) => { const id = p.equipped[slot]; return id ? getItem(id).rarity ?? 0 : -1; };
+
+/** Nome da peça desenhada para o espaço (itens antigos usam a peça do set da classe na mesma raridade). */
+function piece(p: Progress, slot: Slot, setCls: string, part: string): string | undefined {
   const id = p.equipped[slot];
   if (!id) return undefined;
-  const ic = getItem(id).icon;
-  return ic && hasSprite(ic) ? ic : undefined;
+  const e = getItem(id);
+  const ic = e.icon ?? '';
+  if (ic.startsWith('gs_') && hasSprite(ic)) return ic;
+  const name = `gs_${setCls}_${RARITY_KEYS[Math.min(7, e.rarity ?? 0)]}_${part}`;
+  return hasSprite(name) ? name : undefined;
 }
-const rar = (p: Progress, slot: Slot) => { const id = p.equipped[slot]; return id ? getItem(id).rarity ?? 0 : -1; };
+function generic(p: Progress, slot: Slot, prefix: string): string | undefined {
+  const id = p.equipped[slot];
+  if (!id) return undefined;
+  const e = getItem(id);
+  const ic = e.icon ?? '';
+  if (ic.startsWith(prefix + '_') && hasSprite(ic)) return ic;
+  if (slot === 'wings' && hasSprite(ic)) return ic; // asas antigas: o próprio desenho
+  const name = `${prefix}_${RARITY_KEYS[Math.min(7, e.rarity ?? 0)]}`;
+  return hasSprite(name) ? name : undefined;
+}
 
-export function gearLook(p: Progress): GearLook {
-  const tint: GearLook['tint'] = [];
-  const band = (slot: Slot, a: number, b: number, k: number) => {
-    const r = rar(p, slot);
-    if (r >= 1) tint.push([a, b, RARITY_COLORS[r], k + r * 0.015]);
-  };
-  band('armor', 0.24, 0.62, 0.16);
-  band('pants', 0.62, 0.9, 0.16);
-  band('boots', 0.9, 1, 0.24);
-  band('gloves', 0.4, 0.55, 0.12);
-  const wid = p.equipped.wings ?? '';
-  const wr = rar(p, 'weapon');
-  const helm = icon(p, 'helmet');
+export function dollLook(p: Progress): DollLook {
+  const classId = p.classId ?? 'warrior';
+  const cls = SET_OF[classId] ?? 'warrior';
+  const wid = p.equipped.weapon;
+  const we = wid ? getItem(wid) : null;
+  const wr = Math.max(0, we?.rarity ?? 0);
+  const kind = we?.weaponKind ?? (PREFERRED[classId] ?? ['sword'])[0];
+  const weapon = we?.icon?.startsWith('gw_') && hasSprite(we.icon) ? we.icon : `gw_${kind}_${RARITY_KEYS[Math.min(7, wr)]}`;
   return {
-    aura: icon(p, 'aura'), auraColor: RARITY_COLORS[Math.max(0, rar(p, 'aura'))],
-    wings: icon(p, 'wings'), wingsGlow: wid === 'wings_angel' || wid === 'wings_white' || rar(p, 'wings') >= 5,
-    wingsFront: icon(p, 'wingsFront'),
-    cape: icon(p, 'cape'),
-    helmet: helm?.startsWith('gs_') ? helm : undefined,
-    tint,
-    weaponColor: wr >= 3 ? RARITY_COLORS[wr] : undefined,
-    weaponUp: p.upgrades?.[p.equipped.weapon ?? ''] ?? 0,
+    body: `pd_${cls}`, cls,
+    helmet: piece(p, 'helmet', cls, 'helmet'), armor: piece(p, 'armor', cls, 'armor'), arms: piece(p, 'gloves', cls, 'arms'),
+    pants: piece(p, 'pants', cls, 'pants'), cape: piece(p, 'cape', cls, 'cape'), boots: generic(p, 'boots', 'gb'),
+    wings: generic(p, 'wings', 'gwb'), wingsFront: generic(p, 'wingsFront', 'gwf'), aura: generic(p, 'aura', 'gau'),
+    auraColor: RARITY_COLORS[Math.max(0, rarityOf(p, 'aura'))],
+    wingsGlow: p.equipped.wings === 'wings_angel' || p.equipped.wings === 'wings_white' || rarityOf(p, 'wings') >= 5,
+    weapon, weaponKind: kind, weaponColor: RARITY_COLORS[wr], weaponRarity: wr,
+    weaponUp: p.upgrades?.[wid ?? ''] ?? 0,
   };
 }
 
-/** Camadas de trás. `h` = altura do personagem em px; `k` = escala (1 no jogo). */
-export function drawBackLayers(ctx: CanvasRenderingContext2D, L: GearLook, x: number, y: number, facing: number, h: number, time: number, flying: boolean, k = 1): void {
-  if (L.weaponUp >= 4 || L.weaponColor) {
+/** Quadro do corpo andando (t = distância/tempo acumulado). */
+export function walkFrame(look: DollLook, t: number): number {
+  const w = WALK[look.cls] ?? [0];
+  return w[Math.floor(t) % w.length];
+}
+
+/** Desenha o personagem com os pés em (x, y). `k` = escala extra (telas de menu). */
+export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, y: number, facing: number, k: number, pose: DollPose, time: number): void {
+  const frames = ANAT[L.cls];
+  if (!frames) return;
+  const fi = Math.max(0, Math.floor(pose.frame)) % frames.length;
+  const A = frames[fi];
+  const fr = frameRect(L.body, fi);
+  if (!fr) return;
+  const s = (DOLL_H / frames[0].H) * k;
+  const ax = fr[2], ay = fr[3];
+  // coordenadas da anatomia (canto do quadro) → relativas aos pés
+  const X = (v: number) => v - ax, Y = (v: number) => v - ay;
+  const [hl, hr] = A.hands, span = hr - hl;
+  const [hx0, hy0, hx1] = A.hips;
+  const cx = X((hx0 + hx1) / 2);
+  const neck = Y(A.neck);
+  const [fx0, fy0, fx1, fy1] = A.feet;
+  const hd = A.head;
+  const handY = Y(A.hand_y);
+  const fl = !!pose.flash;
+
+  // brilho da arma aprimorada / rara e aura (no chão, sem girar com o corpo)
+  if (L.weaponUp >= 4 || L.weaponRarity >= 3) {
     const up = L.weaponUp;
-    const c = up >= 10 ? '#ff5fd0' : up >= 7 ? '#ffd36b' : L.weaponColor ?? '#7fc8ff';
-    glow(ctx, x, y - h * 0.45, (30 + up * 2 + Math.sin(time * 4) * 3) * k, c, 0.16 + up * 0.02);
+    const c = up >= 10 ? '#ff5fd0' : up >= 7 ? '#ffd36b' : L.weaponColor;
+    glow(ctx, x, y - DOLL_H * 0.45 * k, (28 + up * 2 + Math.sin(time * 4) * 3) * k, c, 0.14 + up * 0.02);
   }
+  ctx.save();
+  ctx.translate(x + (pose.ox ?? 0) * facing * k, y + (pose.oy ?? 0) * k);
+  if (pose.alpha !== undefined) ctx.globalAlpha *= pose.alpha;
+  ctx.scale(facing * s, s * (pose.sy ?? 1));
+  ctx.imageSmoothingEnabled = s < 1;
   if (L.aura) {
+    glow(ctx, cx, -A.H * 0.4, A.H * 0.8, L.auraColor, 0.16);
     const pulse = 1 + Math.sin(time * 3) * 0.06;
-    glow(ctx, x, y - h * 0.4, h * 0.9, L.auraColor ?? '#ffffff', 0.18);
+    const prev = ctx.globalCompositeOperation;
     ctx.globalCompositeOperation = 'lighter';
-    drawSpriteH(ctx, L.aura, x, y + 4 * k, h * 0.75 * pulse, 1, { alpha: 0.75 + Math.sin(time * 5) * 0.15 });
-    ctx.globalCompositeOperation = 'source-over';
+    const a = ctx.globalAlpha;
+    ctx.globalAlpha = a * (0.7 + Math.sin(time * 5) * 0.15);
+    drawFit(ctx, L.aura, cx - span * 1.1 * pulse, Y(fy1) - span * 0.75 * pulse, cx + span * 1.1 * pulse, Y(fy1) + 3, 'contain', 'bottom');
+    ctx.globalAlpha = a;
+    ctx.globalCompositeOperation = prev;
   }
+  if (pose.rot) ctx.rotate(pose.rot);
+  // asas traseiras (batendo) e capa (balançando)
   if (L.wings) {
-    const flap = 0.75 + Math.abs(Math.sin(time * (flying ? 9 : 3))) * 0.3;
-    if (L.wingsGlow) glow(ctx, x - facing * 6 * k, y - h * 0.6, 30 * k, '#ffffff', 0.15);
-    drawSpriteH(ctx, L.wings, x - facing * 6 * k, y - h * 0.28, h * 0.72, facing, { sx: flap, alpha: 0.95 });
+    const flap = 0.8 + Math.abs(Math.sin(time * 3)) * 0.25;
+    const wc = cx - 3;
+    if (L.wingsGlow) glow(ctx, wc, neck + 2, span * 1.2, '#ffffff', 0.18);
+    ctx.save();
+    ctx.translate(wc, 0); ctx.scale(flap, 1); ctx.translate(-wc, 0);
+    drawFit(ctx, L.wings, wc - span * 1.1, neck - 12, wc + span * 1.1, neck + 16, 'contain', 'mid', 0, fl);
+    ctx.restore();
   }
   if (L.cape) {
-    const sway = 1 + Math.sin(time * 4) * 0.05;
-    drawSpriteH(ctx, L.cape, x - facing * 5 * k, y - h * 0.12, h * 0.6, facing, { sx: sway, alpha: 0.95 });
+    const sway = 1 + Math.sin(time * 4) * 0.06;
+    const c0 = cx - 3;
+    ctx.save();
+    ctx.translate(c0, neck); ctx.scale(sway, 1); ctx.translate(-c0, -neck);
+    drawFit(ctx, L.cape, c0 - span * 0.46, neck - 1, c0 + span * 0.46, Y(fy0) - 1, 'fill', 'top', 0, fl);
+    ctx.restore();
   }
-}
-
-/** Camadas da frente: capacete na cabeça do quadro atual e asas frontais. */
-export function drawFrontLayers(ctx: CanvasRenderingContext2D, L: GearLook, sprite: string, frame: number, x: number, y: number, facing: number, h: number, time: number, k = 1): void {
+  // corpo base
+  drawFit(ctx, L.body, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
+  if (L.pants) drawFit(ctx, L.pants, X(hx0) - 3, Y(hy0) - 1, X(hx1) + 3, Y(fy0) + 1, 'fill', 'top', 0, fl);
+  if (L.boots) drawFit(ctx, L.boots, X(fx0) - 1, Y(fy0) - 4, X(fx1) + 1, Y(fy1) + 1, 'fill', 'top', 0, fl);
+  if (L.armor) drawFit(ctx, L.armor, cx - span * 0.5, neck - 2, cx + span * 0.5, Y(hy0) + 3, 'fill', 'top', 0, fl);
+  if (L.arms) drawFit(ctx, L.arms, X(hl) - 1, handY - 6, X(hr) + 1, handY + 2, 'fill', 'top', 0, fl);
   if (L.helmet) {
-    const hd = headOf(sprite, frame, facing, k);
-    const hh = h * 0.3;
-    drawSpriteH(ctx, L.helmet, x + hd.x, y + hd.y + hh * 0.78, hh, facing);
+    const hh = (hd[3] - hd[1]) * (HELM[L.cls] ?? 0.5);
+    drawFit(ctx, L.helmet, X(hd[0]) - 3, Y(hd[1]) - 7, X(hd[2]) + 3, Y(hd[1]) + hh, 'contain', 'bottom', 0, fl);
+  }
+  // arma na mão da frente (pivô no cabo, embaixo à esquerda do desenho)
+  const wr = frameRect(L.weapon);
+  if (wr) {
+    const wh = A.H * (L.weaponKind === 'dagger' ? 0.38 : L.weaponKind === 'bow' ? 0.46 : 0.5) * (frames[0].H / A.H);
+    const ww = (wr[0] / wr[1]) * wh;
+    ctx.save();
+    ctx.translate(X(hr) - 2 + (pose.thrust ?? 0), handY + 1);
+    ctx.rotate(pose.weapon ?? 0);
+    drawFit(ctx, L.weapon, -ww * 0.14, -wh * 0.88, ww * 0.86, wh * 0.12, 'fill', 'top', 0, fl);
+    if (pose.charge) glow(ctx, ww * 0.7, -wh * 0.75, 18 * pose.charge, L.weaponColor, 0.5 * pose.charge);
+    ctx.restore();
   }
   if (L.wingsFront) {
     const flap = 0.85 + Math.abs(Math.sin(time * 3 + 1)) * 0.2;
-    drawSpriteH(ctx, L.wingsFront, x - facing * 1 * k, y - h * 0.2, h * 0.36, facing, { sx: flap, alpha: 0.75 });
+    const a = ctx.globalAlpha;
+    ctx.globalAlpha = a * 0.85;
+    ctx.save();
+    ctx.translate(cx, 0); ctx.scale(flap, 1); ctx.translate(-cx, 0);
+    drawFit(ctx, L.wingsFront, cx - 4 - span * 0.62, neck - 2, cx - 4 + span * 0.62, neck + 9, 'contain', 'mid', 0, fl);
+    ctx.restore();
+    ctx.globalAlpha = a;
   }
+  ctx.restore();
 }
 
-/** Personagem completo com camadas (tela de equipamento). */
-export function drawLayered(ctx: CanvasRenderingContext2D, p: Progress, sprite: string, frame: number, x: number, y: number, facing: number, scale: number, h: number, time: number): void {
-  const L = gearLook(p);
-  drawBackLayers(ctx, L, x, y, facing, h, time, false, scale);
-  drawSprite(ctx, sprite, frame, x, y, facing, { scale, tint: L.tint });
-  drawFrontLayers(ctx, L, sprite, frame, x, y, facing, h, time, scale);
+/** Personagem parado com tudo o que está equipado (telas de equipamento e de eventos). */
+export function drawDollIdle(ctx: CanvasRenderingContext2D, p: Progress, x: number, y: number, facing: number, k: number, time: number): void {
+  const L = dollLook(p);
+  drawDoll(ctx, L, x, y, facing, k, { frame: 0, sy: 1 + Math.sin(time * 3) * 0.015, weapon: -0.15 }, time);
 }
