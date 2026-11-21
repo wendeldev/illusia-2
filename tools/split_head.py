@@ -18,6 +18,20 @@ def face_oval(im, a):
     return (x0 + x1) / 2, (y0 + y1) / 2, max(4, (x1 - x0) / 2), max(4, (y1 - y0) / 2)
 
 
+def eye_line(im, a, neck=None):
+    """Linha dos olhos: a linha da frente do rosto com mais pixels escuros (olhos são grossos e escuros)."""
+    px = im.load()
+    neck = neck if neck is not None else a['neck']
+    hx0, _, hx1, _ = a['head']
+    v = lambda c: max(c[:3]) / 255
+    best, by = -1, int(neck * 0.7)
+    for y in range(int(neck * 0.5), neck - 2):
+        n = sum(1 for x in range(hx0 + int((hx1 - hx0) * 0.35), hx1 - 2) if px[x, y][3] > 40 and v(px[x, y]) < 0.42)
+        if n > best:
+            best, by = n, y
+    return by
+
+
 def split(im, a, neck=None):
     W, H = im.size
     px = im.load()

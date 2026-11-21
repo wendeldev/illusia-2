@@ -765,7 +765,17 @@ for (kind, r), im in MY.load_weapons().items():
     put(f'gw_{kind}_{r}', [im])
     if r == 'divino':
         put(f'gw_{kind}_celestial', [recolor(im, *RAR_HUE[7])])
+def _no_dark(im):
+    # abertura do rosto dos capacetes (fundo escuro preso no desenho) fica transparente
+    im = im.copy(); px = im.load()
+    for y in range(im.size[1]):
+        for x in range(im.size[0]):
+            if px[x, y][3] and max(px[x, y][:3]) < 40:
+                px[x, y] = (0, 0, 0, 0)
+    return im
 for (cls, r, piece), im in MY.load_sets().items():
+    if piece == 'helmet':
+        im = _no_dark(im)
     put(f'gs_{cls}_{r}_{piece}', [im])
     if r == 'divino':
         put(f'gs_{cls}_celestial_{piece}', [recolor(im, *RAR_HUE[7])])
@@ -781,9 +791,21 @@ for (row, key), im in LY.items():
 # corpos base (boneco em camadas) + anatomia de cada quadro → src/data/paperdoll.json
 import anatomy as AN
 PD = {}
+import split_head as SH
 for cls, frs in MY.load_bodies().items():
     put(f'pd_{cls}', frs)
     PD[cls] = [AN.anatomy(im) for im in frs]
+    neck0 = PD[cls][0]['neck']
+    # camadas para usar com capacete: pele (corpo + rosto) e cabelo, mesmos quadros e âncoras
+    skins, hairs = [], []
+    for im, an in zip(frs, PD[cls]):
+        body, hair, face = SH.split(im, an, neck0)
+        body.alpha_composite(face)
+        skins.append(body); hairs.append(hair)
+        an['oval'] = [round(v, 1) for v in SH.face_oval(im, {**an, 'neck': neck0})]
+        an['neck0'] = neck0
+    put(f'pd_{cls}_skin', skins)
+    put(f'pd_{cls}_hair', hairs)
 with open(os.path.join(ROOT, 'src', 'data', 'paperdoll.json'), 'w') as f:
     json.dump(PD, f, separators=(',', ':'))
 # montagens prontas (prévias das recompensas)

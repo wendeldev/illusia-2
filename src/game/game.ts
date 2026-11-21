@@ -8,6 +8,7 @@ import type { SceneryTheme, StageDef } from '../types';
 import { TRACKS } from '../data/music';
 import { Sfx, vibrate } from '../engine/audio';
 import type { Input } from '../engine/input';
+import { WORLD_ZOOM, worldView } from '../engine/view';
 import { Music } from '../engine/music';
 import { QuestBook, rewardText } from './quests';
 import { starBits, type StageResult } from './stars';
@@ -381,7 +382,8 @@ export class Game implements GameApi {
         else this.world.usePotion(id);
       }
     }
-    this.world.update(dt, this.input, !paused);
+    worldView(true);
+    try { this.world.update(dt, this.input, !paused); } finally { worldView(false); }
     const run = this.eventRun;
     if (run && !run.done && !paused && this.world.stage.id.startsWith('ev_')) {
       run.timeLeft -= dt;
@@ -405,7 +407,11 @@ export class Game implements GameApi {
   }
 
   render(ctx: CanvasRenderingContext2D): void {
-    this.world.render(ctx);
+    // o mundo é desenhado com zoom (celular) e os menus por cima, no tamanho normal
+    worldView(true);
+    ctx.save();
+    ctx.scale(WORLD_ZOOM, WORLD_ZOOM);
+    try { this.world.render(ctx); } finally { ctx.restore(); worldView(false); }
     this.ui.render(ctx);
   }
 

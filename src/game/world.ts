@@ -510,7 +510,7 @@ export class World {
 
   private cameraTargetY(): number {
     // o chão base fica sempre à vista, mesmo em cima das plataformas mais altas
-    return Math.max(BASE_GROUND - VIEW_H + 10, Math.min(WORLD_H - VIEW_H, this.player.y - 250));
+    return Math.max(BASE_GROUND - VIEW_H + 10, Math.min(WORLD_H - VIEW_H, this.player.y - Math.round(VIEW_H * 0.69)));
   }
 
   private updatePlayer(dt: number, input: Input): void {

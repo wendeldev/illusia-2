@@ -1,7 +1,17 @@
 // Resolução lógica fixa; o canvas escala para caber em qualquer tela (celular ou PC).
-/** Largura lógica: varia de 640 a 800 conforme a proporção da tela (altura fixa em 360). */
+/** Largura lógica: varia de 640 a 960 conforme a proporção da tela (altura fixa em 360), sem faixas pretas. */
 export let VIEW_W = 640;
-export const VIEW_H = 360;
+export let VIEW_H = 360;
+const UI_H = 360;
+let uiW = 640;
+/** Aproximação da câmera do mundo no celular (personagens e cenário maiores; menus continuam iguais). */
+export let WORLD_ZOOM = 1;
+
+/** Durante a atualização e o desenho do mundo, VIEW_W/VIEW_H valem a área visível do mundo (menor com zoom). */
+export function worldView(on: boolean): void {
+  VIEW_W = on ? Math.round(uiW / WORLD_ZOOM) : uiW;
+  VIEW_H = on ? Math.round(UI_H / WORLD_ZOOM) : UI_H;
+}
 
 export interface Point {
   x: number;
@@ -25,7 +35,12 @@ export function setupCanvas(canvas: HTMLCanvasElement): View {
     const w = window.innerWidth, h = window.innerHeight;
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
-    VIEW_W = Math.round(Math.max(640, Math.min(800, (w / h) * VIEW_H)));
+    uiW = Math.round(Math.max(640, Math.min(960, (w / h) * UI_H)));
+    VIEW_W = uiW;
+    VIEW_H = UI_H;
+    // celular (toque): mundo 30% mais perto
+    const touch = window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window;
+    WORLD_ZOOM = touch ? 1.3 : 1;
     scale = Math.min(w / VIEW_W, h / VIEW_H);
     ox = (w - VIEW_W * scale) / 2;
     oy = (h - VIEW_H * scale) / 2;

@@ -80,18 +80,44 @@
    "loop": false
   }
  ],
- "drawOrder": [
-  "cape",
-  "body",
-  "face",
-  "pants",
-  "boots",
-  "armor",
-  "gloves",
-  "hair",
-  "helmet",
-  "weapon"
- ],
+ "drawOrder": {
+  "semCapacete": [
+   "cape",
+   "body",
+   "face",
+   "hair",
+   "pants",
+   "boots",
+   "armor",
+   "gloves",
+   "weapon"
+  ],
+  "comCapacete": [
+   "cape",
+   "hair_helmet",
+   "helmet",
+   "body",
+   "face",
+   "pants",
+   "boots",
+   "armor",
+   "gloves",
+   "weapon"
+  ],
+  "comChapeu (mage)": [
+   "cape",
+   "hair_helmet",
+   "body",
+   "face",
+   "pants",
+   "boots",
+   "armor",
+   "gloves",
+   "helmet",
+   "weapon"
+  ]
+ },
+ "nota": "Com capacete use hair_helmet no lugar de hair (o cabelo que sai por baixo). O capacete vai atrás do rosto, que aparece pela abertura; o chapéu do Mago vai por cima.",
  "rarities": [
   "comum",
   "incomum",
@@ -107,6 +133,7 @@
    "body",
    "hair",
    "face",
+   "hair_helmet",
    "helmet_comum",
    "helmet_incomum",
    "helmet_raro",
@@ -184,6 +211,7 @@
    "body",
    "hair",
    "face",
+   "hair_helmet",
    "helmet_comum",
    "helmet_incomum",
    "helmet_raro",
@@ -245,6 +273,7 @@
    "body",
    "hair",
    "face",
+   "hair_helmet",
    "helmet_comum",
    "helmet_incomum",
    "helmet_raro",
@@ -306,6 +335,7 @@
    "body",
    "hair",
    "face",
+   "hair_helmet",
    "helmet_comum",
    "helmet_incomum",
    "helmet_raro",

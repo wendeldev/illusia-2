@@ -106,7 +106,32 @@ def paste(canvas, img, x, y):
     canvas.alpha_composite(layer)
 
 
-HELM = {'warrior': 0.56, 'assassin': 0.58, 'mage': 0.4, 'archer': 0.42}
+# capacete: envolve a cabeça (largura = oval do rosto × fator) e fica ATRÁS do rosto, que aparece pela abertura;
+# chapéu (Mago): por cima da cabeça, mais largo, com a aba na altura da testa
+HELM = {'warrior': 1.35, 'assassin': 1.35, 'mage': 1.45, 'archer': 1.35}
+HAT = {'mage'}
+
+
+def helmet_box(cls, a, neck0, oval, ox, oy, asp):
+    cx, cy, rx, ry = oval
+    W = rx * 2 * HELM[cls]
+    hx = ox + cx - 1
+    if cls in HAT:
+        bottom = oy + cy - ry + 6
+    else:
+        bottom = oy + neck0 + 2
+    return (hx - W / 2, bottom - W * asp, hx + W / 2, bottom)
+
+
+def no_dark(im):
+    """Abertura do rosto do capacete (fundo escuro preso dentro do desenho) fica transparente."""
+    im = im.copy()
+    px = im.load()
+    for y in range(im.size[1]):
+        for x in range(im.size[0]):
+            if px[x, y][3] and max(px[x, y][:3]) < 40:
+                px[x, y] = (0, 0, 0, 0)
+    return im
 WEAPON_H = {'dagger': 0.38, 'bow': 0.46}
 
 
@@ -119,7 +144,9 @@ class Body:
         self.frames = [sprite(f'pd_{cls}', i) for i in range(n)]
         self.anat = [AN.anatomy(im) for im in self.frames]
         neck0 = self.anat[0]['neck']
+        self.neck0 = neck0
         self.parts = [SH.split(im, a, neck0) for im, a in zip(self.frames, self.anat)]
+        self.ovals = [SH.face_oval(im, {**a, 'neck': neck0}) for im, a in zip(self.frames, self.anat)]
         self.H0 = self.anat[0]['H']
 
     def origin(self, fi):
@@ -138,14 +165,12 @@ class Body:
         fx0, fy0, fx1, fy1 = a['feet']
         hd = a['head']
         hand_y = Y(a['hand_y'])
-        hh = (hd[3] - hd[1]) * HELM[self.cls]
         return {
             'cape': ((cx - 3 - span * 0.46, neck - 1, cx - 3 + span * 0.46, Y(fy0) - 1), 'fill', 'top'),
             'pants': ((X(hx0) - 3, Y(hy0) - 1, X(hx1) + 3, Y(fy0) + 1), 'fill', 'top'),
             'boots': ((X(fx0) - 1, Y(fy0) - 4, X(fx1) + 1, Y(fy1) + 1), 'fill', 'top'),
             'armor': ((cx - span * 0.5, neck - 2, cx + span * 0.5, Y(hy0) + 3), 'fill', 'top'),
             'gloves': ((X(hl) - 1, hand_y - 6, X(hr) + 1, hand_y + 2), 'fill', 'top'),
-            'helmet': ((X(hd[0]) - 3, Y(hd[1]) - 7, X(hd[2]) + 3, Y(hd[1]) + hh), 'contain', 'bottom'),
             'hand': (X(hr) - 2, hand_y + 1),
         }
 
@@ -153,10 +178,24 @@ class Body:
         """Um quadro 128×128 de uma camada do corpo (body/hair/face ou peça) já com o movimento do quadro."""
         fi = fr['f']
         cv = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
-        if layer in ('body', 'hair', 'face'):
-            img = self.parts[fi][('body', 'hair', 'face').index(layer)]
+        if layer in ('body', 'hair', 'face', 'hair_helmet'):
+            img = self.parts[fi][('body', 'hair', 'face').index('hair' if layer == 'hair_helmet' else layer)]
             ox, oy = self.origin(fi)
+            if layer == 'hair_helmet' and self.cls not in HAT:
+                # só o cabelo que sai por baixo do capacete
+                img = img.copy()
+                img.paste((0, 0, 0, 0), (0, 0, img.size[0], max(0, self.neck0 - 3)))
+            elif layer == 'hair_helmet':
+                cx, cy, rx, ry = self.ovals[fi]
+                img = img.copy()
+                img.paste((0, 0, 0, 0), (0, 0, img.size[0], max(0, int(cy - ry + 2))))
             paste(cv, img, ox, oy)
+        elif layer == 'helmet':
+            ox, oy = self.origin(fi)
+            piece = no_dark(piece)
+            box = helmet_box(self.cls, self.anat[fi], self.neck0, self.ovals[fi], ox, oy, piece.size[1] / piece.size[0])
+            img, x, y = fit(piece, box, 'fill', 'top')
+            paste(cv, img, x, y)
         else:
             box, mode, align = self.boxes(fi)[layer]
             img, x, y = fit(piece, box, mode, align)
@@ -171,6 +210,10 @@ class Body:
         # pivô no cabo (embaixo à esquerda do desenho)
         local = mul(tr(hx + wf['t'], hy), mul(ro(wf['w']), tr(-img.size[0] * 0.14, -img.size[1] * 0.88)))
         return warp(img, mul(global_m(fr), local))
+
+
+ORDER_HELMET = {c: ['cape', 'hair_helmet', 'helmet', 'body', 'face', 'pants', 'boots', 'armor', 'gloves', 'weapon'] for c in SETS}
+ORDER_HELMET['mage'] = ['cape', 'hair_helmet', 'body', 'face', 'pants', 'boots', 'armor', 'gloves', 'helmet', 'weapon']
 
 
 def sheet(frames_by_anim):
@@ -195,7 +238,7 @@ def build_class(cls):
         return frames
 
     layers = {}
-    for base in ('body', 'hair', 'face'):
+    for base in ('body', 'hair', 'face', 'hair_helmet'):
         layers[base] = save(base, lambda fr, i, a, base=base: B.layer_frame(base, fr))
     set_cls = SETS[cls]
     for piece, part in (('helmet', 'helmet'), ('armor', 'armor'), ('gloves', 'arms'), ('pants', 'pants'), ('cape', 'cape')):
@@ -217,7 +260,7 @@ def build_class(cls):
             if r == 'lendario' and kind == WEAPONS[cls][0]:
                 layers['weapon'] = fr_
     # prévia: todas as camadas na ordem de desenho
-    order = ['cape', 'body', 'face', 'pants', 'boots', 'armor', 'gloves', 'hair', 'helmet', 'weapon']
+    order = ORDER_HELMET[cls]
     comp = {}
     for a, n in RIG.ANIMS:
         comp[a] = []
@@ -278,7 +321,9 @@ def main():
     meta = {
         'frame': [CELL, CELL], 'feet': [AX, AY], 'columns': COLS,
         'animations': [{'name': n, 'row': i, 'frames': c, 'fps': RIG.FPS[n], 'loop': n in RIG.LOOP} for i, (n, c) in enumerate(RIG.ANIMS)],
-        'drawOrder': ['cape', 'body', 'face', 'pants', 'boots', 'armor', 'gloves', 'hair', 'helmet', 'weapon'],
+        'drawOrder': {'semCapacete': ['cape', 'body', 'face', 'hair', 'pants', 'boots', 'armor', 'gloves', 'weapon'],
+                      'comCapacete': ORDER_HELMET['warrior'], 'comChapeu (mage)': ORDER_HELMET['mage']},
+        'nota': 'Com capacete use hair_helmet no lugar de hair (o cabelo que sai por baixo). O capacete vai atrás do rosto, que aparece pela abertura; o chapéu do Mago vai por cima.',
         'rarities': RARITIES, 'files': manifest,
     }
     json.dump(meta, open(os.path.join(OUT, 'layers.json'), 'w'), indent=1, ensure_ascii=False)

@@ -13,13 +13,18 @@ import { glow } from './scene3d';
 
 interface Anatomy {
   W: number; H: number; head: number[]; neck: number; hips: number[]; feet: number[]; hands: number[]; hand_y: number;
+  /** oval do rosto (cx, cy, rx, ry) e pescoço do quadro 0 */
+  oval: number[]; neck0: number;
 }
 const ANAT = PD as unknown as Record<string, Anatomy[]>;
 
 /** Altura do personagem no jogo (px lógicos). */
 export const DOLL_H = 56;
 /** Até onde o capacete desce na cabeça (fração da altura da cabeça, cabelo incluído). */
-const HELM: Record<string, number> = { warrior: 0.56, assassin: 0.58, mage: 0.4, archer: 0.42 };
+/** Capacete: largura = oval do rosto × fator; fica atrás do rosto (que aparece pela abertura) até o pescoço.
+ *  Chapéu (Mago): por cima da cabeça, com a aba na testa. Mesma regra de tools/build_layered.py. */
+const HELM: Record<string, number> = { warrior: 1.35, assassin: 1.35, mage: 1.45, archer: 1.35 };
+const HAT = new Set(['mage']);
 const WALK: Record<string, number[]> = { warrior: [1, 2, 3, 4], assassin: [1, 2, 3, 4], mage: [0, 1, 2, 1], archer: [0, 1, 2, 1] };
 
 export interface DollLook {
@@ -110,7 +115,6 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   const cx = X((hx0 + hx1) / 2);
   const neck = Y(A.neck);
   const [fx0, fy0, fx1, fy1] = A.feet;
-  const hd = A.head;
   const handY = Y(A.hand_y);
   const fl = !!pose.flash;
 
@@ -157,16 +161,31 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     drawFit(ctx, L.cape, c0 - span * 0.46, neck - 1, c0 + span * 0.46, Y(fy0) - 1, 'fill', 'top', 0, fl);
     ctx.restore();
   }
-  // corpo base
-  drawFit(ctx, L.body, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
+  // corpo base (com capacete: cabelo só por baixo dele, capacete atrás do rosto)
+  let helmetLater: (() => void) | null = null;
+  if (L.helmet && hasSprite(`${L.body}_skin`)) {
+    const [ocx, ocy, orx, ory] = A.oval;
+    const hat = HAT.has(L.cls);
+    const hr2 = frameRect(L.helmet);
+    const asp = hr2 ? hr2[1] / hr2[0] : 1;
+    const W = orx * 2 * (HELM[L.cls] ?? 1.35);
+    const hcx = X(ocx) - 1;
+    const bottom = hat ? Y(ocy - ory + 6) : Y(A.neck0 + 2);
+    const cut = hat ? Y(ocy - ory + 2) : Y(A.neck0 - 3);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(-500, cut, 1000, 1000); ctx.clip();
+    drawFit(ctx, `${L.body}_hair`, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
+    ctx.restore();
+    const drawHelmet = () => drawFit(ctx, L.helmet!, hcx - W / 2, bottom - W * asp, hcx + W / 2, bottom, 'fill', 'top', 0, fl);
+    if (!hat) drawHelmet();
+    drawFit(ctx, `${L.body}_skin`, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
+    if (hat) helmetLater = drawHelmet;
+  } else drawFit(ctx, L.body, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
   if (L.pants) drawFit(ctx, L.pants, X(hx0) - 3, Y(hy0) - 1, X(hx1) + 3, Y(fy0) + 1, 'fill', 'top', 0, fl);
   if (L.boots) drawFit(ctx, L.boots, X(fx0) - 1, Y(fy0) - 4, X(fx1) + 1, Y(fy1) + 1, 'fill', 'top', 0, fl);
   if (L.armor) drawFit(ctx, L.armor, cx - span * 0.5, neck - 2, cx + span * 0.5, Y(hy0) + 3, 'fill', 'top', 0, fl);
   if (L.arms) drawFit(ctx, L.arms, X(hl) - 1, handY - 6, X(hr) + 1, handY + 2, 'fill', 'top', 0, fl);
-  if (L.helmet) {
-    const hh = (hd[3] - hd[1]) * (HELM[L.cls] ?? 0.5);
-    drawFit(ctx, L.helmet, X(hd[0]) - 3, Y(hd[1]) - 7, X(hd[2]) + 3, Y(hd[1]) + hh, 'contain', 'bottom', 0, fl);
-  }
+  if (helmetLater) helmetLater();
   // arma na mão da frente (pivô no cabo, embaixo à esquerda do desenho)
   const wr = frameRect(L.weapon);
   if (wr) {
