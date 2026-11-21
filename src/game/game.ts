@@ -1,6 +1,8 @@
 import { ENEMIES, getClass, getEnemy, getItem, getStage, START_STAGE, type QuestDef } from '../data';
 import { bagItem, keyFor } from '../data/items';
 import { generateTerrain } from './terrain';
+import { DIFFICULTIES, EVENT_PHASES, EVENT_TIME, MYTHIC_BOSSES, TICKET_OF, bossId, minionId, rewardRarity, type MythicBoss } from '../data/mythic';
+import { RARITY_NAMES, SET_NAMES, SET_OF, setFor } from '../data/gear';
 import { autoEquip, rollChest, type Drop } from './loot';
 import type { SceneryTheme, StageDef } from '../types';
 import { TRACKS } from '../data/music';
@@ -22,21 +24,31 @@ export class Game implements GameApi {
   quests = new QuestBook(this.progress);
   private pendingStage: { id: string; keep?: { hp: number; mp: number }; stage?: StageDef } | null = null;
   private arenaTier = -1;
+  /** evento de chefe mítico/lendário em andamento */
+  eventRun: { boss: MythicBoss; diff: number; phase: number; timeLeft: number; done: boolean } | null = null;
 
   private hooks: WorldHooks = {
     openNpc: (npc) => this.ui.openNpc(npc),
     changeStage: (id) => {
+      if (id === '@evnext') { this.nextEventPhase(); return; }
       const p = this.world.player;
       this.pendingStage = { id, keep: { hp: p.hp, mp: p.mp } };
     },
-    playerDied: () => this.ui.showDead(),
+    playerDied: () => {
+      if (this.eventRun && !this.eventRun.done) { this.ui.toast(`Evento falhou: ${this.eventRun.boss.name} venceu.`); this.eventRun = null; }
+      this.ui.showDead();
+    },
     toast: (msg) => this.ui.toast(msg),
     openMap: () => this.ui.openMap(),
     save: () => saveProgress(this.progress),
     sound: (name) => this.sfx.play(name),
     vibrate: (ms) => { if (!this.sfx.muted) vibrate(ms); },
     killed: (def) => this.questsReady(this.quests.onKill(def, this.world.stage.region)),
-    stageCleared: (id) => { if (id === 'arena') this.arenaReward(); else this.questsReady(this.quests.onClear(id)); },
+    stageCleared: (id) => {
+      if (id === 'arena') this.arenaReward();
+      else if (id.startsWith('ev_')) this.eventPhaseCleared();
+      else this.questsReady(this.quests.onClear(id));
+    },
     questMark: (npcId) => this.quests.mark(npcId),
     stageResult: (r) => this.recordStars(r),
     pickup: (d) => { this.applyDrop(d, true); },
@@ -124,6 +136,7 @@ export class Game implements GameApi {
       case 'ticket':
         if (id === 't_key') { p.bag[id]--; p.eventPass = true; this.ui.toast('A próxima fase terá um evento de tesouro!'); }
         else if (id === 't_vip') { p.bag[id]--; p.vipPass = true; this.ui.toast('A próxima arena terá recompensas dobradas!'); }
+        else if (id === 'tk_legend' || id === 'tk_myth') this.ui.openEvents();
         else this.ui.toast('Use na Arena dos Chefes (mapa do mundo)');
         break;
       default:
@@ -213,6 +226,89 @@ export class Game implements GameApi {
     this.ui.toast(`Desafio: ${boss.name}!`);
   }
 
+  // ── eventos dos chefes Lendários e Míticos ──
+
+  startEvent(bossKey: string, diff: number): void {
+    const boss = MYTHIC_BOSSES.find((b) => b.key === bossKey);
+    if (!boss) return;
+    const p = this.progress;
+    if (this.eventRun) { this.ui.toast('Você já está num evento'); return; }
+    const ticket = TICKET_OF[boss.tier];
+    if ((p.bag[ticket] ?? 0) <= 0) { this.ui.toast(`Precisa de ${bagItem(ticket)?.name} (loja da ferreira ou chefes)`); this.sfx.play('nomp'); return; }
+    p.bag[ticket]--;
+    this.eventRun = { boss, diff, phase: 1, timeLeft: EVENT_TIME, done: false };
+    this.ui.close();
+    this.pendingStage = { id: 'ev', keep: { hp: this.world.player.maxHp, mp: this.world.player.maxMp }, stage: this.eventStage() };
+    this.ui.toast(`${boss.name} · ${DIFFICULTIES[diff].name}: 8 fases em 40 minutos!`);
+    this.sfx.play('levelup');
+    saveProgress(p);
+  }
+
+  private eventStage(): StageDef {
+    const run = this.eventRun!;
+    const { boss, diff, phase } = run;
+    const D = DIFFICULTIES[diff];
+    const width = 1300 + phase * 90;
+    const last = phase === EVENT_PHASES;
+    const seed = 300 + MYTHIC_BOSSES.indexOf(boss) * 17 + phase * 5;
+    const minion = (k: number) => minionId(boss.key, (phase + k) % 6);
+    const nw = last ? 2 : 2 + Math.floor(phase / 3);
+    const waves = [];
+    for (let k = 0; k < nw; k++) {
+      const n = Math.ceil((2 + phase) / 2);
+      const enemies = [{ enemyId: minion(k), count: n }, { enemyId: minion(k + 2), count: Math.max(1, n - 1) }];
+      if (!last && k === nw - 1 && (phase === 4 || phase === 7)) enemies.push({ enemyId: minionId(boss.key, 6), count: 1 });
+      if (last && k === nw - 1) enemies.splice(0, enemies.length, { enemyId: bossId(boss.key), count: 1 }, { enemyId: minion(1), count: 2 });
+      waves.push({ triggerX: 260 + Math.round((k * (width - 560)) / nw), enemies });
+    }
+    return {
+      id: `ev_${boss.key}_${phase}`, name: `${boss.name} · Fase ${phase}/${EVENT_PHASES} · ${D.name}`, width, depth: 150,
+      theme: boss.theme, pano: `pano_my_${boss.key}`, terrain: generateTerrain(seed, width, 0.8),
+      level: this.progress.level + D.levelAdd + Math.floor(phase / 2), power: 1, hpMul: D.hpMul, atkMul: D.atkMul,
+      mood: boss.tier === 'myth' ? 'night' : undefined,
+      spawn: { x: 120, y: 75 }, npcs: [],
+      portals: [last
+        ? { x: width - 60, y: 75, to: START_STAGE, label: 'Voltar à vila', requiresClear: true }
+        : { x: width - 60, y: 75, to: '@evnext', label: `Fase ${phase + 1}`, requiresClear: true }],
+      waves,
+    };
+  }
+
+  private nextEventPhase(): void {
+    const run = this.eventRun;
+    if (!run) return;
+    run.phase++;
+    const pl = this.world.player;
+    this.pendingStage = { id: 'ev', keep: { hp: pl.hp, mp: pl.mp }, stage: this.eventStage() };
+  }
+
+  private eventPhaseCleared(): void {
+    const run = this.eventRun;
+    if (!run) return;
+    if (run.phase < EVENT_PHASES) { this.ui.toast(`Fase ${run.phase}/${EVENT_PHASES} vencida! Siga para o portal.`); return; }
+    run.done = true;
+    const p = this.progress;
+    const { boss, diff } = run;
+    const r = rewardRarity(boss.tier, diff);
+    const ids = setFor(p.classId, r);
+    const got: { icon: string; label: string }[] = [];
+    for (const id of ids) {
+      const e = getItem(id);
+      if (!p.owned.includes(id)) p.owned.push(id);
+      p.equipped[e.slot] = id;
+      got.push({ icon: e.icon ?? '', label: e.name });
+    }
+    const myth = boss.tier === 'myth' ? 2 : 1;
+    got.push(this.applyDrop({ kind: 'gems', amount: (diff ? 40 : 20) * myth, icon: 'gem_rainbow' }, false));
+    got.push(this.applyDrop({ kind: 'gold', amount: (3000 + p.level * 150) * myth * (diff + 1) }, false));
+    p.eventsCleared = { ...(p.eventsCleared ?? {}), [boss.key]: (p.eventsCleared?.[boss.key] ?? 0) | (1 << diff) };
+    this.world.refreshStats();
+    const used = EVENT_TIME - run.timeLeft;
+    this.ui.showReward(`${boss.name} derrotado em ${Math.floor(used / 60)} min! Set ${RARITY_NAMES[r]} do ${SET_NAMES[SET_OF[p.classId ?? 'warrior']]}`, got);
+    this.sfx.play('levelup');
+    saveProgress(p);
+  }
+
   private arenaReward(): void {
     const tier = this.arenaTier;
     this.arenaTier = -1;
@@ -286,6 +382,18 @@ export class Game implements GameApi {
       }
     }
     this.world.update(dt, this.input, !paused);
+    const run = this.eventRun;
+    if (run && !run.done && !paused && this.world.stage.id.startsWith('ev_')) {
+      run.timeLeft -= dt;
+      if (run.timeLeft <= 0) {
+        this.eventRun = null;
+        this.ui.toast(`Tempo esgotado! ${run.boss.name} escapou.`);
+        this.sfx.play('nomp');
+        this.returnToTown();
+      }
+    }
+    // saiu do evento (voltou à vila depois de vencer)
+    if (run?.done && this.world.stage.id === START_STAGE) this.eventRun = null;
     // música da região; trilha de chefe enquanto houver um vivo
     this.music.play(this.world.boss ? TRACKS.boss : TRACKS[this.world.stage.theme]);
     if (this.pendingStage) {
@@ -306,14 +414,17 @@ export class Game implements GameApi {
   buy(itemId: string): void {
     const item = getItem(itemId);
     if (this.progress.owned.includes(itemId)) return;
-    if (this.progress.gold < item.price) {
-      this.ui.toast('Ouro insuficiente');
-      this.sfx.play('nomp');
-      return;
+    if (item.priceGems) {
+      if (this.progress.gems < item.priceGems) { this.ui.toast('Gemas insuficientes (caem dos chefes)'); this.sfx.play('nomp'); return; }
+      this.progress.gems -= item.priceGems;
+    } else {
+      if (this.progress.gold < item.price) { this.ui.toast('Ouro insuficiente'); this.sfx.play('nomp'); return; }
+      this.progress.gold -= item.price;
     }
-    this.progress.gold -= item.price;
     this.progress.owned.push(itemId);
-    this.ui.toast(`Comprado: ${item.name}`);
+    this.progress.equipped[item.slot] = itemId;
+    this.world.refreshStats();
+    this.ui.toast(`Comprado e equipado: ${item.name}`);
     this.sfx.play('coin');
     saveProgress(this.progress);
   }
@@ -361,6 +472,8 @@ export class Game implements GameApi {
 
   returnToTown(): void {
     this.ui.close();
+    if (this.eventRun && !this.eventRun.done) this.ui.toast('Você saiu do evento.');
+    this.eventRun = null;
     this.pendingStage = { id: START_STAGE };
   }
 }

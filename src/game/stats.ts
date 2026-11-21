@@ -1,6 +1,7 @@
 import { getClass, getItem } from '../data';
 import { affinity, BAG_ITEMS } from '../data/items';
 import type { EquipmentDef, Slot } from '../types';
+import { PREFERRED, SET_OF } from '../data/gear';
 import type { Progress } from './progress';
 
 export interface Stats {
@@ -44,9 +45,13 @@ export const SLOT_NAMES: Record<Slot, string> = {
   armor: 'Armadura',
   helmet: 'Elmo',
   accessory: 'Acessório',
-  gloves: 'Luvas',
+  gloves: 'Braços',
   boots: 'Botas',
-  wings: 'Asas',
+  wings: 'Asas traseiras',
+  pants: 'Calças',
+  cape: 'Capa',
+  wingsFront: 'Asas frontais',
+  aura: 'Aura',
 };
 
 /** EXP para passar do nível `level` para o seguinte (curva pensada para o jogador acompanhar o nível dos monstros). */
@@ -62,6 +67,27 @@ export function legacyExpToNext(level: number): number {
 /** Nível do monstro → multiplicador de força (vida, ataque, recompensa). */
 export function levelPower(level: number): number {
   return 1 + (level - 1) * 0.105;
+}
+
+/** Bônus de set: 3 peças do mesmo set = +6%; 5 peças = +15% (ATQ, DEF, HP). Set da própria classe vale 1,5×.
+ *  A raridade do set é a menor entre as peças contadas. */
+export function setBonus(p: Progress): { cls: string; pieces: number; rarity: number; mul: number; label: string } | null {
+  const by: Record<string, number[]> = {};
+  for (const id of Object.values(p.equipped)) {
+    if (!id) continue;
+    const e = getItem(id);
+    if (e.setClass) (by[e.setClass] ??= []).push(e.rarity ?? 0);
+  }
+  let best: { cls: string; pieces: number; rarity: number; mul: number; label: string } | null = null;
+  for (const [cls, rs] of Object.entries(by)) {
+    if (rs.length < 3) continue;
+    const own = SET_OF[p.classId ?? 'warrior'] === cls ? 1.5 : 1;
+    const rarity = Math.min(...rs);
+    const base = (rs.length >= 5 ? 0.15 : 0.06) + rarity * 0.01;
+    const mul = base * own;
+    if (!best || mul > best.mul) best = { cls, pieces: rs.length, rarity, mul, label: `ATQ/DEF/HP +${Math.round(mul * 100)}%${own > 1 ? ' (sua classe)' : ''}` };
+  }
+  return best;
 }
 
 export function computeStats(p: Progress): Stats {
@@ -82,7 +108,11 @@ export function computeStats(p: Progress): Stats {
     s.atk += (e.atk ?? 0) * u;
     s.def += (e.def ?? 0) * u;
     s.crit += (e.crit ?? 0) * u;
+    // arma preferida da classe: +25% no ataque da arma
+    if (e.weaponKind && (PREFERRED[cls ?? 'warrior'] ?? []).includes(e.weaponKind)) s.atk += (e.atk ?? 0) * u * 0.25;
   }
+  const sb = setBonus(p);
+  if (sb) { s.atk *= 1 + sb.mul; s.def *= 1 + sb.mul; s.maxHp *= 1 + sb.mul; }
   // orbes de habilidade (permanentes; cada classe aproveita diferente)
   const bag = p.bag ?? {};
   const orb = (id: string) => (bag[id] ?? 0) * affinity(cls, id);
@@ -123,7 +153,7 @@ export function describeBonus(e: EquipmentDef): string {
   if (e.def) parts.push(`DEF +${e.def}`);
   if (e.hp) parts.push(`HP +${e.hp}`);
   if (e.mp) parts.push(`MP +${e.mp}`);
-  if (e.crit) parts.push(`CRÍT +${Math.round(e.crit * 100)}%`);
+  if (e.crit) parts.push(`CRÍT +${Math.round(e.crit * 1000) / 10}%`);
   return parts.join('  ');
 }
 

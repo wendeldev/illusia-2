@@ -1,4 +1,5 @@
 import type { EquipmentDef } from '../types';
+import { GEAR } from './gear';
 
 export const EQUIPMENT: EquipmentDef[] = [
   // Armas
@@ -44,4 +45,5 @@ export const EQUIPMENT: EquipmentDef[] = [
   { id: 'wings_bat', name: 'Asas Sombrias', slot: 'wings', atk: 12, crit: 0.05, price: 0, description: 'Asas de morcego das trevas.', icon: 'it_wing_bat', rarity: 3, dropOnly: true },
   { id: 'wings_fire', name: 'Asas de Fogo', slot: 'wings', atk: 20, hp: 120, price: 0, description: 'Queimam o ar a cada batida.', icon: 'it_wing_fire', rarity: 3, dropOnly: true },
   { id: 'wings_angel', name: 'Asas Angelicais', slot: 'wings', atk: 25, def: 15, hp: 200, mp: 60, crit: 0.05, price: 0, description: 'Asas de um anjo guardião.', icon: 'it_wing_angel', rarity: 4, dropOnly: true },
+  ...GEAR,
 ];

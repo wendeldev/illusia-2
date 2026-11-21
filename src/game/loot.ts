@@ -41,11 +41,12 @@ export function gearScore(e: EquipmentDef, mul = 1): number {
 /** Equipamento aleatório adequado ao nível (bônus = chefes: mais forte e raro). */
 export function rollGear(level: number, bonus = 0, wingsChance = 0): string | null {
   if (Math.random() < wingsChance) {
-    const wings = EQUIPMENT.filter((e) => e.slot === 'wings' && (e.rarity ?? 0) <= 2 + bonus);
+    const wings = EQUIPMENT.filter((e) => (e.slot === 'wings' || e.slot === 'wingsFront' || e.slot === 'aura') && (e.rarity ?? 0) <= 2 + bonus);
     return wings.length ? pick(wings).id : null;
   }
   const target = 5 + level * 0.9 * (1 + bonus * 0.25);
-  const pool = EQUIPMENT.filter((e) => e.slot !== 'wings' && e.id !== 'training_sword' && gearScore(e) <= target * 1.25 && gearScore(e) >= target * 0.35);
+  const pool = EQUIPMENT.filter((e) => e.slot !== 'wings' && e.slot !== 'wingsFront' && e.slot !== 'aura' && (e.rarity ?? 0) < 7
+    && e.id !== 'training_sword' && gearScore(e) <= target * 1.25 && gearScore(e) >= target * 0.35);
   return pool.length ? pick(pool).id : null;
 }
 
@@ -82,6 +83,10 @@ export function rollEnemyDrops(def: EnemyDef, level: number, luck: number, event
     if (chance(isFinal ? 0.5 : 0.3)) out.push({ kind: 'bag', id: pick(CARDS), n: 1 });
     if (isFinal && chance(0.3)) out.push({ kind: 'bag', id: pick(RUNES), n: 1 });
     if (isFinal && chance(0.08)) out.push({ kind: 'bag', id: 'chest_angel', n: 1 });
+    // tíquetes dos eventos de chefes Lendários/Míticos
+    if (isFinal && chance(0.15)) out.push({ kind: 'bag', id: 'tk_legend', n: 1 });
+    if (isFinal && chance(0.05)) out.push({ kind: 'bag', id: 'tk_myth', n: 1 });
+    if (isElite && chance(0.05)) out.push({ kind: 'bag', id: 'tk_legend', n: 1 });
     if (chance(isFinal ? 0.6 : 0.35)) { const g = rollGear(level, isFinal ? 2 : 1, isFinal ? 0.2 : 0.08); if (g) out.push({ kind: 'gear', id: g }); }
     if (isElite || isFinal) out.push({ kind: 'bag', id: 'gem_rainbow', n: chance(0.04) ? 1 : 0 });
   }

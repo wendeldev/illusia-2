@@ -110,6 +110,8 @@ export const BAG_ITEMS: BagItem[] = [
   I('t_purple', 'Tíquete Arcano', 'ticket', 'Entrada na Arena dos Chefes (difícil).', { price: { gems: 4 } }),
   I('t_gold', 'Tíquete Dourado', 'ticket', 'Entrada na Arena dos Chefes (lendária).', { price: { gems: 10 } }),
   I('t_key', 'Passe de Evento', 'ticket', 'Começa um evento de tesouro na próxima fase.', { price: { gems: 3 } }),
+  I('tk_legend', 'Tíquete Lendário', 'ticket', 'Entrada no evento de um Chefe Lendário (8 fases, 40 min).', { price: { gems: 25 } }),
+  I('tk_myth', 'Tíquete Mítico', 'ticket', 'Entrada no evento de um Chefe Mítico (8 fases, 40 min).', { price: { gems: 50 } }),
   I('t_vip', 'Passe VIP', 'ticket', 'Dobra as recompensas da próxima arena.', { price: { gems: 8 } }),
   // coletáveis (álbum): cada 4 diferentes dão +2% de ataque e vida
   ...['d_orb_blue:Esfera Azul', 'd_orb_fire:Esfera de Fogo', 'd_orb_purple:Esfera Sombria', 'd_orb_green:Esfera Verde', 'd_amber:Âmbar',

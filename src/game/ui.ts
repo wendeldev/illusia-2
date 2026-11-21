@@ -1,12 +1,15 @@
-import { CLASSES, getClass, getEnemy, getItem, getStage, REGIONS, STAGES_PER_REGION, stageId, type QuestDef } from '../data';
+import { CLASSES, EQUIPMENT, getClass, getEnemy, getItem, getStage, REGIONS, STAGES_PER_REGION, stageId, type QuestDef } from '../data';
 import type { Sfx } from '../engine/audio';
 import type { Music } from '../engine/music';
-import { drawSprite, drawSpriteH, hasSprite, spritesReady } from '../engine/sprites';
+import { drawSprite, drawSpriteH, drawSub, frameSize, hasSprite, spriteHeight, spritesReady, tileAspect } from '../engine/sprites';
 import { glow } from './art/scene3d';
+import { drawLayered } from './art/layers';
+import { RARITY_COLORS, RARITY_NAMES, SET_NAMES, SET_OF, SHOP_CATEGORIES, setFor } from '../data/gear';
+import { DIFFICULTIES, EVENT_PHASES, MYTHIC_BOSSES, rewardRarity, TICKET_OF, type MythicBoss } from '../data/mythic';
 import { rewardText, type QuestBook } from './quests';
 import { assignSlot, SLOT_COUNT, slotSkills } from './skillslots';
 import { affinity, BAG_ITEMS, bagItem, SHOP_GOODS, type BagKind } from '../data/items';
-import { collectionCount, upgradeMul } from './stats';
+import { collectionCount, setBonus, upgradeMul } from './stats';
 import { BUFFS } from './world';
 import type { Slot } from '../types';
 import { countStars, DAMAGE_LIMIT, drawStar, drawStars, formatTime, type StageResult } from './stars';
@@ -39,6 +42,8 @@ export interface GameApi {
   have(ids: string[]): number;
   upgrade(itemId: string): void;
   startArena(tier: number): void;
+  startEvent(bossKey: string, diff: number): void;
+  eventRun: { boss: MythicBoss; diff: number; phase: number; timeLeft: number; done: boolean } | null;
 }
 
 type Modal =
@@ -48,10 +53,11 @@ type Modal =
   | { kind: 'classes'; sel: number; first: boolean }
   | { kind: 'skills'; slot: number; sel: number }
   | { kind: 'result'; r: StageResult; t: number; shown: number }
-  | { kind: 'shop'; npc: NpcDef; sel: number; scroll: number; tab: number }
+  | { kind: 'shop'; npc: NpcDef; sel: number; scroll: number; tab: number; cat: number; allSets?: boolean }
   | { kind: 'bag'; tab: number; sel: string | null }
   | { kind: 'reward'; title: string; items: { icon: string; label: string }[]; t: number }
   | { kind: 'arena' }
+  | { kind: 'events'; sel: number; diff: number }
   | { kind: 'menu'; sel: number; scroll: number }
   | { kind: 'map'; region: number; sel: number }
   | { kind: 'dead' };
@@ -81,7 +87,6 @@ const BUTTON_LAYOUT: TouchButton[] = [
 const BUTTONS: TouchButton[] = BUTTON_LAYOUT.map((b) => ({ ...b }));
 
 const SHOP_ROWS = 9;
-const RARITY_COLORS = ['#8a92a8', '#7fe07a', '#5fb0ff', '#c49bff', '#ffb040'];
 const MENU_ROWS = 11;
 
 const THEME_COLORS: Record<SceneryTheme, [string, string]> = {
@@ -191,7 +196,7 @@ export class Ui {
   private npcAction(npc: NpcDef): void {
     switch (npc.action) {
       case 'shop':
-        this.modal = { kind: 'shop', npc, sel: 0, scroll: 0, tab: 0 };
+        this.modal = { kind: 'shop', npc, sel: 0, scroll: 0, tab: 0, cat: 0 };
         break;
       case 'heal':
         this.game.heal();
@@ -223,6 +228,11 @@ export class Ui {
     this.game.sfx.play('ui');
   }
 
+  openEvents(): void {
+    this.modal = { kind: 'events', sel: 0, diff: 0 };
+    this.game.sfx.play('ui');
+  }
+
   showDead(): void {
     this.modal = { kind: 'dead' };
   }
@@ -244,6 +254,7 @@ export class Ui {
 
     if (!this.modal && input.consume('menu')) this.openMenu();
     if (!this.modal && input.consume('bag')) this.openBag();
+    if (!this.modal && input.consume('events')) this.openEvents();
     input.buttonsEnabled = !this.modal;
     const m = this.modal;
     if (!m) return false;
@@ -270,7 +281,7 @@ export class Ui {
           if (right) { m.tab = (m.tab + 1) % 3; m.sel = 0; m.scroll = 0; }
           if (m.tab !== 0) { if (back) this.close(); break; }
         }
-        const list = m.kind === 'shop' ? this.shopList(m.npc) : this.game.progress.owned;
+        const list = m.kind === 'shop' ? this.shopList(m) : this.game.progress.owned;
         if (up) m.sel = Math.max(0, m.sel - 1);
         if (down) m.sel = Math.min(list.length - 1, m.sel + 1);
         if (up || down) this.keepVisible(m, m.kind === 'shop' ? SHOP_ROWS : MENU_ROWS);
@@ -303,6 +314,13 @@ export class Ui {
       case 'reward':
         m.t += dt;
         if ((confirm || back) && m.t > 0.4) this.close();
+        break;
+      case 'events':
+        if (up) m.sel = (m.sel + MYTHIC_BOSSES.length - 1) % MYTHIC_BOSSES.length;
+        if (down) m.sel = (m.sel + 1) % MYTHIC_BOSSES.length;
+        if (left || right) m.diff = 1 - m.diff;
+        if (confirm) this.game.startEvent(MYTHIC_BOSSES[m.sel].key, m.diff);
+        if (back) this.close();
         break;
       case 'arena':
         if (back) this.close();
@@ -378,6 +396,7 @@ export class Ui {
       case 'bag': return this.drawBag(ctx, m);
       case 'reward': return this.drawReward(ctx, m);
       case 'arena': return this.drawArena(ctx);
+      case 'events': return this.drawEvents(ctx, m);
       case 'result': return this.drawResult(ctx, m);
       case 'dead': return this.drawDead(ctx);
     }
@@ -413,6 +432,33 @@ export class Ui {
       drawSpriteH(ctx, 'it_' + world.event, VIEW_W / 2 - 70, 56, 14);
       text(ctx, `Evento do Tesouro: ${ev?.name ?? ''} · drops +50%`, VIEW_W / 2 + 6, 50, { size: 9, align: 'center', color: '#ffd36b' });
     }
+    // botão de Eventos (chefes Lendários e Míticos)
+    if (!this.modal && !world.stage.id.startsWith('ev_')) {
+      const ex = VIEW_W - 26, ey = 176;
+      const pulse = 0.5 + Math.sin(performance.now() / 300) * 0.2;
+      glow(ctx, ex, ey, 24, '#ff6a6a', pulse * 0.5);
+      ctx.globalAlpha = 0.7;
+      circle(ctx, ex, ey, 16, '#2a1020');
+      ctx.globalAlpha = 1;
+      drawSpriteH(ctx, 'it_tk_myth', ex, ey + 12, 24);
+      ctx.strokeStyle = '#ff8a5a';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 16, 0, Math.PI * 2);
+      ctx.stroke();
+      text(ctx, 'Eventos', ex, ey + 24, { size: 8, align: 'center', color: '#ffd36b' });
+      this.regions.push({ x: ex - 20, y: ey - 20, w: 40, h: 50, fn: () => this.openEvents() });
+    }
+    const run = this.game.eventRun;
+    if (run && world.stage.id.startsWith('ev_')) {
+      const t = Math.max(0, run.timeLeft), mm = Math.floor(t / 60), ss = Math.floor(t % 60);
+      const low = t < 300;
+      ctx.fillStyle = 'rgba(30,0,10,0.6)';
+      ctx.fillRect(VIEW_W / 2 - 110, 4, 220, 30);
+      text(ctx, `⏳ ${mm}:${String(ss).padStart(2, '0')}`, VIEW_W / 2 - 100, 19, { size: 14, color: low && Math.floor(t * 2) % 2 ? '#ff5f5f' : '#ffe9a8' });
+      text(ctx, `${run.boss.name} · Fase ${run.phase}/${EVENT_PHASES}`, VIEW_W / 2 + 102, 13, { size: 9, align: 'right', color: run.boss.tier === 'myth' ? '#ff8a8a' : '#ffb840' });
+      text(ctx, DIFFICULTIES[run.diff].name, VIEW_W / 2 + 102, 26, { size: 8, align: 'right', color: '#aab4cc' });
+    }
     // missões em andamento
     const qb = this.game.quests;
     qb.active().slice(0, 3).forEach((q, i) => {
@@ -421,7 +467,7 @@ export class Ui {
       text(ctx, label, 12, 92 + i * 14, { size: 9, color: ready ? '#8fe07a' : '#e8ecf4' });
     });
 
-    text(ctx, world.stage.name, VIEW_W / 2, 16, { size: 12, align: 'center' });
+    if (!run || !world.stage.id.startsWith('ev_')) text(ctx, world.stage.name, VIEW_W / 2, 16, { size: 12, align: 'center' });
     // cronômetro e dano da fase (metas das estrelas)
     const par = world.stage.parTime;
     if (par) {
@@ -452,7 +498,7 @@ export class Ui {
     const input = this.input;
     const { world, progress } = this.game;
     if (!input.touchMode) {
-      text(ctx, 'Andar: A/D · Pular: Espaço · Escada: W/S · Atacar: J · Poderes: K L I O · Falar: E · Menu: M', VIEW_W / 2, VIEW_H - 10,
+      text(ctx, 'Andar: A/D · Pular: Espaço · Escada: W/S · Atacar: J · Poderes: K L I O · Falar: E · Menu: M · Bolsa: G · Eventos: N', VIEW_W / 2, VIEW_H - 10,
         { size: 10, align: 'center', color: 'rgba(255,255,255,0.85)' });
       return;
     }
@@ -576,23 +622,27 @@ export class Ui {
       const sz = h - 6;
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.fillRect(x + 4, y + 1.5, sz, sz);
-      drawSpriteH(ctx, item.icon ?? 'icon_' + itemId, x + 4 + sz / 2, y + 1.5 + sz - 1, sz - 3);
+      this.icon(ctx, item.icon ?? 'icon_' + itemId, x + 4 + sz / 2, y + 1.5 + sz / 2, sz - 3);
       tx = x + sz + 10;
     }
-    text(ctx, item.name, tx, y + h / 2 - 5, { size: 11, outline: false });
+    text(ctx, item.name, tx, y + h / 2 - 5, { size: 11, outline: false, color: item.rarity !== undefined ? RARITY_COLORS[item.rarity] : '#ffffff' });
     text(ctx, `${SLOT_NAMES[item.slot]} · ${describeBonus(item)}`, tx, y + h / 2 + 6, { size: 8, outline: false, color: '#aab4cc', bold: false });
     let label: string, color: string;
     if (equipped) { label = 'Equipado'; color = '#8fe07a'; }
     else if (owned) { label = 'Equipar'; color = '#9cc4ff'; }
+    else if (showPrice && item.priceGems) { label = `${item.priceGems} gemas`; color = progress.gems >= item.priceGems ? '#9fd3ff' : '#e0524f'; }
     else if (showPrice) { label = `${item.price} G`; color = progress.gold >= item.price ? '#ffd36b' : '#e0524f'; }
     else { label = ''; color = '#fff'; }
     text(ctx, label, x + w - 8, y + h / 2 - 1, { size: 11, align: 'right', color, outline: false });
     this.regions.push({ x, y, w, h: h - 3, fn: onTap });
   }
 
-  /** Equipamentos à venda (sem os que só caem de baús/chefes). */
-  private shopList(npc: NpcDef): string[] {
-    return (npc.shop ?? []).filter((id) => !getItem(id).dropOnly);
+  /** Equipamentos à venda na categoria escolhida (sem os que só caem de chefes/eventos). */
+  private shopList(m: Extract<Modal, { kind: 'shop' }>): string[] {
+    const cat = SHOP_CATEGORIES[m.cat]?.[0] ?? 'classic';
+    if (cat === 'classic') return (m.npc.shop ?? []).filter((id) => !getItem(id).dropOnly);
+    const mine = SET_OF[this.game.progress.classId ?? 'warrior'];
+    return EQUIPMENT.filter((e) => e.category === cat && !e.dropOnly && (!e.setClass || m.allSets || e.setClass === mine)).map((e) => e.id);
   }
 
   /** Melhor poção do tipo que o jogador tem (a mais fraca primeiro, para não desperdiçar). */
@@ -616,13 +666,15 @@ export class Ui {
   private icon(ctx: CanvasRenderingContext2D, name: string, cx: number, cy: number, size: number, alpha = 1): void {
     if (!hasSprite(name)) return;
     ctx.globalAlpha = alpha;
-    drawSpriteH(ctx, name, cx, cy + size / 2, size);
+    // cabe na caixa: peças largas (asas, botas, aura) ficam mais baixas
+    const hgt = Math.min(size, size * tileAspect(name));
+    drawSpriteH(ctx, name, cx, cy + hgt / 2, hgt);
     ctx.globalAlpha = 1;
   }
 
   private drawShop(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'shop' }>): void {
     const { progress } = this.game;
-    const w = 520, h = 326, x = (VIEW_W - w) / 2, y = 16;
+    const w = Math.min(VIEW_W - 24, 600), h = 340, x = (VIEW_W - w) / 2, y = 10;
     this.panel(ctx, x, y, w, h, `${m.npc.name} — Ferreira`);
     text(ctx, `${progress.gold} G`, x + w - 110, y + 16, { size: 12, align: 'right', color: '#ffd36b' });
     this.icon(ctx, 'it_gem_blue', x + w - 98, y + 16, 12);
@@ -630,12 +682,29 @@ export class Ui {
     this.tabs(ctx, x + 10, y + 30, ['Equipamentos', 'Materiais', 'Aprimorar'], m.tab, (i) => { m.tab = i; m.sel = 0; m.scroll = 0; });
     const top = y + 56;
     if (m.tab === 0) {
-      const list = this.shopList(m.npc);
+      // categorias em 2 linhas
+      const per = 8, cw = (w - 20) / per;
+      SHOP_CATEGORIES.forEach(([, label], i) => {
+        const cx = x + 10 + (i % per) * cw, cy = top + Math.floor(i / per) * 20;
+        const on = i === m.cat;
+        ctx.fillStyle = on ? '#5a4a90' : '#232a40';
+        ctx.fillRect(cx, cy, cw - 3, 17);
+        text(ctx, label, cx + (cw - 3) / 2, cy + 9, { size: 9, align: 'center', outline: false, color: on ? '#ffd36b' : '#aab4cc' });
+        this.regions.push({ x: cx, y: cy, w: cw - 3, h: 18, fn: () => { m.cat = i; m.sel = 0; m.scroll = 0; this.game.sfx.play('ui'); } });
+      });
+      const lt = top + 42;
+      const cat = SHOP_CATEGORIES[m.cat][0];
+      if (['helmet', 'armor', 'arms', 'pants', 'cape'].includes(cat)) {
+        const label = m.allSets ? 'Mostrando: todas as classes' : `Mostrando: set do ${SET_NAMES[SET_OF[progress.classId ?? 'warrior']]}`;
+        text(ctx, label + ' (toque para trocar)', x + w - 14, y + 16 + 22, { size: 8, align: 'right', outline: false, color: '#9cc4ff' });
+        this.regions.push({ x: x + w - 220, y: y + 28, w: 210, h: 18, fn: () => { m.allSets = !m.allSets; m.sel = 0; m.scroll = 0; } });
+      }
+      const list = this.shopList(m);
       const rows = 9;
-      this.scrollList(ctx, m, list.length, rows, x + w - 26, top, rows * 29);
+      this.scrollList(ctx, m, list.length, rows, x + w - 26, lt, rows * 28);
       list.slice(m.scroll, m.scroll + rows).forEach((id, k) => {
         const i = m.scroll + k;
-        this.itemRow(ctx, x + 10, top + k * 29, w - 42, 29, id, i === m.sel, () => { m.sel = i; this.itemAction(id); }, true);
+        this.itemRow(ctx, x + 10, lt + k * 28, w - 42, 28, id, i === m.sel, () => { m.sel = i; this.itemAction(id); }, true);
       });
       return;
     }
@@ -665,17 +734,20 @@ export class Ui {
     // aprimorar o que está equipado
     const slots = Object.entries(progress.equipped).filter(([, id]) => id) as [Slot, string][];
     text(ctx, 'Toque para aprimorar (+10% dos atributos do item por nível, até +10)', x + 14, top + 4, { size: 9, outline: false, color: '#aab4cc' });
-    slots.forEach(([slot, id], k) => {
+    const urows = 7;
+    this.scrollList(ctx, m, slots.length, urows, x + w - 26, top + 14, urows * 36);
+    const uw = slots.length > urows ? w - 34 : w - 20;
+    slots.slice(m.scroll, m.scroll + urows).forEach(([slot, id], k) => {
       const e = getItem(id);
       const cy = top + 14 + k * 36;
       const c = this.game.upgradeCost(id);
       const lv = progress.upgrades[id] ?? 0;
       ctx.fillStyle = '#252e45';
-      ctx.fillRect(x + 10, cy, w - 20, 33);
+      ctx.fillRect(x + 10, cy, uw, 33);
       this.icon(ctx, e.icon ?? 'icon_' + id, x + 28, cy + 16, 28);
       text(ctx, `${e.name} +${lv}`, x + 48, cy + 10, { size: 11, outline: false, color: lv >= 7 ? '#ffd36b' : lv >= 4 ? '#9fd3ff' : '#ffffff' });
       text(ctx, SLOT_NAMES[slot], x + 48, cy + 24, { size: 8, outline: false, color: '#aab4cc', bold: false });
-      if (!c) { text(ctx, 'MÁXIMO', x + w - 20, cy + 16, { size: 11, align: 'right', color: '#ffd36b', outline: false }); return; }
+      if (!c) { text(ctx, 'MÁXIMO', x + uw, cy + 16, { size: 11, align: 'right', color: '#ffd36b', outline: false }); return; }
       let nx = x + 210;
       const okGold = progress.gold >= c.gold;
       text(ctx, `${c.gold} G`, nx, cy + 16, { size: 10, outline: false, color: okGold ? '#ffd36b' : '#e0524f' });
@@ -689,8 +761,8 @@ export class Ui {
         nx += 58;
       }
       ctx.fillStyle = '#3f8a45';
-      ctx.fillRect(x + w - 74, cy + 5, 58, 23);
-      text(ctx, `+${lv + 1}`, x + w - 45, cy + 16, { size: 11, align: 'center' });
+      ctx.fillRect(x + uw - 54, cy + 5, 58, 23);
+      text(ctx, `+${lv + 1}`, x + uw - 25, cy + 16, { size: 11, align: 'center' });
       this.regions.push({ x: x + 10, y: cy, w: w - 20, h: 33, fn: () => this.game.upgrade(id) });
     });
   }
@@ -772,36 +844,44 @@ export class Ui {
     }
   }
 
-  /** Personagem com asas e os 7 espaços de equipamento em volta. */
+  /** Personagem com todas as camadas de equipamento e os 11 espaços em volta. */
   private drawEquipped(ctx: CanvasRenderingContext2D, x: number, top: number, w: number): void {
     const { progress, world } = this.game;
-    const cx = x + w / 2, cy = top + 132;
-    glow(ctx, cx, cy - 40, 80, '#7fc8ff', 0.15);
-    const wid = progress.equipped.wings;
-    if (wid) this.icon(ctx, getItem(wid).icon ?? '', cx - 10, cy - 52, 80);
+    const cx = x + w / 2, cy = top + 168;
+    glow(ctx, cx, cy - 50, 90, '#7fc8ff', 0.15);
     const pre = world.cls.sprite;
-    drawSprite(ctx, `${pre}_idle`, performance.now() / 500, cx, cy, 1, { scale: 2.2 });
+    const t = performance.now() / 1000;
+    drawLayered(ctx, progress, `${pre}_idle`, t * 2, cx, cy, 1, 2.2, spriteHeight(`${pre}_idle`, 2.2) || 114, t);
+    const o = w / 2 - 36, i = w / 2 - 98;
     const SL: [Slot, number, number][] = [
-      ['helmet', -160, -126], ['armor', -160, -56], ['gloves', -160, 14], ['weapon', 160, -126], ['accessory', 160, -56], ['boots', 160, 14], ['wings', 0, 20],
+      ['helmet', -o, -150], ['armor', -o, -92], ['pants', -o, -34],
+      ['gloves', -i, -150], ['cape', -i, -92], ['aura', -i, -34],
+      ['weapon', o, -150], ['accessory', o, -92], ['boots', o, -34],
+      ['wings', i, -150], ['wingsFront', i, -92],
     ];
     for (const [slot, dx, dy] of SL) {
-      const sx = cx + dx - 26, sy = cy + dy - 6;
+      const sx = cx + dx - 22, sy = cy + dy;
       const id = progress.equipped[slot];
       ctx.fillStyle = '#252e45';
-      ctx.fillRect(sx, sy, 52, 52);
-      ctx.strokeStyle = id ? RARITY_COLORS[getItem(id).rarity ?? 0] : '#3a4560';
+      ctx.fillRect(sx, sy, 44, 44);
+      const r = id ? getItem(id).rarity ?? 0 : 0;
+      if (id && r >= 4) glow(ctx, sx + 22, sy + 22, 30, RARITY_COLORS[r], 0.25);
+      ctx.strokeStyle = id ? RARITY_COLORS[r] : '#3a4560';
       ctx.lineWidth = 2;
-      ctx.strokeRect(sx, sy, 52, 52);
+      ctx.strokeRect(sx, sy, 44, 44);
       if (id) {
         const e = getItem(id);
-        this.icon(ctx, e.icon ?? 'icon_' + id, sx + 26, sy + 26, 40);
+        this.icon(ctx, e.icon ?? 'icon_' + id, sx + 22, sy + 22, 34);
         const lv = progress.upgrades[id] ?? 0;
-        if (lv) text(ctx, `+${lv}`, sx + 48, sy + 8, { size: 9, align: 'right', color: '#ffd36b' });
-        text(ctx, e.name, sx + 26, sy + 60, { size: 8, align: 'center', outline: true });
-      } else text(ctx, SLOT_NAMES[slot], sx + 26, sy + 26, { size: 8, align: 'center', outline: false, color: '#667' });
+        if (lv) text(ctx, `+${lv}`, sx + 41, sy + 7, { size: 9, align: 'right', color: '#ffd36b' });
+        text(ctx, SLOT_NAMES[slot], sx + 22, sy + 51, { size: 7, align: 'center', outline: true, color: RARITY_COLORS[r] });
+      } else text(ctx, SLOT_NAMES[slot], sx + 22, sy + 22, { size: 7, align: 'center', outline: false, color: '#667' });
+      this.regions.push({ x: sx, y: sy, w: 44, h: 44, fn: () => { if (id) this.toast(`${getItem(id).name} · ${RARITY_NAMES[r]} · ${describeBonus(getItem(id))}`); } });
     }
     const s = world.stats;
-    text(ctx, `ATQ ${s.atk} · DEF ${s.def} · HP ${s.maxHp} · MP ${s.maxMp} · CRÍT ${Math.round(s.crit * 100)}%`, cx, top + 236, { size: 10, align: 'center', color: '#9cc4ff' });
+    text(ctx, `ATQ ${s.atk} · DEF ${s.def} · HP ${s.maxHp} · MP ${s.maxMp} · CRÍT ${Math.round(s.crit * 100)}%`, cx, top + 232, { size: 10, align: 'center', color: '#9cc4ff' });
+    const sb = setBonus(progress);
+    if (sb) text(ctx, `Set ${SET_NAMES[sb.cls]} ${sb.pieces}/5 (${RARITY_NAMES[sb.rarity]}): ${sb.label}`, cx, top + 248, { size: 9, align: 'center', color: '#ffd36b' });
     void upgradeMul;
   }
 
@@ -819,6 +899,93 @@ export class Ui {
       text(ctx, it.label, ix + 34, iy + 14, { size: 10, outline: false });
     });
     text(ctx, 'Toque para continuar', x + w / 2, y + h - 14, { size: 9, align: 'center', outline: false, color: '#aab4cc' });
+  }
+
+  /** Eventos: escolher o chefe Lendário/Mítico, a dificuldade e ver a recompensa. */
+  private drawEvents(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'events' }>): void {
+    const { progress } = this.game;
+    const x = 12, y = 8, w = VIEW_W - 24, h = VIEW_H - 16;
+    this.panel(ctx, x, y, w, h, '👑 Eventos — Chefes Lendários e Míticos');
+    const tl = progress.bag.tk_legend ?? 0, tm = progress.bag.tk_myth ?? 0;
+    this.icon(ctx, 'it_tk_legend', x + w - 150, y + 16, 16);
+    text(ctx, `x${tl}`, x + w - 140, y + 16, { size: 10, color: '#ffb840' });
+    this.icon(ctx, 'it_tk_myth', x + w - 106, y + 16, 16);
+    text(ctx, `x${tm}`, x + w - 96, y + 16, { size: 10, color: '#ff8a8a' });
+    const t = performance.now() / 1000;
+    // lista de chefes
+    MYTHIC_BOSSES.forEach((b, i) => {
+      const ry = y + 32 + i * 43, rw = 206;
+      const on = i === m.sel;
+      const myth = b.tier === 'myth';
+      ctx.fillStyle = on ? (myth ? '#4a2030' : '#4a3a20') : '#252e45';
+      ctx.fillRect(x + 8, ry, rw, 40);
+      if (on) { ctx.strokeStyle = myth ? '#ff6a6a' : '#ffb840'; ctx.lineWidth = 1.5; ctx.strokeRect(x + 8, ry, rw, 40); }
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x + 8, ry, 44, 40); ctx.clip();
+      drawSpriteH(ctx, `boss_my_${b.key}_idle`, x + 30, ry + 38, 36, -1);
+      ctx.restore();
+      text(ctx, b.name, x + 56, ry + 12, { size: 11, outline: false, color: myth ? '#ff8a8a' : '#ffc860' });
+      const done = progress.eventsCleared?.[b.key] ?? 0;
+      text(ctx, `${myth ? 'Mítico' : 'Lendário'}  ${done & 1 ? '✔Difícil ' : ''}${done & 2 ? '✔Épico' : ''}`, x + 56, ry + 28, { size: 8, outline: false, color: '#aab4cc', bold: false });
+      this.regions.push({ x: x + 8, y: ry, w: rw, h: 40, fn: () => { m.sel = i; this.game.sfx.play('ui'); } });
+    });
+    // detalhes
+    const b = MYTHIC_BOSSES[m.sel];
+    const rx = x + 222, rw = w - 232, py = y + 32, ph = 112;
+    const pano = `pano_my_${b.key}`;
+    const [pw, phh] = frameSize(pano);
+    const sw = Math.min(pw, (rw * phh) / ph);
+    if (pw) drawSub(ctx, pano, ((t * 12) % Math.max(1, pw - sw)), 0, sw, phh, rx, py, rw, ph);
+    ctx.strokeStyle = b.color; ctx.lineWidth = 1.5; ctx.strokeRect(rx, py, rw, ph);
+    glow(ctx, rx + rw * 0.72, py + ph - 30, 60, b.color, 0.3);
+    drawSprite(ctx, `boss_my_${b.key}_idle`, t * 3, rx + rw * 0.72, py + ph - 4, -1, { scale: 0.8 });
+    for (let k = 0; k < 3; k++) drawSpriteH(ctx, `mye_${b.key}_${(k * 2) % 6}`, rx + 34 + k * 40, py + ph - 4, 36, 1);
+    text(ctx, b.name, rx + 8, py + 12, { size: 13, color: '#ffffff' });
+    text(ctx, `${EVENT_PHASES} fases · 40 minutos · horda própria`, rx + 8, py + 28, { size: 9, color: '#ffe9a8' });
+    // dificuldade
+    const by = py + ph + 6;
+    DIFFICULTIES.forEach((d, i) => {
+      const bx = rx + i * 110, on = i === m.diff;
+      ctx.fillStyle = on ? (i ? '#7a2a5a' : '#6a4a20') : '#252e45';
+      ctx.fillRect(bx, by, 104, 22);
+      if (on) { ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 1.5; ctx.strokeRect(bx, by, 104, 22); }
+      text(ctx, d.name, bx + 52, by + 11, { size: 11, align: 'center', outline: false, color: on ? '#ffffff' : '#aab4cc' });
+      this.regions.push({ x: bx, y: by, w: 104, h: 22, fn: () => { m.diff = i; this.game.sfx.play('ui'); } });
+    });
+    const D = DIFFICULTIES[m.diff];
+    text(ctx, `Monstros nível ${progress.level + D.levelAdd}+ · vida ×${D.hpMul}`, rx + 226, by + 11, { size: 9, outline: false, color: '#aab4cc', bold: false });
+    // recompensa: o set da classe na raridade do evento
+    const r = rewardRarity(b.tier, m.diff);
+    const cls = SET_OF[progress.classId ?? 'warrior'];
+    const ry = by + 28;
+    text(ctx, `Recompensa: Set ${RARITY_NAMES[r]} do ${SET_NAMES[cls]}`, rx, ry + 6, { size: 11, color: RARITY_COLORS[r] });
+    const ids = setFor(progress.classId, r);
+    ids.forEach((id, k) => {
+      const ix = rx + k * 38;
+      ctx.fillStyle = '#1c2236'; ctx.fillRect(ix, ry + 16, 35, 35);
+      ctx.strokeStyle = RARITY_COLORS[r]; ctx.lineWidth = 1; ctx.strokeRect(ix, ry + 16, 35, 35);
+      this.icon(ctx, getItem(id).icon ?? '', ix + 17, ry + 33, 27);
+    });
+    // prévia do personagem com o set (camadas)
+    const preview: Progress = { ...progress, equipped: { ...progress.equipped }, upgrades: {} };
+    for (const id of ids) preview.equipped[getItem(id).slot] = id;
+    const pre = this.game.world.cls.sprite;
+    const px = rx + 190, pyy = ry + 124;
+    glow(ctx, px, pyy - 40, 50, RARITY_COLORS[r], 0.25);
+    drawLayered(ctx, preview, `${pre}_idle`, t * 2, px, pyy, 1, 1.3, spriteHeight(`${pre}_idle`, 1.3) || 68, t);
+    const mont = ({ 4: 'legendary', 6: 'divine', 7: 'celestial' } as Record<number, string>)[r];
+    const mname = [`mont_${cls}_${mont}`].find(hasSprite);
+    if (mname) { this.icon(ctx, mname, rx + 56, ry + 98, 84); text(ctx, 'arte do set', rx + 56, ry + 144, { size: 7, align: 'center', outline: false, color: '#aab4cc', bold: false }); }
+    // entrar
+    const ticket = TICKET_OF[b.tier];
+    const have = progress.bag[ticket] ?? 0;
+    const ex = rx, ey = y + h - 38;
+    ctx.fillStyle = have ? '#3f8a45' : '#4a3a3a';
+    ctx.fillRect(ex, ey, 200, 30);
+    this.icon(ctx, 'it_' + ticket, ex + 18, ey + 15, 22);
+    text(ctx, have ? `Entrar (1 ${bagItem(ticket)?.name})` : `Sem ${bagItem(ticket)?.name}`, ex + 112, ey + 15, { size: 10, align: 'center', outline: false });
+    this.regions.push({ x: ex, y: ey, w: 200, h: 30, fn: () => this.game.startEvent(b.key, m.diff) });
+    if (!have) text(ctx, 'Tíquetes: loja da ferreira (gemas) ou chefes', ex, ey - 8, { size: 8, outline: false, color: '#aab4cc', bold: false });
   }
 
   private drawArena(ctx: CanvasRenderingContext2D): void {

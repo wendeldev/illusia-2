@@ -1,4 +1,5 @@
 import type { AbilityDef, EnemyDef } from '../types';
+import { bossId, MINION_NAMES, minionId, MYTHIC_BOSSES } from './mythic';
 
 // Atributos na força base (região 1). Cada fase multiplica vida/ataque/recompensa
 // pelo `power` da fase (ver campaign.ts).
@@ -161,4 +162,25 @@ const MINI_BOSSES: Record<string, [string, string]> = {
 for (const e of ENEMIES) {
   const b = MINI_BOSSES[e.id];
   if (b) { e.bossAnim = b[0]; e.name = b[1]; e.sprite = `boss_${b[0]}_idle`; e.spriteScale = 1; }
+}
+
+// ── Chefes Lendários e Míticos (eventos) e suas hordas ──
+const MINION_SHAPES: EnemyDef['shape'][] = ['beast', 'flyer', 'golem', 'beast', 'flyer', 'mushroom'];
+for (const b of MYTHIC_BOSSES) {
+  const myth = b.tier === 'myth';
+  MINION_SHAPES.forEach((shape, i) => {
+    const m = mob(minionId(b.key, i), `${MINION_NAMES[i]} ${b.suffix}`, shape, b.color, {
+      abilities: i === 1 || i === 4 ? [shoot(b.color, 2, 0.3, 0.8, 4.5)] : i === 2 ? [slam(70, 1.4, 0.9, 7)] : undefined,
+    });
+    m.hp = Math.round(m.hp * (myth ? 2.2 : 1.8)); m.atk = Math.round(m.atk * (myth ? 1.6 : 1.4)); m.def += 3;
+    m.exp *= 3; m.gold *= 3;
+    m.sprite = `mye_${b.key}_${i}`; m.spriteScale = i === 2 ? 0.55 : 0.62;
+    ENEMIES.push(m);
+  });
+  const g = elite(minionId(b.key, 6), `${MINION_NAMES[6]} ${b.suffix}`, 'golem', b.color, b.color, [slam(100, 1.6), shoot(b.color, 5, 0.5), charge(420)]);
+  g.hp = 520; g.atk = 26; g.sprite = `mye_${b.key}_6`; g.spriteScale = 0.7;
+  ENEMIES.push(g);
+  ENEMIES.push(boss(bossId(b.key), b.name, 'golem', b.color, b.color, [
+    shoot(b.color, myth ? 9 : 7, 0.9, 0.95, 3.5), slam(myth ? 130 : 115, 1.8), charge(520, 1.7), summon(minionId(b.key, b.key.length % 6), 3, 14),
+  ], { hp: myth ? 3200 : 2400, atk: myth ? 38 : 32, def: 10, exp: 2400, gold: 1800, enrage: true, bossAnim: `my_${b.key}`, sprite: `boss_my_${b.key}_idle`, spriteScale: 1 }));
 }

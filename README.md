@@ -80,6 +80,29 @@ Prancha `assets-src/sheet-items.png` (recortada por `tools/item_cells.py`). Regr
 - **Arena dos Chefes** (mapa do mundo): gasta um tíquete, enfrenta um chefe no seu nível e dá gemas e baús.
 - **Novos espaços**: luvas, botas e asas. As asas aparecem nas costas e a arma +4 ou mais brilha.
 
+## Eventos: chefes Lendários e Míticos
+
+Botão **Eventos** na tela principal (ou tecla N). Precisa de tíquete: **Tíquete Lendário** (Titã de Cristal,
+Valquíria, Hidra Abissal) ou **Tíquete Mítico** (Dragão Infernal, Rei Lich, Demônio do Abismo, Arcanjo Caído).
+Os tíquetes são vendidos por gemas na ferreira e às vezes caem dos chefes.
+- Cada chefe tem cenário próprio, horda própria e **8 fases** (Guardião nas fases 4 e 7, chefe na 8).
+- **40 minutos** para vencer as 8 fases (cronômetro no topo). Se o tempo acabar ou o personagem cair, o evento falha.
+- Dificuldade **Difícil** ou **Épico** (monstros de nível mais alto, mais vida e ataque).
+- Recompensa: o set (5 peças + arma preferida) da classe escolhida: Lendário/Difícil → **Lendário**,
+  Lendário/Épico e Mítico/Difícil → **Divino**, Mítico/Épico → **Celestial**.
+Dados em `src/data/mythic.ts`; prancha em `assets-src/sheet-mythic-*.png` (`tools/mythic_cells.py`).
+
+## Equipamento em camadas e raridades
+
+8 raridades: Comum, Incomum, Raro, Épico, Lendário, Mítico, Divino (e Celestial, só de eventos). Espaços:
+arma, capacete, armadura, braços, calças, botas, capa, asas traseiras, asas frontais, aura e acessório.
+Tudo o que é equipado aparece no personagem ("layered sprites", `src/game/art/layers.ts`): aura e asas
+atrás, capa nas costas, capacete preso à cabeça de cada quadro da animação, armadura/calças/botas pintam
+o corpo na cor da raridade. Sets: 3 peças = +6%, 5 peças = +15% (mais com raridade; 1,5× no set da própria
+classe). Arma preferida da classe: +25% no ataque da arma. A loja tem categorias (espadas, machados, lanças,
+adagas, arcos, cajados, capacetes, armaduras, braços, calças, capas, botas, asas, auras); Mítico e Divino
+custam gemas. Catálogo gerado em `src/data/gear.ts`.
+
 ## Campanha
 
 90 fases em 9 regiões (10 fases cada): Bosque Sussurrante, Pântano Nebuloso, Ruínas de Ferro,

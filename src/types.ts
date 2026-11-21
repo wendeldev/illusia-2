@@ -1,7 +1,7 @@
 // Tipos de conteúdo. Fases, poderes, equipamentos, inimigos e NPCs são DADOS (src/data/),
 // então dá para criar conteúdo novo sem mexer no motor.
 
-export type Slot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'boots' | 'accessory' | 'wings';
+export type Slot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'pants' | 'boots' | 'cape' | 'accessory' | 'wings' | 'wingsFront' | 'aura';
 
 export interface StatBonus {
   atk?: number;
@@ -62,8 +62,16 @@ export interface EquipmentDef extends StatBonus {
   icon?: string;
   /** só cai de baús/chefes (não aparece na loja) */
   dropOnly?: boolean;
-  /** 0 comum · 1 incomum · 2 raro · 3 épico · 4 lendário */
+  /** 0 comum · 1 incomum · 2 raro · 3 épico · 4 lendário · 5 mítico · 6 divino · 7 celestial */
   rarity?: number;
+  /** preço em gemas (raridades altas) */
+  priceGems?: number;
+  /** tipo de arma (espada, machado, lança, adaga, arco, cajado) */
+  weaponKind?: string;
+  /** peça de set: classe do set (warrior/assassin/mage/archer) */
+  setClass?: string;
+  /** categoria na loja */
+  category?: string;
 }
 
 export type SkillKind =
@@ -255,4 +263,9 @@ export interface StageDef {
   level?: number;
   /** tempo-limite (segundos) para a estrela de rapidez */
   parTime?: number;
+  /** panorama de fundo próprio (eventos) */
+  pano?: string;
+  /** multiplicadores de vida/ataque dos inimigos (dificuldade dos eventos) */
+  hpMul?: number;
+  atkMul?: number;
 }

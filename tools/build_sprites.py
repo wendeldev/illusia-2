@@ -723,3 +723,105 @@ allmeta = json.load(open(os.path.join(ROOT, 'src', 'data', 'atlas.json')))
 allmeta.update(meta7)
 json.dump(allmeta, open(os.path.join(ROOT, 'src', 'data', 'atlas.json'), 'w'), separators=(',', ':'))
 print(f'itens: {atlas7.size[0]}x{atlas7.size[1]}, {len(meta7)} ícones')
+
+# ═══════════════════ pranchas 8-11: chefes míticos, mapas, inimigos e equipamentos em camadas ═══════════════════
+import mythic_cells as MY
+RAR_HUE = [(0.0, 0.08, 1.15), (1.33, 1.0, 1.0), (1.6, 1.0, 1.05), (1.78, 1.0, 1.0), (1.12, 1.2, 1.1), (1.0, 1.2, 1.0), None, (1.53, 0.9, 1.3)]
+RAR = MY.RARITIES + ['celestial']
+my_items = {}   # nome -> (lista de (img, ax, ay), escala)
+
+def put(name, ims, scale=1.0, center=False):
+    my_items[name] = ([(im, im.size[0] // 2, im.size[1] // 2 if center else im.size[1]) for im in ims], scale)
+
+# chefes míticos (animações completas)
+MB = MY.load_bosses()
+MB_H = {'infernal_dragon': 104, 'lich_king': 100, 'crystal_titan': 104, 'valkyrie': 96, 'abyss_demon': 104, 'deep_hydra': 100, 'fallen_archangel': 104}
+for name, an in MB.items():
+    ref = an['idle'][0]
+    sc = MB_H[name] / ref.size[1]
+    rax = feet(ref)[0]
+    rw = ref.size[0]
+    for k, frs in an.items():
+        frs = frs or an['idle']
+        lst = []
+        for im in frs:
+            ax = feet(im)[0] if im.size[0] <= rw * 1.3 else min(rax, im.size[0] - 1)
+            lst.append((im, ax, im.size[1]))
+        my_items[f'boss_my_{name}_{k}'] = (lst, sc)
+
+# inimigos dos mapas (1 desenho)
+ME = MY.load_enemies()
+for name, lst in ME.items():
+    for i, im in enumerate(lst):
+        if im is not None:
+            put(f'mye_{name}_{i}', [im])
+
+# panoramas (fundo opaco)
+for name, im in MY.load_maps().items():
+    put(f'pano_my_{name}', [im])
+
+# equipamentos: armas e sets (7 raridades da prancha + celestial = divino recolorido)
+for (kind, r), im in MY.load_weapons().items():
+    put(f'gw_{kind}_{r}', [im])
+    if r == 'divino':
+        put(f'gw_{kind}_celestial', [recolor(im, *RAR_HUE[7])])
+for (cls, r, piece), im in MY.load_sets().items():
+    put(f'gs_{cls}_{r}_{piece}', [im])
+    if r == 'divino':
+        put(f'gs_{cls}_celestial_{piece}', [recolor(im, *RAR_HUE[7])])
+# botas, asas e aura: 1ª linha da tabela de camadas recolorida por raridade
+LY = MY.load_layers()
+for key, short in (('boots', 'gb'), ('wings_back', 'gwb'), ('wings_front', 'gwf'), ('aura', 'gau')):
+    base = LY.get((0, key))
+    for ri, r in enumerate(RAR):
+        hue = RAR_HUE[ri]
+        put(f'{short}_{r}', [base if hue is None else recolor(base, *hue)])
+for (row, key), im in LY.items():
+    put(f'ly_{key}_{row}', [im])
+# montagens prontas (prévias das recompensas)
+for name, im in MY.load_montages().items():
+    put(f'mont_{name}', [im])
+# tíquetes dos eventos
+put('it_tk_legend', [recolor(I_DATA['tickets'][3], 1.12, 1.3, 1.15)])
+put('it_tk_myth', [recolor(I_DATA['tickets'][3], 1.0, 1.4, 1.0)])
+
+items8 = [(n, i, im, ax, ay) for n, (lst, _) in my_items.items() for i, (im, ax, ay) in enumerate(lst)]
+items8.sort(key=lambda t: -t[2].size[1])
+x = y = row_h = 0
+pl8 = []
+for n, i, im, ax, ay in items8:
+    w, h = im.size
+    if x + w + 2 > 2048:
+        x, y, row_h = 0, y + row_h + 2, 0
+    pl8.append((n, i, im, ax, ay, x, y)); x += w + 2; row_h = max(row_h, h)
+atlas8 = _I.new('RGBA', (2048, y + row_h), (0, 0, 0, 0))
+meta8 = {n: {'scale': round(sc, 4), 'faces': 1, 'frames': [None] * len(lst), 'sheet': 5} for n, (lst, sc) in my_items.items()}
+for n, i, im, ax, ay, px_, py_ in pl8:
+    atlas8.paste(im, (px_, py_))
+    meta8[n]['frames'][i] = [px_, py_, im.size[0], im.size[1], ax, ay]
+atlas8.save(os.path.join(ROOT, 'public', 'sprites', 'mythic.png'), optimize=True)
+allmeta = json.load(open(os.path.join(ROOT, 'src', 'data', 'atlas.json')))
+allmeta.update(meta8)
+
+# ponto da cabeça (topo) de cada quadro dos personagens jogáveis: [.., hx, hy] relativo à âncora
+SHEETS = {None: 'atlas.png', 1: 'scenery.png', 2: 'powers.png', 3: 'bosses.png', 4: 'items.png', 5: 'mythic.png'}
+imgs = {k: _I.open(os.path.join(ROOT, 'public', 'sprites', v)).convert('RGBA') for k, v in SHEETS.items()}
+for n, d in allmeta.items():
+    if not (n.split('_')[0] in ('hero', 'archer', 'priest', 'assassin', 'monk', 'lancer', 'pw')):
+        continue
+    src = imgs[d.get('sheet')]
+    for f in d['frames']:
+        crop = src.crop((f[0], f[1], f[0] + f[2], f[1] + f[3]))
+        a = crop.split()[3]
+        bb = a.getbbox()
+        if not bb:
+            continue
+        top = bb[1]
+        xs = [xx for yy in range(top, min(top + 10, f[3])) for xx in range(f[2]) if a.getpixel((xx, yy)) > 0]
+        hx = sum(xs) / len(xs) if xs else f[2] / 2
+        # a cabeça fica perto do personagem (não de um efeito ao lado): limita a meia largura do corpo
+        if abs(hx - f[4]) > 30:
+            hx = f[4]
+        f[6:] = [round(hx - f[4], 1), top - f[5]]
+json.dump(allmeta, open(os.path.join(ROOT, 'src', 'data', 'atlas.json'), 'w'), separators=(',', ':'))
+print(f'míticos+equipamentos: {atlas8.size[0]}x{atlas8.size[1]}, {len(meta8)} peças')

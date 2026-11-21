@@ -149,6 +149,7 @@ export class Scenery {
   private panoName(): string {
     const st = this.stage;
     // última fase da Cidadela e das Ilhas: o céu do vazio
+    if (st.pano && frameSize(st.pano)[0]) return st.pano;
     if (st.index === 80 || st.index === 90) return 'pano_void';
     return PANO[st.theme];
   }
@@ -178,7 +179,7 @@ export class Scenery {
     }
     // lua / pôr do sol (os panoramas que não têm um)
     const mood = this.stage.mood;
-    const own = pano === 'pano_haunted' || pano === 'pano_castle' || pano === 'pano_void' || pano === 'pano_cave';
+    const own = pano.startsWith('pano_my_') || pano === 'pano_haunted' || pano === 'pano_castle' || pano === 'pano_void' || pano === 'pano_cave';
     if (!own && (mood === 'night' || mood === 'dusk')) {
       const name = mood === 'night' ? (this.stage.theme === 'volcano' ? 'moon_red' : 'moon_blue') : 'sunset';
       drawSpriteH(ctx, name, VIEW_W * 0.78 - camX * 0.01, top + ph * sc * 0.42, mood === 'night' ? 46 : 54);

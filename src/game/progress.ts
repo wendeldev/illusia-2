@@ -34,6 +34,8 @@ export interface Progress {
   eventPass?: boolean;
   /** próxima arena com recompensas dobradas (Passe VIP) */
   vipPass?: boolean;
+  /** eventos vencidos: chefe -> bits (1 = Difícil, 2 = Épico) */
+  eventsCleared?: Record<string, number>;
 }
 
 export interface QuestState {

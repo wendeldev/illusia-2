@@ -2,8 +2,8 @@
 // Enquanto a imagem não carrega, o jogo usa os desenhos vetoriais como reserva.
 import atlasData from '../data/atlas.json';
 
-/** [x, y, largura, altura, âncoraX, âncoraY] no atlas */
-type Frame = [number, number, number, number, number, number];
+/** [x, y, largura, altura, âncoraX, âncoraY, (cabeçaX, cabeçaY relativos à âncora)] no atlas */
+type Frame = [number, number, number, number, number, number, number?, number?];
 
 interface SpriteDef {
   /** escala para o tamanho no jogo */
@@ -27,8 +27,10 @@ let powersWhite: HTMLCanvasElement | null = null;
 let bosses: HTMLImageElement | null = null;
 let bossesWhite: HTMLCanvasElement | null = null;
 let itemsImg: HTMLImageElement | null = null;
+let mythic: HTMLImageElement | null = null;
+let mythicWhite: HTMLCanvasElement | null = null;
 
-const sheetOf = (d: SpriteDef): HTMLImageElement | null => (d.sheet === 1 ? scenery : d.sheet === 2 ? powers : d.sheet === 3 ? bosses : d.sheet === 4 ? itemsImg : img);
+const sheetOf = (d: SpriteDef): HTMLImageElement | null => (d.sheet === 1 ? scenery : d.sheet === 2 ? powers : d.sheet === 3 ? bosses : d.sheet === 4 ? itemsImg : d.sheet === 5 ? mythic : img);
 
 function whiteCopy(im: HTMLImageElement): HTMLCanvasElement | null {
   const c = document.createElement('canvas');
@@ -62,6 +64,9 @@ export function loadSprites(): Promise<void> {
   const it = new Image();
   it.onload = () => { itemsImg = it; };
   it.src = './sprites/items.png';
+  const my = new Image();
+  my.onload = () => { mythic = my; mythicWhite = whiteCopy(my); };
+  my.src = './sprites/mythic.png';
   return new Promise((resolve) => {
     const im = new Image();
     im.onload = () => {
@@ -112,7 +117,11 @@ export interface SpriteOpts {
   rot?: number;
   alpha?: number;
   flash?: boolean;
+  /** pinta faixas do corpo (fração da altura a partir do topo: [de, até, cor, força]) — roupas em camadas */
+  tint?: [number, number, string, number][];
 }
+
+let tintCanvas: HTMLCanvasElement | null = null;
 
 /** Desenha o quadro com os pés em (x, y). `facing` = 1 direita, -1 esquerda. */
 export function drawSprite(ctx: CanvasRenderingContext2D, name: string, frame: number, x: number, y: number, facing: number, o: SpriteOpts = {}): void {
@@ -130,7 +139,27 @@ export function drawSprite(ctx: CanvasRenderingContext2D, name: string, frame: n
   // pixel art ampliado fica nítido sem suavização; reduzido fica melhor suavizado
   ctx.imageSmoothingEnabled = Math.abs(s) < 1;
   ctx.drawImage(sheet, f[0], f[1], f[2], f[3], -f[4], -f[5], f[2], f[3]);
-  const wh = d.sheet === 2 ? powersWhite : d.sheet === 3 ? bossesWhite : d.sheet === 1 ? null : white;
+  if (o.tint?.length) {
+    // cópia do quadro pintada só onde há pixels (source-atop), depois por cima do original
+    tintCanvas ??= document.createElement('canvas');
+    const tc = tintCanvas;
+    if (tc.width < f[2] || tc.height < f[3]) { tc.width = Math.max(tc.width, f[2]); tc.height = Math.max(tc.height, f[3]); }
+    const t = tc.getContext('2d')!;
+    t.clearRect(0, 0, f[2], f[3]);
+    t.globalCompositeOperation = 'source-over';
+    t.drawImage(sheet, f[0], f[1], f[2], f[3], 0, 0, f[2], f[3]);
+    t.globalCompositeOperation = 'source-atop';
+    for (const [a, b, c, k] of o.tint) {
+      t.globalAlpha = k;
+      t.fillStyle = c;
+      t.fillRect(0, f[3] * a, f[2], f[3] * (b - a));
+    }
+    t.globalAlpha = 1;
+    t.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(tc, 0, 0, f[2], f[3], -f[4], -f[5], f[2], f[3]);
+  }
+  const wh = d.sheet === 2 ? powersWhite : d.sheet === 3 ? bossesWhite : d.sheet === 5 ? mythicWhite : d.sheet === 1 || d.sheet === 4 ? null : white;
   if (o.flash && wh) {
     ctx.globalAlpha *= 0.85;
     ctx.drawImage(wh, f[0], f[1], f[2], f[3], -f[4], -f[5], f[2], f[3]);
@@ -186,4 +215,18 @@ export function panoSky(name: string): [string, string] {
 /** Prancha de poderes carregada? */
 export function powersReady(): boolean {
   return !!powers;
+}
+
+/** Topo da cabeça no quadro (em px do jogo, relativo aos pés), já virado para `facing`. */
+export function headOf(name: string, frame: number, facing: number, scale = 1): { x: number; y: number } {
+  const d = ATLAS[name];
+  if (!d) return { x: 0, y: -48 };
+  const f = d.frames[Math.max(0, Math.floor(frame)) % d.frames.length];
+  const s = d.scale * scale;
+  const flip = facing === d.faces ? 1 : -1;
+  return { x: (f[6] ?? 0) * s * flip, y: (f[7] ?? -f[3]) * s };
+}
+
+export function mythicReady(): boolean {
+  return !!mythic;
 }

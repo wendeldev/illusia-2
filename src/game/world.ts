@@ -9,6 +9,7 @@ import type { EnemyDef, HumanLook, NpcDef, PortalDef, SkillDef, StageDef } from 
 import { drawHuman, OUTLINE } from './art/human';
 import { drawMonster } from './art/monsters';
 import { glow } from './art/scene3d';
+import { drawBackLayers, drawFrontLayers, gearLook } from './art/layers';
 import { drawTerrain } from './art/ground';
 import { drawSprite, drawSpriteH, frameCount, hasSprite, spriteHeight, spritesReady } from '../engine/sprites';
 import { Scenery } from './art/scenery';
@@ -1392,10 +1393,10 @@ export class World {
     const level = def.boss ? base + (def.hp >= 600 ? 3 : 2) : base + (!summoned && Math.random() < 0.35 ? 1 : 0);
     const pw = levelPower(level);
     // a vida e o ataque crescem um pouco mais rápido que a força, para acompanhar o nível do jogador
-    const hp = Math.round(def.hp * Math.pow(pw, 1.4));
+    const hp = Math.round(def.hp * Math.pow(pw, 1.4) * (this.stage.hpMul ?? 1));
     const e: Enemy = {
       def, level, x, y, vx: 0, vy: 0, onGround: false, dropT: 0, jumpCd: 0, atkAlt: 0, facing, radius: def.radius, hp, maxHp: hp,
-      atk: def.atk * Math.pow(pw, 1.3), armor: def.def * Math.sqrt(pw),
+      atk: def.atk * Math.pow(pw, 1.3) * (this.stage.atkMul ?? 1), armor: def.def * Math.sqrt(pw),
       exp: Math.round(def.exp * pw * 1.2), gold: Math.round(def.gold * pw),
       speed: def.speed * (1 + Math.min(0.3, (pw - 1) * 0.03)),
       hitStun: 0, flash: 0, state: 'chase', timer: 0, dead: false, deadTimer: 0, seed: Math.random() * 10, strike: 0, moving: false,
@@ -1798,22 +1799,6 @@ export class World {
   }
 
   /** Jogador em pixel art: escolhe a animação pelo estado. */
-  /** Asas equipadas nas costas (batendo) e brilho de aprimoramento da arma. */
-  private drawWingsAndAura(ctx: CanvasRenderingContext2D, p: Player): void {
-    const up = this.progress.upgrades?.[this.progress.equipped.weapon ?? ''] ?? 0;
-    if (up >= 4) {
-      const c = up >= 10 ? '#ff5fd0' : up >= 7 ? '#ffd36b' : '#7fc8ff';
-      glow(ctx, p.x, p.y - 24, 30 + up * 2 + Math.sin(this.time * 4) * 3, c, 0.18 + up * 0.02);
-    }
-    const wid = this.progress.equipped.wings;
-    if (!wid) return;
-    const icon = getItem(wid).icon;
-    if (!icon || !hasSprite(icon)) return;
-    const flap = 0.75 + Math.abs(Math.sin(this.time * (p.onGround ? 3 : 9))) * 0.3;
-    if (wid === 'wings_angel' || wid === 'wings_white') glow(ctx, p.x - p.facing * 6, p.y - 30, 30, '#ffffff', 0.15);
-    drawSpriteH(ctx, icon, p.x - p.facing * 7, p.y - 14, 38, p.facing, { sx: flap, alpha: 0.95 });
-  }
-
   private drawPlayerSprite(ctx: CanvasRenderingContext2D): void {
     const p = this.player;
     const pre = this.cls.sprite;
@@ -1852,11 +1837,15 @@ export class World {
       for (let k = 1; k <= 2; k++) drawSprite(ctx, castName ?? `${pre}_${anim}`, Math.min(frame, frameCount(castName ?? `${pre}_${anim}`) - 1e-3), p.x - p.facing * k * 14, p.y + 1, p.facing, { alpha: 0.35 / k, flash: true });
       glow(ctx, p.x, p.y - 22, 40, '#a06bff', 0.3);
     }
-    this.drawWingsAndAura(ctx, p);
+    const L = gearLook(this.progress);
+    const ph = spriteHeight(`${pre}_idle`) || 52;
+    drawBackLayers(ctx, L, p.x, p.y + 1, p.facing, ph, this.time, !p.onGround);
     const breathe = !p.anim && !p.moving && p.onGround && !p.dead ? 1 + Math.sin(this.time * 3) * 0.015 : 1;
     // na escada: vira de um lado para o outro ao subir (mão por mão)
     const face = p.climbing ? (Math.floor(p.walk * 0.6) % 2 ? 1 : -1) : p.facing;
-    drawSprite(ctx, name, Math.min(frame, frameCount(name) - 1e-3), p.x, p.y + 1, face, { sy: breathe, flash: p.flash > 0 });
+    const fr = Math.min(frame, frameCount(name) - 1e-3);
+    drawSprite(ctx, name, fr, p.x, p.y + 1, face, { sy: breathe, flash: p.flash > 0, tint: L.tint });
+    if (!p.dead) drawFrontLayers(ctx, L, name, fr, p.x, p.y + 1, face, ph, this.time);
   }
 
   /** Inimigo em pixel art: um quadro só, animado com quique, preparo, bote e queda. */
