@@ -105,6 +105,18 @@ classe). Arma preferida da classe: +25% no ataque da arma. A loja tem categorias
 adagas, arcos, cajados, capacetes, armaduras, braços, calças, capas, botas, asas, auras); Mítico e Divino
 custam gemas. Catálogo gerado em `src/data/gear.ts`.
 
+## Spritesheets em camadas (spritesheets/)
+
+`python3 -I tools/build_layered.py` gera, para Guerreiro, Mago, Assassino e Arqueiro, uma spritesheet PNG por camada:
+corpo, cabelo, rosto, capacete, armadura, luvas, calças, botas, capa e arma (peças nas 8 raridades).
+- Quadros de **128×128**, pés sempre no ponto (64, 112), fundo transparente, sem suavização.
+- 8 colunas × 10 linhas, uma linha por animação: Idle (4), Andar (8), Correr (8), Pular (4), Cair (4),
+  Ataque 1 (6), Ataque 2 (6), Ataque 3 (8), Dano (4), Morte (8).
+- Todas as camadas têm os mesmos quadros, tamanho, ordem e alinhamento: troca-se armadura ou arma sem mudar a animação.
+- Ordem de desenho e dados das animações (fps, repetição) em `spritesheets/layers.json`; `preview.png`/`preview.gif` de cada classe
+  e `spritesheets/preview_all.png` mostram tudo junto.
+- O movimento vem de `tools/rig.py`, que também gera `src/data/rig.json`: o jogo anima o personagem com o mesmo rig.
+
 ## Campanha
 
 90 fases em 9 regiões (10 fases cada): Bosque Sussurrante, Pântano Nebuloso, Ruínas de Ferro,

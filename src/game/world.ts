@@ -9,7 +9,7 @@ import type { EnemyDef, HumanLook, NpcDef, PortalDef, SkillDef, StageDef } from 
 import { drawHuman, OUTLINE } from './art/human';
 import { drawMonster } from './art/monsters';
 import { glow } from './art/scene3d';
-import { dollLook, drawDoll, walkFrame, type DollPose } from './art/layers';
+import { dollLook, drawDoll, rigFps, rigFrames, rigPose, type DollPose, type RigAnim } from './art/layers';
 import { drawTerrain } from './art/ground';
 import { drawSprite, drawSpriteH, frameCount, hasSprite, spriteHeight, spritesReady } from '../engine/sprites';
 import { Scenery } from './art/scenery';
@@ -1803,36 +1803,23 @@ export class World {
     const p = this.player;
     const L = dollLook(this.progress);
     const kind = L.weaponKind;
-    const ease = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 2);
-    const pose: DollPose = { frame: 0, weapon: -0.15 };
-    // pose de acordo com o estado (o boneco em camadas não tem quadros de ataque: arma e corpo se movem)
-    if (p.dead) {
-      const k = Math.min(1, p.deadAnim / 0.4);
-      Object.assign(pose, { frame: 0, rot: -1.45 * k, oy: -4 * k, weapon: 0.8 * k });
-    } else if (p.castAnim && p.hitStun <= 0) {
-      const t = p.castT / p.castDur;
-      const up = Math.sin(Math.min(1, t * 1.4) * Math.PI);
-      Object.assign(pose, { frame: 0, weapon: -0.15 - 1.3 * up, sy: 1 + 0.04 * up, charge: up, oy: -2 * up });
-    } else if (p.anim) {
+    // animação do rig (as mesmas 10 animações das spritesheets em camadas)
+    const frameOf = (t: number, anim: RigAnim) => Math.min(rigFrames(anim) - 1, Math.floor(Math.max(0, t) * rigFrames(anim)));
+    let anim: RigAnim = 'idle', i = this.time * rigFps('idle'), charge = 0;
+    if (p.dead) { anim = 'death'; i = Math.min(7, p.deadAnim * rigFps('death')); }
+    else if (p.castAnim && p.hitStun <= 0) { anim = 'atk3'; const t = p.castT / p.castDur; i = frameOf(t, anim); charge = Math.sin(Math.min(1, t) * Math.PI); }
+    else if (p.anim) {
+      anim = p.anim === 'combo0' ? 'atk1' : p.anim === 'combo1' ? 'atk2' : 'atk3';
       const t = p.animT / p.animDur;
-      const arc = Math.sin(Math.min(1, t) * Math.PI);
-      if (kind === 'bow') Object.assign(pose, { frame: 0, weapon: -0.5, thrust: 7 - 3 * arc, ox: -1.5 * arc });
-      else if (kind === 'spear' || kind === 'staff' && p.anim.startsWith('combo')) Object.assign(pose, { frame: 2, weapon: kind === 'spear' ? 0.78 : 0.3 * arc, thrust: 9 * arc, ox: 4 * arc, rot: 0.06 * arc });
-      else if (p.anim === 'combo0') Object.assign(pose, { frame: 2, weapon: -2.3 + 3.3 * ease(t), ox: 4 * arc, rot: 0.08 * arc });
-      else if (p.anim === 'combo1') Object.assign(pose, { frame: 3, weapon: 1.0 - 2.8 * ease(t), ox: 3 * arc, rot: -0.04 * arc });
-      else if (p.anim === 'combo2') Object.assign(pose, { frame: 2, weapon: -2.8 + 4.4 * ease(t), ox: 7 * arc, rot: 0.12 * arc, sy: 1 - 0.04 * arc });
-      else Object.assign(pose, { frame: 0, weapon: -2 + t * Math.PI * 2, sy: 1 + 0.03 * arc, charge: arc * 0.6 });
-    } else if (p.hitStun > 0) {
-      Object.assign(pose, { frame: 0, rot: -0.18, ox: -2, weapon: 0.4 });
-    } else if (p.climbing) {
-      Object.assign(pose, { frame: walkFrame(L, p.walk * 0.6), weapon: 0.6 });
-    } else if (!p.onGround) {
-      Object.assign(pose, p.vy < 0 ? { frame: 2, sy: 1.05, weapon: -0.6 } : { frame: 3, sy: 0.98, weapon: -0.3 });
-    } else if (p.moving) {
-      Object.assign(pose, { frame: walkFrame(L, p.walk * 0.5), weapon: -0.1 + Math.sin(p.walk * 0.8) * 0.08, oy: -Math.abs(Math.sin(p.walk * 1.6)) * 1.2 });
-    } else {
-      Object.assign(pose, { frame: 0, sy: 1 + Math.sin(this.time * 3) * 0.015, weapon: -0.15 + Math.sin(this.time * 2) * 0.03 });
-    }
+      i = frameOf(t, anim);
+      if (anim === 'atk3' && p.anim !== 'combo2') charge = Math.sin(Math.min(1, t) * Math.PI) * 0.6;
+    } else if (p.hitStun > 0) { anim = 'hurt'; i = this.time * rigFps('hurt'); }
+    else if (p.climbing) { anim = 'walk'; i = p.walk; }
+    else if (!p.onGround) {
+      if (p.vy < 0) { anim = 'jump'; i = p.vy < -260 ? 1 : p.vy < -120 ? 2 : 3; }
+      else { anim = 'fall'; i = this.time * rigFps('fall'); }
+    } else if (p.moving) { anim = p.dash ? 'run' : 'walk'; i = p.walk; }
+    const pose: DollPose = { ...rigPose(L, anim, i), charge };
     // sombra na superfície embaixo (mesmo pulando)
     const below = this.terrain.surfacesAt(p.x).find((y) => y >= p.y - 1) ?? p.y;
     const lift = below - p.y;

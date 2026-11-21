@@ -5,6 +5,7 @@
 import { getItem } from '../../data';
 import { PREFERRED, RARITY_COLORS, RARITY_KEYS, SET_OF } from '../../data/gear';
 import PD from '../../data/paperdoll.json';
+import RIG from '../../data/rig.json';
 import { drawFit, frameRect, hasSprite } from '../../engine/sprites';
 import type { Slot } from '../../types';
 import type { Progress } from '../progress';
@@ -32,6 +33,8 @@ export interface DollPose {
   frame: number;
   /** inclinação do corpo (rad), deslocamento e achatamento */
   rot?: number; ox?: number; oy?: number; sy?: number;
+  /** deslocamento do rig, em px da prancha (antes da escala) */
+  dx?: number; dy?: number;
   /** ângulo da arma (rad, 0 = como no desenho) */
   weapon?: number;
   /** estocada da arma para frente (px) */
@@ -120,7 +123,8 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   ctx.save();
   ctx.translate(x + (pose.ox ?? 0) * facing * k, y + (pose.oy ?? 0) * k);
   if (pose.alpha !== undefined) ctx.globalAlpha *= pose.alpha;
-  ctx.scale(facing * s, s * (pose.sy ?? 1));
+  ctx.scale(facing * s, s);
+  ctx.translate(pose.dx ?? 0, pose.dy ?? 0);
   ctx.imageSmoothingEnabled = s < 1;
   if (L.aura) {
     glow(ctx, cx, -A.H * 0.4, A.H * 0.8, L.auraColor, 0.16);
@@ -134,6 +138,7 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     ctx.globalCompositeOperation = prev;
   }
   if (pose.rot) ctx.rotate(pose.rot);
+  if (pose.sy && pose.sy !== 1) ctx.scale(1, pose.sy);
   // asas traseiras (batendo) e capa (balançando)
   if (L.wings) {
     const flap = 0.8 + Math.abs(Math.sin(time * 3)) * 0.25;
@@ -187,8 +192,33 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   ctx.restore();
 }
 
+// ── rig das animações (o mesmo das spritesheets em spritesheets/, gerado por tools/build_layered.py) ──
+interface RigBody { f: number; dx: number; dy: number; sy: number; rot: number }
+interface RigWeapon { w: number; t: number }
+const R = RIG as unknown as {
+  anims: [string, number][]; fps: Record<string, number>; loop: string[];
+  body: Record<string, Record<string, RigBody[]>>; weapon: Record<string, Record<string, RigWeapon[]>>; styleOf: Record<string, string>;
+};
+export type RigAnim = 'idle' | 'walk' | 'run' | 'jump' | 'fall' | 'atk1' | 'atk2' | 'atk3' | 'hurt' | 'death';
+const RIG_COUNT: Record<string, number> = Object.fromEntries(R.anims);
+
+/** Quantos quadros a animação tem e a velocidade (quadros por segundo). */
+export function rigFrames(anim: RigAnim): number { return RIG_COUNT[anim] ?? 1; }
+export function rigFps(anim: RigAnim): number { return R.fps[anim] ?? 10; }
+
+/** Pose do quadro `i` da animação (corpo pela classe, arma pelo estilo da arma equipada). */
+export function rigPose(L: DollLook, anim: RigAnim, i: number): DollPose {
+  const body = R.body[L.cls]?.[anim] ?? R.body.warrior[anim];
+  const n = body.length;
+  const k = ((Math.floor(i) % n) + n) % n;
+  const b = body[k];
+  const style = R.styleOf[L.weaponKind] ?? 'slash';
+  const w = (R.weapon[style] ?? R.weapon.slash)[anim]?.[k] ?? { w: 0, t: 0 };
+  return { frame: b.f, dx: b.dx, dy: b.dy, sy: b.sy, rot: (b.rot * Math.PI) / 180, weapon: (w.w * Math.PI) / 180, thrust: w.t };
+}
+
 /** Personagem parado com tudo o que está equipado (telas de equipamento e de eventos). */
 export function drawDollIdle(ctx: CanvasRenderingContext2D, p: Progress, x: number, y: number, facing: number, k: number, time: number): void {
   const L = dollLook(p);
-  drawDoll(ctx, L, x, y, facing, k, { frame: 0, sy: 1 + Math.sin(time * 3) * 0.015, weapon: -0.15 }, time);
+  drawDoll(ctx, L, x, y, facing, k, rigPose(L, 'idle', time * rigFps('idle')), time);
 }
