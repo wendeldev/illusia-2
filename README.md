@@ -115,6 +115,11 @@ corpo, cabelo, rosto, capacete, armadura, luvas, calças, botas, capa e arma (pe
 - Todas as camadas têm os mesmos quadros, tamanho, ordem e alinhamento: troca-se armadura ou arma sem mudar a animação.
 - Ordem de desenho e dados das animações (fps, repetição) em `spritesheets/layers.json`; `preview.png`/`preview.gif` de cada classe
   e `spritesheets/preview_all.png` mostram tudo junto.
+- **Capacete**: cada capacete é medido (abertura do rosto, contorno de baixo) e cada quadro da cabeça também
+  (olhos, testa, laterais do rosto, queixo) por `tools/helmet_fit.py`. Aberto: a abertura tem a largura do rosto e
+  começa na testa; fechado: cobre o rosto até o queixo; gorro/chapéu: borda na testa. O cabelo de cada capacete
+  (`hair_helmet_<raridade>`) é cortado pela borda dele. Prévia ampliada: `python3 -I tools/helmet_preview.py`
+  → `spritesheets/helmet_check/`.
 - O movimento vem de `tools/rig.py`, que também gera `src/data/rig.json`: o jogo anima o personagem com o mesmo rig.
 
 ## Campanha

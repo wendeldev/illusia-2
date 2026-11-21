@@ -792,6 +792,7 @@ for (row, key), im in LY.items():
 import anatomy as AN
 PD = {}
 import split_head as SH
+import helmet_fit as HF
 for cls, frs in MY.load_bodies().items():
     put(f'pd_{cls}', frs)
     PD[cls] = [AN.anatomy(im) for im in frs]
@@ -804,10 +805,20 @@ for cls, frs in MY.load_bodies().items():
         skins.append(body); hairs.append(hair)
         an['oval'] = [round(v, 1) for v in SH.face_oval(im, {**an, 'neck': neck0})]
         an['neck0'] = neck0
+        an['marks'] = HF.head_marks(im, an, neck0, body)
     put(f'pd_{cls}_skin', skins)
     put(f'pd_{cls}_hair', hairs)
 with open(os.path.join(ROOT, 'src', 'data', 'paperdoll.json'), 'w') as f:
     json.dump(PD, f, separators=(',', ':'))
+# medidas de cada capacete (encaixe na cabeça: tools/helmet_fit.py)
+HELMS = {}
+for n, (lst, _) in my_items.items():
+    if n.startswith('gs_') and n.endswith('_helmet'):
+        info = HF.helmet_info(lst[0][0])
+        info['kind'] = HF.kind_of(n)
+        HELMS[n] = info
+with open(os.path.join(ROOT, 'src', 'data', 'helmets.json'), 'w') as f:
+    json.dump(HELMS, f, separators=(',', ':'))
 # montagens prontas (prévias das recompensas)
 for name, im in MY.load_montages().items():
     put(f'mont_{name}', [im])

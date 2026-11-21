@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import anatomy as AN  # noqa: E402
 import rig as RIG  # noqa: E402
 import split_head as SH  # noqa: E402
+import helmet_fit as HF  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'spritesheets')
@@ -106,32 +107,6 @@ def paste(canvas, img, x, y):
     canvas.alpha_composite(layer)
 
 
-# capacete: envolve a cabeça (largura = oval do rosto × fator) e fica ATRÁS do rosto, que aparece pela abertura;
-# chapéu (Mago): por cima da cabeça, mais largo, com a aba na altura da testa
-HELM = {'warrior': 1.35, 'assassin': 1.35, 'mage': 1.45, 'archer': 1.35}
-HAT = {'mage'}
-
-
-def helmet_box(cls, a, neck0, oval, ox, oy, asp):
-    cx, cy, rx, ry = oval
-    W = rx * 2 * HELM[cls]
-    hx = ox + cx - 1
-    if cls in HAT:
-        bottom = oy + cy - ry + 6
-    else:
-        bottom = oy + neck0 + 2
-    return (hx - W / 2, bottom - W * asp, hx + W / 2, bottom)
-
-
-def no_dark(im):
-    """Abertura do rosto do capacete (fundo escuro preso dentro do desenho) fica transparente."""
-    im = im.copy()
-    px = im.load()
-    for y in range(im.size[1]):
-        for x in range(im.size[0]):
-            if px[x, y][3] and max(px[x, y][:3]) < 40:
-                px[x, y] = (0, 0, 0, 0)
-    return im
 WEAPON_H = {'dagger': 0.38, 'bow': 0.46}
 
 
@@ -147,7 +122,13 @@ class Body:
         self.neck0 = neck0
         self.parts = [SH.split(im, a, neck0) for im, a in zip(self.frames, self.anat)]
         self.ovals = [SH.face_oval(im, {**a, 'neck': neck0}) for im, a in zip(self.frames, self.anat)]
+        self.marks = []
+        for im, a, (body, hair, face) in zip(self.frames, self.anat, self.parts):
+            skin = body.copy()
+            skin.alpha_composite(face)
+            self.marks.append(HF.head_marks(im, a, neck0, skin))
         self.H0 = self.anat[0]['H']
+        self._hcache = {}
 
     def origin(self, fi):
         im = self.frames[fi]
@@ -178,29 +159,45 @@ class Body:
         """Um quadro 128×128 de uma camada do corpo (body/hair/face ou peça) já com o movimento do quadro."""
         fi = fr['f']
         cv = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
-        if layer in ('body', 'hair', 'face', 'hair_helmet'):
-            img = self.parts[fi][('body', 'hair', 'face').index('hair' if layer == 'hair_helmet' else layer)]
-            ox, oy = self.origin(fi)
-            if layer == 'hair_helmet' and self.cls not in HAT:
-                # só o cabelo que sai por baixo do capacete
-                img = img.copy()
-                img.paste((0, 0, 0, 0), (0, 0, img.size[0], max(0, self.neck0 - 3)))
-            elif layer == 'hair_helmet':
-                cx, cy, rx, ry = self.ovals[fi]
-                img = img.copy()
-                img.paste((0, 0, 0, 0), (0, 0, img.size[0], max(0, int(cy - ry + 2))))
+        ox, oy = self.origin(fi)
+        if layer in ('body', 'hair', 'face'):
+            paste(cv, self.parts[fi][('body', 'hair', 'face').index(layer)], ox, oy)
+        elif layer == 'hair_helmet':
+            # cabelo adaptado ao capacete `piece`: some acima da borda do capacete (não atravessa)
+            info, box = self.helmet_fit(fi, piece)
+            side, pts = HF.hair_cut(info, box, info['kind'])
+            img = self.parts[fi][1].copy()
+            hp = img.load()
+            for y in range(img.size[1]):
+                for x in range(img.size[0]):
+                    if not hp[x, y][3]:
+                        continue
+                    if pts and pts[0][0] - 1 <= x <= pts[-1][0] + 1:
+                        lim = min(pts, key=lambda p_: abs(p_[0] - x))[1]
+                    else:
+                        lim = side
+                    if y < lim:
+                        hp[x, y] = (0, 0, 0, 0)
             paste(cv, img, ox, oy)
         elif layer == 'helmet':
-            ox, oy = self.origin(fi)
-            piece = no_dark(piece)
-            box = helmet_box(self.cls, self.anat[fi], self.neck0, self.ovals[fi], ox, oy, piece.size[1] / piece.size[0])
-            img, x, y = fit(piece, box, 'fill', 'top')
-            paste(cv, img, x, y)
+            info, box = self.helmet_fit(fi, piece)
+            w, h = round(box[2] - box[0]), round(box[3] - box[1])
+            paste(cv, piece[1].resize((max(1, w), max(1, h)), NEAREST), ox + round(box[0]), oy + round(box[1]))
         else:
             box, mode, align = self.boxes(fi)[layer]
             img, x, y = fit(piece, box, mode, align)
             paste(cv, img, x, y)
         return warp(cv, global_m(fr))
+
+    def helmet_fit(self, fi, piece):
+        """piece = (nome, imagem) do capacete → (medidas, caixa no quadro do corpo)."""
+        name, img = piece
+        key = (name, fi)
+        if key not in self._hcache:
+            info = HF.helmet_info(img)
+            info['kind'] = HF.kind_of(name)
+            self._hcache[key] = (info, HF.fit(info, self.marks[fi], info['kind']))
+        return self._hcache[key]
 
     def weapon_frame(self, kind, wimg, fr, wf):
         hx, hy = self.boxes(fr['f'])['hand']
@@ -212,8 +209,7 @@ class Body:
         return warp(img, mul(global_m(fr), local))
 
 
-ORDER_HELMET = {c: ['cape', 'hair_helmet', 'helmet', 'body', 'face', 'pants', 'boots', 'armor', 'gloves', 'weapon'] for c in SETS}
-ORDER_HELMET['mage'] = ['cape', 'hair_helmet', 'body', 'face', 'pants', 'boots', 'armor', 'gloves', 'helmet', 'weapon']
+ORDER = ['cape', 'hair_helmet', 'body', 'face', 'pants', 'boots', 'armor', 'gloves', 'helmet', 'weapon']
 
 
 def sheet(frames_by_anim):
@@ -238,10 +234,18 @@ def build_class(cls):
         return frames
 
     layers = {}
-    for base in ('body', 'hair', 'face', 'hair_helmet'):
+    for base in ('body', 'hair', 'face'):
         layers[base] = save(base, lambda fr, i, a, base=base: B.layer_frame(base, fr))
     set_cls = SETS[cls]
-    for piece, part in (('helmet', 'helmet'), ('armor', 'armor'), ('gloves', 'arms'), ('pants', 'pants'), ('cape', 'cape')):
+    # capacete e o cabelo adaptado a ele (mesmos quadros e alinhamento)
+    for r in RARITIES:
+        name = f'gs_{set_cls}_{r}_helmet'
+        hp = (name, sprite(name))
+        fr_h = save(f'helmet_{r}', lambda fr, i, a, hp=hp: B.layer_frame('helmet', fr, hp))
+        fr_c = save(f'hair_helmet_{r}', lambda fr, i, a, hp=hp: B.layer_frame('hair_helmet', fr, hp))
+        if r == 'lendario':
+            layers['helmet'], layers['hair_helmet'] = fr_h, fr_c
+    for piece, part in (('armor', 'armor'), ('gloves', 'arms'), ('pants', 'pants'), ('cape', 'cape')):
         for r in RARITIES:
             img = sprite(f'gs_{set_cls}_{r}_{part}')
             fr_ = save(f'{piece}_{r}', lambda fr, i, a, piece=piece, img=img: B.layer_frame(piece, fr, img))
@@ -260,7 +264,7 @@ def build_class(cls):
             if r == 'lendario' and kind == WEAPONS[cls][0]:
                 layers['weapon'] = fr_
     # prévia: todas as camadas na ordem de desenho
-    order = ORDER_HELMET[cls]
+    order = ORDER
     comp = {}
     for a, n in RIG.ANIMS:
         comp[a] = []
@@ -322,8 +326,8 @@ def main():
         'frame': [CELL, CELL], 'feet': [AX, AY], 'columns': COLS,
         'animations': [{'name': n, 'row': i, 'frames': c, 'fps': RIG.FPS[n], 'loop': n in RIG.LOOP} for i, (n, c) in enumerate(RIG.ANIMS)],
         'drawOrder': {'semCapacete': ['cape', 'body', 'face', 'hair', 'pants', 'boots', 'armor', 'gloves', 'weapon'],
-                      'comCapacete': ORDER_HELMET['warrior'], 'comChapeu (mage)': ORDER_HELMET['mage']},
-        'nota': 'Com capacete use hair_helmet no lugar de hair (o cabelo que sai por baixo). O capacete vai atrás do rosto, que aparece pela abertura; o chapéu do Mago vai por cima.',
+                      'comCapacete': ORDER},
+        'nota': 'Com o capacete helmet_<raridade>, use hair_helmet_<raridade> no lugar de hair: o cabelo já cortado pela borda daquele capacete. O capacete fica por cima da cabeça e o rosto aparece pela abertura.',
         'rarities': RARITIES, 'files': manifest,
     }
     json.dump(meta, open(os.path.join(OUT, 'layers.json'), 'w'), indent=1, ensure_ascii=False)

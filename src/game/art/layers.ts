@@ -5,6 +5,7 @@
 import { getItem } from '../../data';
 import { PREFERRED, RARITY_COLORS, RARITY_KEYS, SET_OF } from '../../data/gear';
 import PD from '../../data/paperdoll.json';
+import HELMETS from '../../data/helmets.json';
 import RIG from '../../data/rig.json';
 import { drawFit, frameRect, hasSprite } from '../../engine/sprites';
 import type { Slot } from '../../types';
@@ -15,16 +16,83 @@ interface Anatomy {
   W: number; H: number; head: number[]; neck: number; hips: number[]; feet: number[]; hands: number[]; hand_y: number;
   /** oval do rosto (cx, cy, rx, ry) e pescoço do quadro 0 */
   oval: number[]; neck0: number;
+  /** pontos da cabeça: olhos, testa, laterais e centro do rosto, queixo, largura do crânio */
+  marks: HeadMarks;
 }
 const ANAT = PD as unknown as Record<string, Anatomy[]>;
 
 /** Altura do personagem no jogo (px lógicos). */
 export const DOLL_H = 56;
 /** Até onde o capacete desce na cabeça (fração da altura da cabeça, cabelo incluído). */
-/** Capacete: largura = oval do rosto × fator; fica atrás do rosto (que aparece pela abertura) até o pescoço.
- *  Chapéu (Mago): por cima da cabeça, com a aba na testa. Mesma regra de tools/build_layered.py. */
-const HELM: Record<string, number> = { warrior: 1.35, assassin: 1.35, mage: 1.45, archer: 1.35 };
-const HAT = new Set(['mage']);
+interface HeadMarks { eye: number; brow: number; fl: number; fr: number; fw: number; cx: number; chin: number; skullW: number }
+interface HelmetInfo {
+  w: number; h: number; box: number[]; open: number[] | null; bottom: number[]; rimW: number | null; rimCx: number | null;
+  kind: 'open' | 'closed' | 'cap' | 'hat';
+}
+const HELMS = HELMETS as unknown as Record<string, HelmetInfo>;
+
+/**
+ * Encaixe do capacete na cabeça do quadro (mesma regra de tools/helmet_fit.py, que gera a prévia ampliada):
+ * capacete aberto → a abertura tem a largura do rosto e começa na testa; fechado → cobre o rosto até o queixo;
+ * gorro/chapéu → borda principal na testa, largura do crânio. Devolve a caixa em px do quadro do corpo.
+ */
+function helmetBox(info: HelmetInfo, m: HeadMarks): [number, number, number, number] {
+  const [bx0, by0, bx1, by1] = info.box;
+  const bw = bx1 - bx0, bh = by1 - by0;
+  const sk = m.skullW;
+  let s: number, x0: number, y0: number;
+  const op = info.open;
+  if (info.kind === 'open' && op && op[3] - op[1] >= bh * 0.25) {
+    const rim = info.rimW ?? op[2] - op[0];
+    s = Math.max((sk * 1.05) / bw, Math.min((sk * 1.3) / bw, (m.fw * 1.05) / rim));
+    const cx = info.rimCx ?? (op[0] + op[2]) / 2;
+    x0 = m.cx - cx * s;
+    y0 = m.brow - 2 - op[1] * s;
+  } else if (info.kind === 'closed') {
+    s = (sk * 1.22) / bw;
+    x0 = m.cx - (bx0 + bw / 2) * s;
+    y0 = m.chin + 2 - by1 * s;
+  } else {
+    const hat = info.kind === 'hat';
+    s = (sk * (hat ? 1.35 : 1.12)) / bw;
+    const cx = m.cx - m.fw * (hat ? 0.08 : 0.12);
+    x0 = cx - (bx0 + bw / 2) * s;
+    y0 = m.brow + (hat ? 2 : 1) - rimOf(info) * s;
+  }
+  return [x0, y0, x0 + info.w * s, y0 + info.h * s];
+}
+
+/** Borda principal (mediana do contorno de baixo no miolo do capacete). */
+function rimOf(info: HelmetInfo): number {
+  const [bx0, , bx1, by1] = info.box;
+  const q = Math.floor((bx1 - bx0) / 4);
+  const mid = info.bottom.slice(bx0 + q, bx1 - q).filter((b) => b > 0).sort((a, b) => a - b);
+  return mid.length ? mid[Math.floor(mid.length / 2)] : by1;
+}
+
+/** Área onde o cabelo aparece: abaixo da borda do capacete (o cabelo não atravessa o capacete). */
+function hairClip(ctx: CanvasRenderingContext2D, info: HelmetInfo, box: number[]): void {
+  const [x0, y0, x1] = box;
+  const s = (x1 - x0) / info.w;
+  const [bx0, by0, bx1, by1] = info.box;
+  const side = y0 + Math.min(rimOf(info), by0 + (by1 - by0) * 0.55) * s;
+  const op = info.kind === 'open' ? info.open : null;
+  const step = Math.max(1, Math.floor((bx1 - bx0) / 12));
+  ctx.beginPath();
+  ctx.moveTo(-500, side);
+  for (let x = bx0; x < bx1; x += step) {
+    let b = info.bottom[x];
+    if (b <= 0) continue;
+    if (op && op[0] <= x && x < op[2]) b = op[1] + 1;
+    ctx.lineTo(x0 + (x + 0.5) * s, y0 + b * s - 1);
+  }
+  ctx.lineTo(500, side);
+  ctx.lineTo(500, 1000);
+  ctx.lineTo(-500, 1000);
+  ctx.closePath();
+  ctx.clip();
+}
+
 const WALK: Record<string, number[]> = { warrior: [1, 2, 3, 4], assassin: [1, 2, 3, 4], mage: [0, 1, 2, 1], archer: [0, 1, 2, 1] };
 
 export interface DollLook {
@@ -161,26 +229,22 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     drawFit(ctx, L.cape, c0 - span * 0.46, neck - 1, c0 + span * 0.46, Y(fy0) - 1, 'fill', 'top', 0, fl);
     ctx.restore();
   }
-  // corpo base (com capacete: cabelo só por baixo dele, capacete atrás do rosto)
+  // corpo base; com capacete: cabelo cortado pela borda do capacete, rosto e pele, e o capacete por cima
   let helmetLater: (() => void) | null = null;
-  if (L.helmet && hasSprite(`${L.body}_skin`)) {
-    const [ocx, ocy, orx, ory] = A.oval;
-    const hat = HAT.has(L.cls);
-    const hr2 = frameRect(L.helmet);
-    const asp = hr2 ? hr2[1] / hr2[0] : 1;
-    const W = orx * 2 * (HELM[L.cls] ?? 1.35);
-    const hcx = X(ocx) - 1;
-    const bottom = hat ? Y(ocy - ory + 6) : Y(A.neck0 + 2);
-    const cut = hat ? Y(ocy - ory + 2) : Y(A.neck0 - 3);
+  const hinfo = L.helmet ? HELMS[L.helmet] : undefined;
+  if (L.helmet && hinfo && hasSprite(`${L.body}_skin`)) {
+    const [hx0_, hy0_, hx1_, hy1_] = helmetBox(hinfo, A.marks);
+    const box = [X(hx0_), Y(hy0_), X(hx1_), Y(hy1_)];
     ctx.save();
-    ctx.beginPath(); ctx.rect(-500, cut, 1000, 1000); ctx.clip();
+    hairClip(ctx, hinfo, box);
     drawFit(ctx, `${L.body}_hair`, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
     ctx.restore();
-    const drawHelmet = () => drawFit(ctx, L.helmet!, hcx - W / 2, bottom - W * asp, hcx + W / 2, bottom, 'fill', 'top', 0, fl);
-    if (!hat) drawHelmet();
     drawFit(ctx, `${L.body}_skin`, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
-    if (hat) helmetLater = drawHelmet;
-  } else drawFit(ctx, L.body, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
+    helmetLater = () => drawFit(ctx, L.helmet!, box[0], box[1], box[2], box[3], 'fill', 'top', 0, fl);
+  } else {
+    drawFit(ctx, L.body, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
+    if (L.helmet) helmetLater = () => drawFit(ctx, L.helmet!, X(A.head[0]), Y(A.head[1]) - 4, X(A.head[2]), Y(A.marks.brow), 'contain', 'bottom', 0, fl);
+  }
   if (L.pants) drawFit(ctx, L.pants, X(hx0) - 3, Y(hy0) - 1, X(hx1) + 3, Y(fy0) + 1, 'fill', 'top', 0, fl);
   if (L.boots) drawFit(ctx, L.boots, X(fx0) - 1, Y(fy0) - 4, X(fx1) + 1, Y(fy1) + 1, 'fill', 'top', 0, fl);
   if (L.armor) drawFit(ctx, L.armor, cx - span * 0.5, neck - 2, cx + span * 0.5, Y(hy0) + 3, 'fill', 'top', 0, fl);
