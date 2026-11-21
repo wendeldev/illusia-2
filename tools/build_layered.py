@@ -6,7 +6,8 @@ Gera as spritesheets em camadas ("layered sprites") de Guerreiro, Mago, Assassin
 
 Saída em spritesheets/<classe>/:
   body.png, hair.png, face.png                 corpo base separado em 3 camadas
-  helmet_<raridade>.png, armor_..., gloves_..., pants_..., cape_...   set da classe nas 8 raridades
+  halo_<raridade>.png                          halo (auréola) nas 8 raridades — o mesmo desenho nas 4 classes
+  armor_..., gloves_..., pants_..., cape_...   set da classe nas 8 raridades
   boots_<raridade>.png                          botas
   weapon_<tipo>_<raridade>.png                  armas da classe
   preview.png / preview.gif                     tudo junto (set Lendário), para conferir
@@ -25,7 +26,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import anatomy as AN  # noqa: E402
 import rig as RIG  # noqa: E402
 import split_head as SH  # noqa: E402
-import helmet_fit as HF  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'spritesheets')
@@ -122,13 +122,7 @@ class Body:
         self.neck0 = neck0
         self.parts = [SH.split(im, a, neck0) for im, a in zip(self.frames, self.anat)]
         self.ovals = [SH.face_oval(im, {**a, 'neck': neck0}) for im, a in zip(self.frames, self.anat)]
-        self.marks = []
-        for im, a, (body, hair, face) in zip(self.frames, self.anat, self.parts):
-            skin = body.copy()
-            skin.alpha_composite(face)
-            self.marks.append(HF.head_marks(im, a, neck0, skin))
         self.H0 = self.anat[0]['H']
-        self._hcache = {}
 
     def origin(self, fi):
         im = self.frames[fi]
@@ -162,42 +156,23 @@ class Body:
         ox, oy = self.origin(fi)
         if layer in ('body', 'hair', 'face'):
             paste(cv, self.parts[fi][('body', 'hair', 'face').index(layer)], ox, oy)
-        elif layer == 'hair_helmet':
-            # cabelo adaptado ao capacete `piece`: some acima da borda do capacete (não atravessa)
-            info, box = self.helmet_fit(fi, piece)
-            side, pts = HF.hair_cut(info, box, info['kind'])
-            img = self.parts[fi][1].copy()
-            hp = img.load()
-            for y in range(img.size[1]):
-                for x in range(img.size[0]):
-                    if not hp[x, y][3]:
-                        continue
-                    if pts and pts[0][0] - 1 <= x <= pts[-1][0] + 1:
-                        lim = min(pts, key=lambda p_: abs(p_[0] - x))[1]
-                    else:
-                        lim = side
-                    if y < lim:
-                        hp[x, y] = (0, 0, 0, 0)
-            paste(cv, img, ox, oy)
-        elif layer == 'helmet':
-            info, box = self.helmet_fit(fi, piece)
-            w, h = round(box[2] - box[0]), round(box[3] - box[1])
-            paste(cv, piece[1].resize((max(1, w), max(1, h)), NEAREST), ox + round(box[0]), oy + round(box[1]))
+        elif layer == 'halo':
+            # halo flutuando logo acima do topo da cabeça deste quadro (mesma regra do jogo)
+            name, frames = piece
+            w0, h0 = frames[0].size
+            hx0, hy0, hx1, _ = self.anat[fi]['head']
+            w = (hx1 - hx0) * HALO_W.get(name, 1.05)
+            h = w * h0 / w0
+            cx = ox + (hx0 + hx1) / 2
+            bob = round(math.sin(fr['_i'] * 1.4) * 1.2)
+            bottom = oy + hy0 + 4 + bob
+            img = frames[fr['_i'] % len(frames)].resize((max(1, round(w)), max(1, round(h))), NEAREST)
+            paste(cv, img, round(cx - w / 2), round(bottom - h))
         else:
             box, mode, align = self.boxes(fi)[layer]
             img, x, y = fit(piece, box, mode, align)
             paste(cv, img, x, y)
         return warp(cv, global_m(fr))
-
-    def helmet_fit(self, fi, piece):
-        """piece = (nome, imagem) do capacete → (medidas, caixa no quadro do corpo)."""
-        name, img = piece
-        key = (name, fi)
-        if key not in self._hcache:
-            info = HF.helmet_info(img)
-            info['kind'] = HF.kind_of(name)
-            self._hcache[key] = (info, HF.fit(info, self.marks[fi], info['kind']))
-        return self._hcache[key]
 
     def weapon_frame(self, kind, wimg, fr, wf):
         hx, hy = self.boxes(fr['f'])['hand']
@@ -209,7 +184,9 @@ class Body:
         return warp(img, mul(global_m(fr), local))
 
 
-ORDER = ['cape', 'hair_helmet', 'body', 'face', 'pants', 'boots', 'armor', 'gloves', 'helmet', 'weapon']
+ORDER = ['cape', 'body', 'face', 'hair', 'pants', 'boots', 'armor', 'gloves', 'weapon', 'halo']
+# largura do halo em relação à largura da cabeça (o anel simples é estreito; com asas abre mais) — igual ao jogo
+HALO_W = {'comum': 0.72, 'incomum': 0.95, 'raro': 1.05, 'epico': 1.05, 'lendario': 1.05, 'mitico': 1.05, 'divino': 1.12, 'celestial': 1.12}
 
 
 def sheet(frames_by_anim):
@@ -237,14 +214,13 @@ def build_class(cls):
     for base in ('body', 'hair', 'face'):
         layers[base] = save(base, lambda fr, i, a, base=base: B.layer_frame(base, fr))
     set_cls = SETS[cls]
-    # capacete e o cabelo adaptado a ele (mesmos quadros e alinhamento)
+    # halo: igual para todas as classes (4 quadros de brilho, acompanhando a cabeça)
     for r in RARITIES:
-        name = f'gs_{set_cls}_{r}_helmet'
-        hp = (name, sprite(name))
-        fr_h = save(f'helmet_{r}', lambda fr, i, a, hp=hp: B.layer_frame('helmet', fr, hp))
-        fr_c = save(f'hair_helmet_{r}', lambda fr, i, a, hp=hp: B.layer_frame('hair_helmet', fr, hp))
+        n = len(ATLAS[f'halo_{r}']['frames'])
+        hp = (r, [sprite(f'halo_{r}', k) for k in range(n)])
+        fr_h = save(f'halo_{r}', lambda fr, i, a, hp=hp: B.layer_frame('halo', {**fr, '_i': i}, hp))
         if r == 'lendario':
-            layers['helmet'], layers['hair_helmet'] = fr_h, fr_c
+            layers['halo'] = fr_h
     for piece, part in (('armor', 'armor'), ('gloves', 'arms'), ('pants', 'pants'), ('cape', 'cape')):
         for r in RARITIES:
             img = sprite(f'gs_{set_cls}_{r}_{part}')
@@ -325,9 +301,8 @@ def main():
     meta = {
         'frame': [CELL, CELL], 'feet': [AX, AY], 'columns': COLS,
         'animations': [{'name': n, 'row': i, 'frames': c, 'fps': RIG.FPS[n], 'loop': n in RIG.LOOP} for i, (n, c) in enumerate(RIG.ANIMS)],
-        'drawOrder': {'semCapacete': ['cape', 'body', 'face', 'hair', 'pants', 'boots', 'armor', 'gloves', 'weapon'],
-                      'comCapacete': ORDER},
-        'nota': 'Com o capacete helmet_<raridade>, use hair_helmet_<raridade> no lugar de hair: o cabelo já cortado pela borda daquele capacete. O capacete fica por cima da cabeça e o rosto aparece pela abertura.',
+        'drawOrder': ORDER,
+        'nota': 'O halo (halo_<raridade>) é o mesmo nas 4 classes e fica por último, flutuando acima da cabeça.',
         'rarities': RARITIES, 'files': manifest,
     }
     json.dump(meta, open(os.path.join(OUT, 'layers.json'), 'w'), indent=1, ensure_ascii=False)

@@ -95,31 +95,31 @@ Dados em `src/data/mythic.ts`; prancha em `assets-src/sheet-mythic-*.png` (`tool
 ## Equipamento em camadas e raridades
 
 8 raridades: Comum, Incomum, Raro, Épico, Lendário, Mítico, Divino (e Celestial, só de eventos). Espaços:
-arma, capacete, armadura, braços, calças, botas, capa, asas traseiras, asas frontais, aura e acessório.
+arma, halo, armadura, braços, calças, botas, capa, asas traseiras, asas frontais, aura e acessório.
 O personagem é um boneco em camadas ("layered sprites", `src/game/art/layers.ts`): o corpo base sem
 equipamento da prancha (`pd_<classe>`) e, por cima, cada peça equipada no lugar do corpo: aura, asas traseiras,
-capa, calças, botas, armadura, braços, capacete, arma na mão e asas frontais. A posição de cabeça, pescoço,
+capa, calças, botas, armadura, braços, arma na mão, asas frontais e o halo flutuando acima da cabeça. A posição de cabeça, pescoço,
 quadril, mãos e pés de cada quadro é medida por `tools/anatomy.py` (`src/data/paperdoll.json`). Golpes e poderes
-movem a arma e o corpo. Itens antigos aparecem com a peça do set da classe na mesma raridade. Sets: 3 peças = +6%, 5 peças = +15% (mais com raridade; 1,5× no set da própria
+movem a arma e o corpo. Itens antigos aparecem com a peça do set da classe na mesma raridade. Sets (armadura, braços, calças e capa): 3 peças = +6%, 4 peças = +15% (mais com raridade; 1,5× no set da própria
 classe). Arma preferida da classe: +25% no ataque da arma. A loja tem categorias (espadas, machados, lanças,
-adagas, arcos, cajados, capacetes, armaduras, braços, calças, capas, botas, asas, auras); Mítico e Divino
+adagas, arcos, cajados, halos, armaduras, braços, calças, capas, botas, asas, auras); Mítico e Divino
 custam gemas. Catálogo gerado em `src/data/gear.ts`.
 
 ## Spritesheets em camadas (spritesheets/)
 
 `python3 -I tools/build_layered.py` gera, para Guerreiro, Mago, Assassino e Arqueiro, uma spritesheet PNG por camada:
-corpo, cabelo, rosto, capacete, armadura, luvas, calças, botas, capa e arma (peças nas 8 raridades).
+corpo, cabelo, rosto, halo, armadura, luvas, calças, botas, capa e arma (peças nas 8 raridades).
 - Quadros de **128×128**, pés sempre no ponto (64, 112), fundo transparente, sem suavização.
 - 8 colunas × 10 linhas, uma linha por animação: Idle (4), Andar (8), Correr (8), Pular (4), Cair (4),
   Ataque 1 (6), Ataque 2 (6), Ataque 3 (8), Dano (4), Morte (8).
 - Todas as camadas têm os mesmos quadros, tamanho, ordem e alinhamento: troca-se armadura ou arma sem mudar a animação.
 - Ordem de desenho e dados das animações (fps, repetição) em `spritesheets/layers.json`; `preview.png`/`preview.gif` de cada classe
   e `spritesheets/preview_all.png` mostram tudo junto.
-- **Capacete**: cada capacete é medido (abertura do rosto, contorno de baixo) e cada quadro da cabeça também
-  (olhos, testa, laterais do rosto, queixo) por `tools/helmet_fit.py`. Aberto: a abertura tem a largura do rosto e
-  começa na testa; fechado: cobre o rosto até o queixo; gorro/chapéu: borda na testa. O cabelo de cada capacete
-  (`hair_helmet_<raridade>`) é cortado pela borda dele. Prévia ampliada: `python3 -I tools/helmet_preview.py`
-  → `spritesheets/helmet_check/`.
+- **Halo** (auréola, no espaço da cabeça, prancha `assets-src/sheet-halos.png`): o mesmo para as 4 classes —
+  Comum branco, Incomum verde, Raro azul com asinhas, Épico roxo com asas, Lendário dourado, Mítico vermelho
+  flamejante, Divino celestial com asas e cristais (e Celestial, só de eventos). Cada um tem 4 quadros de brilho
+  e flutua logo acima da cabeça de cada quadro da animação. Prévia ampliada: `python3 -I tools/halo_preview.py`
+  → `spritesheets/halo_check.png`.
 - O movimento vem de `tools/rig.py`, que também gera `src/data/rig.json`: o jogo anima o personagem com o mesmo rig.
 
 ## Campanha

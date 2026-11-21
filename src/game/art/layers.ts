@@ -5,7 +5,6 @@
 import { getItem } from '../../data';
 import { PREFERRED, RARITY_COLORS, RARITY_KEYS, SET_OF } from '../../data/gear';
 import PD from '../../data/paperdoll.json';
-import HELMETS from '../../data/helmets.json';
 import RIG from '../../data/rig.json';
 import { drawFit, frameRect, hasSprite } from '../../engine/sprites';
 import type { Slot } from '../../types';
@@ -16,88 +15,39 @@ interface Anatomy {
   W: number; H: number; head: number[]; neck: number; hips: number[]; feet: number[]; hands: number[]; hand_y: number;
   /** oval do rosto (cx, cy, rx, ry) e pescoço do quadro 0 */
   oval: number[]; neck0: number;
-  /** pontos da cabeça: olhos, testa, laterais e centro do rosto, queixo, largura do crânio */
-  marks: HeadMarks;
 }
 const ANAT = PD as unknown as Record<string, Anatomy[]>;
 
 /** Altura do personagem no jogo (px lógicos). */
 export const DOLL_H = 56;
 /** Até onde o capacete desce na cabeça (fração da altura da cabeça, cabelo incluído). */
-interface HeadMarks { eye: number; brow: number; fl: number; fr: number; fw: number; cx: number; chin: number; skullW: number }
-interface HelmetInfo {
-  w: number; h: number; box: number[]; open: number[] | null; bottom: number[]; rimW: number | null; rimCx: number | null;
-  kind: 'open' | 'closed' | 'cap' | 'hat';
-}
-const HELMS = HELMETS as unknown as Record<string, HelmetInfo>;
-
 /**
- * Encaixe do capacete na cabeça do quadro (mesma regra de tools/helmet_fit.py, que gera a prévia ampliada):
- * capacete aberto → a abertura tem a largura do rosto e começa na testa; fechado → cobre o rosto até o queixo;
- * gorro/chapéu → borda principal na testa, largura do crânio. Devolve a caixa em px do quadro do corpo.
+ * Halo (auréola) no espaço da cabeça: flutua logo acima do topo da cabeça de cada quadro, centrado nela.
+ * Largura total do desenho em relação à largura da cabeça (o anel simples é estreito; com asas abre mais).
+ * Mesma regra de tools/build_layered.py.
  */
-function helmetBox(info: HelmetInfo, m: HeadMarks): [number, number, number, number] {
-  const [bx0, by0, bx1, by1] = info.box;
-  const bw = bx1 - bx0, bh = by1 - by0;
-  const sk = m.skullW;
-  let s: number, x0: number, y0: number;
-  const op = info.open;
-  if (info.kind === 'open' && op && op[3] - op[1] >= bh * 0.25) {
-    const rim = info.rimW ?? op[2] - op[0];
-    s = Math.max((sk * 1.05) / bw, Math.min((sk * 1.3) / bw, (m.fw * 1.05) / rim));
-    const cx = info.rimCx ?? (op[0] + op[2]) / 2;
-    x0 = m.cx - cx * s;
-    y0 = m.brow - 2 - op[1] * s;
-  } else if (info.kind === 'closed') {
-    s = (sk * 1.22) / bw;
-    x0 = m.cx - (bx0 + bw / 2) * s;
-    y0 = m.chin + 2 - by1 * s;
-  } else {
-    const hat = info.kind === 'hat';
-    s = (sk * (hat ? 1.35 : 1.12)) / bw;
-    const cx = m.cx - m.fw * (hat ? 0.08 : 0.12);
-    x0 = cx - (bx0 + bw / 2) * s;
-    y0 = m.brow + (hat ? 2 : 1) - rimOf(info) * s;
-  }
-  return [x0, y0, x0 + info.w * s, y0 + info.h * s];
-}
+const HALO_W: Record<string, number> = { comum: 0.72, incomum: 0.95, raro: 1.05, epico: 1.05, lendario: 1.05, mitico: 1.05, divino: 1.12, celestial: 1.12 };
+const HALO_FPS = 5;
 
-/** Borda principal (mediana do contorno de baixo no miolo do capacete). */
-function rimOf(info: HelmetInfo): number {
-  const [bx0, , bx1, by1] = info.box;
-  const q = Math.floor((bx1 - bx0) / 4);
-  const mid = info.bottom.slice(bx0 + q, bx1 - q).filter((b) => b > 0).sort((a, b) => a - b);
-  return mid.length ? mid[Math.floor(mid.length / 2)] : by1;
-}
-
-/** Área onde o cabelo aparece: abaixo da borda do capacete (o cabelo não atravessa o capacete). */
-function hairClip(ctx: CanvasRenderingContext2D, info: HelmetInfo, box: number[]): void {
-  const [x0, y0, x1] = box;
-  const s = (x1 - x0) / info.w;
-  const [bx0, by0, bx1, by1] = info.box;
-  const side = y0 + Math.min(rimOf(info), by0 + (by1 - by0) * 0.55) * s;
-  const op = info.kind === 'open' ? info.open : null;
-  const step = Math.max(1, Math.floor((bx1 - bx0) / 12));
-  ctx.beginPath();
-  ctx.moveTo(-500, side);
-  for (let x = bx0; x < bx1; x += step) {
-    let b = info.bottom[x];
-    if (b <= 0) continue;
-    if (op && op[0] <= x && x < op[2]) b = op[1] + 1;
-    ctx.lineTo(x0 + (x + 0.5) * s, y0 + b * s - 1);
-  }
-  ctx.lineTo(500, side);
-  ctx.lineTo(500, 1000);
-  ctx.lineTo(-500, 1000);
-  ctx.closePath();
-  ctx.clip();
+/** Caixa do halo no quadro do corpo (px do quadro) e o quadro de animação do halo. */
+export function haloBox(A: { head: number[] }, name: string, time: number): [number, number, number, number, number] {
+  const rar = name.replace('halo_', '');
+  const f = frameRect(name, 0);
+  const [hx0, hy0, hx1] = A.head;
+  const w = (hx1 - hx0) * (HALO_W[rar] ?? 1.05);
+  const h = f ? (w * f[1]) / f[0] : w * 0.6;
+  const cx = (hx0 + hx1) / 2;
+  // a parte de baixo do desenho fica logo acima do topo do cabelo, balançando de leve
+  const bottom = hy0 + 4 + Math.sin(time * 2.4) * 1.2;
+  return [cx - w / 2, bottom - h, cx + w / 2, bottom, Math.floor(time * HALO_FPS) % 4];
 }
 
 const WALK: Record<string, number[]> = { warrior: [1, 2, 3, 4], assassin: [1, 2, 3, 4], mage: [0, 1, 2, 1], archer: [0, 1, 2, 1] };
 
 export interface DollLook {
   body: string; cls: string;
-  helmet?: string; armor?: string; arms?: string; pants?: string; cape?: string; boots?: string;
+  /** halo (auréola) no espaço da cabeça */
+  helmet?: string; haloColor: string; armor?: string; arms?: string; pants?: string; cape?: string; boots?: string;
   wings?: string; wingsFront?: string; aura?: string; auraColor: string; wingsGlow: boolean;
   weapon: string; weaponKind: string; weaponColor: string; weaponRarity: number; weaponUp: number;
 }
@@ -129,6 +79,15 @@ function piece(p: Progress, slot: Slot, setCls: string, part: string): string | 
   const name = `gs_${setCls}_${RARITY_KEYS[Math.min(7, e.rarity ?? 0)]}_${part}`;
   return hasSprite(name) ? name : undefined;
 }
+/** Halo do espaço da cabeça: halo_<raridade> (capacetes antigos viram o halo da mesma raridade). */
+function halo(p: Progress): string | undefined {
+  const id = p.equipped.helmet;
+  if (!id) return undefined;
+  const e = getItem(id);
+  const name = e.icon?.startsWith('halo_') ? e.icon : `halo_${RARITY_KEYS[Math.min(7, e.rarity ?? 0)]}`;
+  return hasSprite(name) ? name : undefined;
+}
+
 function generic(p: Progress, slot: Slot, prefix: string): string | undefined {
   const id = p.equipped[slot];
   if (!id) return undefined;
@@ -150,7 +109,7 @@ export function dollLook(p: Progress): DollLook {
   const weapon = we?.icon?.startsWith('gw_') && hasSprite(we.icon) ? we.icon : `gw_${kind}_${RARITY_KEYS[Math.min(7, wr)]}`;
   return {
     body: `pd_${cls}`, cls,
-    helmet: piece(p, 'helmet', cls, 'helmet'), armor: piece(p, 'armor', cls, 'armor'), arms: piece(p, 'gloves', cls, 'arms'),
+    helmet: halo(p), haloColor: RARITY_COLORS[Math.max(0, rarityOf(p, 'helmet'))], armor: piece(p, 'armor', cls, 'armor'), arms: piece(p, 'gloves', cls, 'arms'),
     pants: piece(p, 'pants', cls, 'pants'), cape: piece(p, 'cape', cls, 'cape'), boots: generic(p, 'boots', 'gb'),
     wings: generic(p, 'wings', 'gwb'), wingsFront: generic(p, 'wingsFront', 'gwf'), aura: generic(p, 'aura', 'gau'),
     auraColor: RARITY_COLORS[Math.max(0, rarityOf(p, 'aura'))],
@@ -230,26 +189,18 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     ctx.restore();
   }
   // corpo base; com capacete: cabelo cortado pela borda do capacete, rosto e pele, e o capacete por cima
-  let helmetLater: (() => void) | null = null;
-  const hinfo = L.helmet ? HELMS[L.helmet] : undefined;
-  if (L.helmet && hinfo && hasSprite(`${L.body}_skin`)) {
-    const [hx0_, hy0_, hx1_, hy1_] = helmetBox(hinfo, A.marks);
-    const box = [X(hx0_), Y(hy0_), X(hx1_), Y(hy1_)];
-    ctx.save();
-    hairClip(ctx, hinfo, box);
-    drawFit(ctx, `${L.body}_hair`, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
-    ctx.restore();
-    drawFit(ctx, `${L.body}_skin`, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
-    helmetLater = () => drawFit(ctx, L.helmet!, box[0], box[1], box[2], box[3], 'fill', 'top', 0, fl);
-  } else {
-    drawFit(ctx, L.body, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
-    if (L.helmet) helmetLater = () => drawFit(ctx, L.helmet!, X(A.head[0]), Y(A.head[1]) - 4, X(A.head[2]), Y(A.marks.brow), 'contain', 'bottom', 0, fl);
-  }
+  drawFit(ctx, L.body, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
   if (L.pants) drawFit(ctx, L.pants, X(hx0) - 3, Y(hy0) - 1, X(hx1) + 3, Y(fy0) + 1, 'fill', 'top', 0, fl);
   if (L.boots) drawFit(ctx, L.boots, X(fx0) - 1, Y(fy0) - 4, X(fx1) + 1, Y(fy1) + 1, 'fill', 'top', 0, fl);
   if (L.armor) drawFit(ctx, L.armor, cx - span * 0.5, neck - 2, cx + span * 0.5, Y(hy0) + 3, 'fill', 'top', 0, fl);
   if (L.arms) drawFit(ctx, L.arms, X(hl) - 1, handY - 6, X(hr) + 1, handY + 2, 'fill', 'top', 0, fl);
-  if (helmetLater) helmetLater();
+  // halo flutuando acima da cabeça (brilho por cima, sem esconder o cabelo)
+  if (L.helmet) {
+    const [h0, h1, h2, h3, hf] = haloBox(A, L.helmet, time);
+    const bx = [X(h0), Y(h1), X(h2), Y(h3)];
+    glow(ctx, (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2, (bx[2] - bx[0]) * 0.55, L.haloColor, 0.22);
+    drawFit(ctx, L.helmet, bx[0], bx[1], bx[2], bx[3], 'fill', 'top', hf, fl);
+  }
   // arma na mão da frente (pivô no cabo, embaixo à esquerda do desenho)
   const wr = frameRect(L.weapon);
   if (wr) {

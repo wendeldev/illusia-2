@@ -694,7 +694,7 @@ export class Ui {
       });
       const lt = top + 42;
       const cat = SHOP_CATEGORIES[m.cat][0];
-      if (['helmet', 'armor', 'arms', 'pants', 'cape'].includes(cat)) {
+      if (['armor', 'arms', 'pants', 'cape'].includes(cat)) {
         const label = m.allSets ? 'Mostrando: todas as classes' : `Mostrando: set do ${SET_NAMES[SET_OF[progress.classId ?? 'warrior']]}`;
         text(ctx, label + ' (toque para trocar)', x + w - 14, y + 16 + 22, { size: 8, align: 'right', outline: false, color: '#9cc4ff' });
         this.regions.push({ x: x + w - 220, y: y + 28, w: 210, h: 18, fn: () => { m.allSets = !m.allSets; m.sel = 0; m.scroll = 0; } });
@@ -880,7 +880,7 @@ export class Ui {
     const s = world.stats;
     text(ctx, `ATQ ${s.atk} · DEF ${s.def} · HP ${s.maxHp} · MP ${s.maxMp} · CRÍT ${Math.round(s.crit * 100)}%`, cx, top + 232, { size: 10, align: 'center', color: '#9cc4ff' });
     const sb = setBonus(progress);
-    if (sb) text(ctx, `Set ${SET_NAMES[sb.cls]} ${sb.pieces}/5 (${RARITY_NAMES[sb.rarity]}): ${sb.label}`, cx, top + 248, { size: 9, align: 'center', color: '#ffd36b' });
+    if (sb) text(ctx, `Set ${SET_NAMES[sb.cls]} ${sb.pieces}/4 (${RARITY_NAMES[sb.rarity]}): ${sb.label}`, cx, top + 248, { size: 9, align: 'center', color: '#ffd36b' });
     void upgradeMul;
   }
 

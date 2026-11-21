@@ -43,7 +43,7 @@ export function collectionCount(p: Progress): { normal: number; event: number } 
 export const SLOT_NAMES: Record<Slot, string> = {
   weapon: 'Arma',
   armor: 'Armadura',
-  helmet: 'Elmo',
+  helmet: 'Halo',
   accessory: 'Acessório',
   gloves: 'Braços',
   boots: 'Botas',
@@ -69,7 +69,7 @@ export function levelPower(level: number): number {
   return 1 + (level - 1) * 0.105;
 }
 
-/** Bônus de set: 3 peças do mesmo set = +6%; 5 peças = +15% (ATQ, DEF, HP). Set da própria classe vale 1,5×.
+/** Bônus de set: 3 peças do mesmo set = +6%; 4 peças (completo) = +15% (ATQ, DEF, HP). Set da própria classe vale 1,5×.
  *  A raridade do set é a menor entre as peças contadas. */
 export function setBonus(p: Progress): { cls: string; pieces: number; rarity: number; mul: number; label: string } | null {
   const by: Record<string, number[]> = {};
@@ -83,7 +83,7 @@ export function setBonus(p: Progress): { cls: string; pieces: number; rarity: nu
     if (rs.length < 3) continue;
     const own = SET_OF[p.classId ?? 'warrior'] === cls ? 1.5 : 1;
     const rarity = Math.min(...rs);
-    const base = (rs.length >= 5 ? 0.15 : 0.06) + rarity * 0.01;
+    const base = (rs.length >= 4 ? 0.15 : 0.06) + rarity * 0.01;
     const mul = base * own;
     if (!best || mul > best.mul) best = { cls, pieces: rs.length, rarity, mul, label: `ATQ/DEF/HP +${Math.round(mul * 100)}%${own > 1 ? ' (sua classe)' : ''}` };
   }

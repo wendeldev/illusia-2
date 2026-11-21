@@ -69,6 +69,11 @@ export function loadProgress(): Progress {
     const parsed = JSON.parse(raw) as Partial<Progress>;
     const p = { ...newProgress(), ...parsed };
     if (!parsed.version || parsed.version < 2) migrateLevels(p);
+    // capacetes dos sets viraram halos da mesma raridade
+    const helm = (id: string) => id.replace(/^ar_\w+?_helmet_(\d)$/, 'hl_$1');
+    p.owned = [...new Set(p.owned.map(helm))];
+    for (const slot of Object.keys(p.equipped) as Slot[]) { const id = p.equipped[slot]; if (id) p.equipped[slot] = helm(id); }
+    p.upgrades = Object.fromEntries(Object.entries(p.upgrades ?? {}).map(([k, v]) => [helm(k), v]));
     // descarta itens que não existem mais (conteúdo mudou entre versões)
     p.owned = p.owned.filter(hasItem);
     p.bag = { ...(p.bag ?? {}) };

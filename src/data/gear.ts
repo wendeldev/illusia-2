@@ -24,7 +24,6 @@ export const SET_OF: Record<string, string> = { warrior: 'warrior', monk: 'warri
 export const SET_NAMES: Record<string, string> = { warrior: 'Guerreiro', assassin: 'Assassino', mage: 'Mago', archer: 'Arqueiro' };
 
 const PIECES: { key: string; slot: Slot; name: string; def?: number; hp?: number; atk?: number; mp?: number; crit?: number }[] = [
-  { key: 'helmet', slot: 'helmet', name: 'Capacete', def: 2, hp: 15 },
   { key: 'armor', slot: 'armor', name: 'Armadura', def: 4, hp: 35 },
   { key: 'arms', slot: 'gloves', name: 'Braçadeiras', atk: 2, def: 1 },
   { key: 'pants', slot: 'pants', name: 'Calças', def: 3, hp: 20 },
@@ -62,12 +61,14 @@ for (let r = 0; r < 8; r++) {
         def: p.def ? round(p.def * m) : undefined, hp: p.hp ? Math.round(p.hp * m * f.hp) : undefined,
         atk: p.atk ? round(p.atk * m * f.atk) : undefined, mp: p.mp ? Math.round(p.mp * m * f.mp) : undefined,
         crit: p.crit ? round(p.crit * Math.sqrt(m) * f.crit * 100) / 100 : undefined,
-        icon: `gs_${cls}_${key}_${p.key}`, description: `Peça do set ${rn} do ${SET_NAMES[cls]}. Set completo (5 peças) dá bônus.`,
+        icon: `gs_${cls}_${key}_${p.key}`, description: `Peça do set ${rn} do ${SET_NAMES[cls]}. Set completo (4 peças) dá bônus.`,
         dropOnly: event, ...price(r, 1),
       });
     }
   }
   const extra: [string, Slot, string, string, Partial<EquipmentDef>][] = [
+    // halo (auréola): ocupa o espaço da cabeça, o mesmo para todas as classes
+    ['hl', 'helmet', 'Halo', 'halo', { def: round(2 * m), hp: Math.round(15 * m), mp: Math.round(5 * m) }],
     ['bt', 'boots', 'Botas', 'gb', { def: round(1 * m), hp: Math.round(12 * m) }],
     ['wb', 'wings', 'Asas', 'gwb', { atk: round(3 * m), hp: Math.round(20 * m) }],
     ['wf', 'wingsFront', 'Asas Frontais', 'gwf', { mp: Math.round(15 * m), crit: round(0.008 * Math.sqrt(m) * 100) / 100 }],
@@ -82,15 +83,15 @@ for (let r = 0; r < 8; r++) {
 }
 export const GEAR: EquipmentDef[] = out;
 
-/** Set de uma classe numa raridade (5 peças + arma preferida). */
+/** Recompensa de uma classe numa raridade: set (4 peças) + halo + arma preferida. */
 export function setFor(classId: string | undefined, rarity: number): string[] {
   const cls = SET_OF[classId ?? 'warrior'] ?? 'warrior';
   const weapon = (PREFERRED[classId ?? 'warrior'] ?? ['sword'])[0];
-  return [...PIECES.map((p) => `ar_${cls}_${p.key}_${rarity}`), `wp_${weapon}_${rarity}`];
+  return [`hl_${rarity}`, ...PIECES.map((p) => `ar_${cls}_${p.key}_${rarity}`), `wp_${weapon}_${rarity}`];
 }
 
 export const SHOP_CATEGORIES: [string, string][] = [
   ['sword', 'Espadas'], ['axe', 'Machados'], ['spear', 'Lanças'], ['dagger', 'Adagas'], ['bow', 'Arcos'], ['staff', 'Cajados'],
-  ['helmet', 'Capacetes'], ['armor', 'Armaduras'], ['arms', 'Braços'], ['pants', 'Calças'], ['cape', 'Capas'],
+  ['hl', 'Halos'], ['armor', 'Armaduras'], ['arms', 'Braços'], ['pants', 'Calças'], ['cape', 'Capas'],
   ['bt', 'Botas'], ['wb', 'Asas T.'], ['wf', 'Asas F.'], ['au', 'Auras'], ['classic', 'Clássicos'],
 ];

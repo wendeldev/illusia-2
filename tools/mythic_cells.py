@@ -259,3 +259,49 @@ def load_bodies():
     for (r, c), im in g.items():
         out.setdefault(BODY_CLASSES[r], [None] * 5)[c] = im
     return out
+
+# auréolas (halo) por raridade: 4 variações de cada (biblioteca) = 4 quadros de animação
+HALO_RAR = ['comum', 'incomum', 'raro', 'epico', 'lendario', 'mitico', 'divino']
+def glow_alpha(im, floor=0.1):
+    """Luz sobre fundo preto → transparência: alfa = brilho do pixel, cor = cor sem o preto."""
+    im = im.convert('RGBA')
+    px = im.load()
+    W, H = im.size
+    for y in range(H):
+        for x in range(W):
+            r, g, b, _ = px[x, y]
+            m = max(r, g, b) / 255
+            if m < floor:
+                px[x, y] = (0, 0, 0, 0)
+                continue
+            a = min(1.0, (m - floor) / (1 - floor) * 1.25)
+            px[x, y] = (min(255, round(r / m)), min(255, round(g / m)), min(255, round(b / m)), round(a * 255))
+    # recorte pelo desenho visível (a névoa fraca do brilho não conta), com 2 px de folga
+    bb = im.getchannel('A').point(lambda v: 255 if v > 70 else 0).getbbox()
+    if not bb:
+        return im
+    return im.crop((max(0, bb[0] - 2), max(0, bb[1] - 2), min(W, bb[2] + 2), min(H, bb[3] + 2)))
+
+
+def load_halos():
+    S = sheet('halos')
+    cols = [918, 1006, 1093, 1180, 1266, 1352, 1438, 1525]
+    rows = [540, 638, 730, 823, 915]
+    out = {}
+    for ri in range(4):
+        for ci in range(7):
+            cell = S.crop((cols[ci] + 4, rows[ri] + 4, cols[ci + 1] - 4, rows[ri + 1] - 4))
+            # tira as linhas da grade (linha quase toda clara e sem cor)
+            px = cell.load()
+            W_, H_ = cell.size
+            nlit = [sum(1 for x in range(W_) if max(px[x, y][:3]) > 60) for y in range(H_)]
+            for y in range(H_):
+                lit = [px[x, y] for x in range(W_) if max(px[x, y][:3]) > 60]
+                around = [nlit[yy] for yy in (y - 3, y - 2, y + 2, y + 3) if 0 <= yy < H_]
+                thin = around and max(around) < W_ * 0.15
+                if len(lit) > W_ * 0.7 and thin and all(max(c[:3]) - min(c[:3]) < 40 for c in lit):
+                    for yy in range(max(0, y - 1), min(cell.size[1], y + 2)):
+                        for x in range(cell.size[0]):
+                            px[x, yy] = (0, 0, 0, 255)
+            out.setdefault(HALO_RAR[ci], [None] * 4)[ri] = glow_alpha(cell)
+    return out
