@@ -36,6 +36,8 @@ export interface Progress {
   vipPass?: boolean;
   /** eventos vencidos: chefe -> bits (1 = Difícil, 2 = Épico) */
   eventsCleared?: Record<string, number>;
+  /** equipamentos já vistos no inventário (os outros aparecem com o selo "N" de novo) */
+  seen?: string[];
 }
 
 export interface QuestState {
@@ -76,6 +78,8 @@ export function loadProgress(): Progress {
     p.upgrades = Object.fromEntries(Object.entries(p.upgrades ?? {}).map(([k, v]) => [helm(k), v]));
     // descarta itens que não existem mais (conteúdo mudou entre versões)
     p.owned = p.owned.filter(hasItem);
+    // saves de antes do selo "novo": tudo o que já tinha conta como visto
+    p.seen = Array.isArray(p.seen) ? p.seen : [...p.owned];
     p.bag = { ...(p.bag ?? {}) };
     p.upgrades = { ...(p.upgrades ?? {}) };
     p.cards = Array.isArray(p.cards) ? [p.cards[0] ?? null, p.cards[1] ?? null] : [null, null];

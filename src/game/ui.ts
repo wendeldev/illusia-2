@@ -1,17 +1,18 @@
-import { CLASSES, EQUIPMENT, getClass, getEnemy, getItem, getStage, REGIONS, STAGES_PER_REGION, stageId, type QuestDef } from '../data';
+import { CLASSES, EQUIPMENT, getClass, hasItem, getEnemy, getItem, getStage, REGIONS, STAGES_PER_REGION, stageId, type QuestDef } from '../data';
 import type { Sfx } from '../engine/audio';
 import type { Music } from '../engine/music';
-import { drawSprite, drawSpriteH, drawSub, frameSize, hasSprite, spritesReady, tileAspect } from '../engine/sprites';
+import { drawFit, drawSprite, drawSpriteH, drawSub, frameSize, hasSprite, spritesReady, tileAspect } from '../engine/sprites';
 import { glow } from './art/scene3d';
 import { drawDollIdle } from './art/layers';
-import { RARITY_COLORS, RARITY_NAMES, SET_NAMES, SET_OF, SHOP_CATEGORIES, setFor } from '../data/gear';
+import { RARITY_COLORS, RARITY_NAMES, SET_NAMES, SET_OF, SHOP_CATEGORIES, WEAPON_KINDS, setFor } from '../data/gear';
+import { gearScore } from './loot';
 import { DIFFICULTIES, EVENT_PHASES, MYTHIC_BOSSES, rewardRarity, TICKET_OF, type MythicBoss } from '../data/mythic';
 import { rewardText, type QuestBook } from './quests';
 import { assignSlot, SLOT_COUNT, slotSkills } from './skillslots';
 import { affinity, BAG_ITEMS, bagItem, SHOP_GOODS, type BagKind } from '../data/items';
 import { collectionCount, setBonus, upgradeMul } from './stats';
 import { BUFFS } from './world';
-import type { Slot } from '../types';
+import type { EquipmentDef, Slot } from '../types';
 import { countStars, DAMAGE_LIMIT, drawStar, drawStars, formatTime, type StageResult } from './stars';
 import type { Input, TouchButton } from '../engine/input';
 import { VIEW_H, VIEW_W } from '../engine/view';
@@ -43,6 +44,9 @@ export interface GameApi {
   upgrade(itemId: string): void;
   startArena(tier: number): void;
   startEvent(bossKey: string, diff: number): void;
+  unequip(slot: Slot): void;
+  sell(itemId: string): void;
+  sellValue(itemId: string): { gold: number; gems: number };
   eventRun: { boss: MythicBoss; diff: number; phase: number; timeLeft: number; done: boolean } | null;
 }
 
@@ -54,7 +58,7 @@ type Modal =
   | { kind: 'skills'; slot: number; sel: number }
   | { kind: 'result'; r: StageResult; t: number; shown: number }
   | { kind: 'shop'; npc: NpcDef; sel: number; scroll: number; tab: number; cat: number; allSets?: boolean }
-  | { kind: 'bag'; tab: number; sel: string | null }
+  | { kind: 'bag'; tab: number; sel: string | null; filter: number; page: number; sort: number }
   | { kind: 'reward'; title: string; items: { icon: string; label: string }[]; t: number }
   | { kind: 'arena' }
   | { kind: 'events'; sel: number; diff: number }
@@ -224,7 +228,7 @@ export class Ui {
   }
 
   openBag(tab = 0): void {
-    this.modal = { kind: 'bag', tab, sel: null };
+    this.modal = { kind: 'bag', tab, sel: null, filter: 0, page: 0, sort: 0 };
     this.game.sfx.play('ui');
   }
 
@@ -767,50 +771,320 @@ export class Ui {
     });
   }
 
-  // ───────────────────────── bolsa ─────────────────────────
+  // ───────────────────────── inventário (visual da prancha de inventário) ─────────────────────────
+
+  /** Sprite da interface encaixado na caixa (mantém a proporção). */
+  private ui(ctx: CanvasRenderingContext2D, name: string, x: number, y: number, w: number, h: number, alpha = 1): void {
+    if (!hasSprite(name)) return;
+    const a = ctx.globalAlpha;
+    ctx.globalAlpha = a * alpha;
+    ctx.imageSmoothingEnabled = true;
+    drawFit(ctx, name, x, y, x + w, y + h, 'contain', 'mid');
+    ctx.globalAlpha = a;
+  }
+
+  /** Painel escuro com moldura dourada. */
+  private goldPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#1d1418'); g.addColorStop(1, '#0d0a0e');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#6b4a1c'; ctx.lineWidth = 3; ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+    ctx.strokeStyle = '#e0b04f'; ctx.lineWidth = 1; ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+    ctx.fillStyle = '#ffd36b';
+    for (const [cx, cy] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]) { ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI / 4); ctx.fillRect(-2.5, -2.5, 5, 5); ctx.restore(); }
+  }
+
+  /** Moldura de raridade + ícone do item (espaços, grade e detalhes). */
+  private itemCell(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, id: string | undefined, selected = false): void {
+    const e = id ? getItem(id) : null;
+    const r = e ? Math.min(6, e.rarity ?? 0) : -1;
+    if (selected) glow(ctx, x + s / 2, y + s / 2, s * 0.9, '#ffb840', 0.45);
+    this.ui(ctx, e ? `ui_rar_${r}` : 'ui_slot_empty', x, y, s, s);
+    if ((e?.rarity ?? 0) >= 7) { ctx.strokeStyle = RARITY_COLORS[7]; ctx.lineWidth = 1.5; ctx.strokeRect(x + 2, y + 2, s - 4, s - 4); }
+    if (e) this.icon(ctx, e.icon ?? 'icon_' + id, x + s / 2, y + s / 2, s * 0.72);
+    if (selected) { ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 2; ctx.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1); }
+  }
 
   private drawBag(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'bag' }>): void {
+    const { progress } = this.game;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    this.regions.push({ x: 0, y: 0, w: VIEW_W, h: VIEW_H, fn: () => {} });
+    const x = 6, y = 4, w = VIEW_W - 12, h = VIEW_H - 8;
+    ctx.fillStyle = '#0a0709';
+    ctx.fillRect(x, y, w, h);
+    // topo: título, moedas e fechar
+    this.ui(ctx, 'ui_title_inv', x + 4, y + 2, 140, 27);
+    let tx = x + w - 40;
+    this.ui(ctx, 'ui_btn_close', tx, y + 3, 32, 25);
+    this.regions.push({ x: tx - 4, y, w: 40, h: 32, fn: () => this.close() });
+    const money = (icon: string, v: string, color: string) => {
+      const bw = 96;
+      tx -= bw + 8;
+      ctx.fillStyle = '#1a1214'; ctx.fillRect(tx + 10, y + 8, bw - 10, 16);
+      ctx.strokeStyle = '#8a6420'; ctx.lineWidth = 1; ctx.strokeRect(tx + 10.5, y + 8.5, bw - 11, 15);
+      this.ui(ctx, icon, tx, y + 4, 24, 24);
+      text(ctx, v, tx + bw - 6, y + 16, { size: 11, align: 'right', color, outline: false });
+    };
+    money('ui_gem_blue', progress.gems.toLocaleString('pt-BR'), '#cfe6ff');
+    money('ui_coin', progress.gold.toLocaleString('pt-BR'), '#ffe9a8');
+    // abas da esquerda
+    const top = y + 34, bodyH = h - 38;
+    const TABS: [string, string][] = [['gw_sword_lendario', 'Equipamento'], ['ui_tab_items', 'Itens'], ['ui_tab_mats', 'Materiais'], ['ui_tab_cons', 'Cartas/Orbes'], ['ui_tab_other', 'Coleção']];
+    const lw = 98;
+    this.goldPanel(ctx, x, top, lw + 8, bodyH);
+    TABS.forEach(([ic, label], i) => {
+      const ty = top + 8 + i * 40, on = i === m.tab;
+      const g = ctx.createLinearGradient(0, ty, 0, ty + 34);
+      if (on) { g.addColorStop(0, '#8a1f1f'); g.addColorStop(1, '#4a0c0e'); } else { g.addColorStop(0, '#2a2226'); g.addColorStop(1, '#151013'); }
+      ctx.fillStyle = g;
+      ctx.fillRect(x + 6, ty, lw - 4, 34);
+      ctx.strokeStyle = on ? '#ffd36b' : '#5a4530'; ctx.lineWidth = 1;
+      ctx.strokeRect(x + 6.5, ty + 0.5, lw - 5, 33);
+      this.ui(ctx, ic, x + 9, ty + 5, 24, 24);
+      text(ctx, label, x + 36, ty + 17, { size: label.length > 10 ? 8 : 9, outline: false, color: on ? '#ffffff' : '#d8c8a8' });
+      this.regions.push({ x: x + 6, y: ty, w: lw - 4, h: 34, fn: () => { m.tab = i; m.sel = null; m.page = 0; this.game.sfx.play('ui'); } });
+    });
+    const cx0 = x + lw + 12, cw = x + w - cx0;
+    if (m.tab === 0) return this.drawInventory(ctx, m, cx0, top, cw, bodyH);
+    // outras abas: grade de itens empilháveis
+    this.goldPanel(ctx, cx0, top, cw, bodyH);
+    this.drawBagItems(ctx, m, cx0 + 8, top + 8, cw - 16);
+  }
+
+  /** Abas Itens, Materiais, Cartas/Orbes e Coleção. */
+  private drawBagItems(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'bag' }>, x: number, top: number, w: number): void {
     const { progress, world } = this.game;
-    const x = 12, y = 8, w = VIEW_W - 24, h = VIEW_H - 16;
-    this.panel(ctx, x, y, w, h, '🎒 Bolsa');
-    text(ctx, `${progress.gold} G`, x + w - 120, y + 16, { size: 11, align: 'right', color: '#ffd36b' });
-    this.icon(ctx, 'it_gem_blue', x + w - 108, y + 16, 12);
-    text(ctx, `${progress.gems}`, x + w - 98, y + 16, { size: 11, color: '#9fd3ff' });
-    this.tabs(ctx, x + 10, y + 30, ['Equipado', 'Itens', 'Materiais', 'Cartas e Orbes', 'Coleção'], m.tab, (i) => { m.tab = i; m.sel = null; });
-    const top = y + 58;
-    if (m.tab === 0) return this.drawEquipped(ctx, x, top, w);
     const kinds: Record<number, BagKind[]> = { 1: ['potion', 'chest', 'key', 'ticket'], 2: ['material', 'crystal', 'evolution', 'quest'], 3: ['card', 'rune', 'orb'], 4: ['collectible', 'event'] };
     const showAll = m.tab === 4;
     let list = BAG_ITEMS.filter((b) => kinds[m.tab].includes(b.kind) && (showAll || (progress.bag[b.id] ?? 0) > 0));
     if (m.tab === 3) {
-      // espaços de cartas e runa + bônus da classe
       const cls = getClass(progress.classId);
-      text(ctx, `Cartas (2) e Runa (1) · bônus para ${cls.name}:`, x + 14, top + 6, { size: 10, outline: false, color: '#ffe9a8' });
+      text(ctx, `Cartas (2) e Runa (1) · bônus para ${cls.name}:`, x + 4, top + 6, { size: 10, outline: false, color: '#ffe9a8' });
       const slots = [progress.cards[0], progress.cards[1], progress.rune];
       slots.forEach((id, k) => {
-        const sx = x + 14 + k * 50, sy = top + 16;
-        ctx.fillStyle = '#252e45';
-        ctx.fillRect(sx, sy, 44, 44);
-        ctx.strokeStyle = k === 2 ? '#c49bff' : '#e0b04f';
-        ctx.strokeRect(sx, sy, 44, 44);
-        if (id) this.icon(ctx, 'it_' + id, sx + 22, sy + 22, 38);
-        else text(ctx, k === 2 ? 'Runa' : 'Carta', sx + 22, sy + 22, { size: 8, align: 'center', outline: false, color: '#667' });
+        const sx = x + 4 + k * 48, sy = top + 16;
+        this.ui(ctx, id ? (k === 2 ? 'ui_rar_3' : 'ui_rar_4') : 'ui_slot_empty', sx, sy, 42, 42);
+        if (id) this.icon(ctx, 'it_' + id, sx + 21, sy + 21, 30);
+        else text(ctx, k === 2 ? 'Runa' : 'Carta', sx + 21, sy + 21, { size: 8, align: 'center', outline: false, color: '#776' });
       });
       const s = world.stats;
-      text(ctx, `Poderes ${Math.round(s.skillMul * 100)}% · Recarga ${Math.round(s.cdMul * 100)}% · Dano recebido ${Math.round(s.dmgTaken * 100)}% · Ouro/EXP ${Math.round(s.goldMul * 100)}%`, x + 170, top + 26, { size: 9, outline: false, color: '#9cc4ff', bold: false });
-      text(ctx, 'Orbes somam pontos permanentes. ★ = sua classe aproveita mais.', x + 170, top + 44, { size: 9, outline: false, color: '#aab4cc', bold: false });
+      text(ctx, `Poderes ${Math.round(s.skillMul * 100)}% · Recarga ${Math.round(s.cdMul * 100)}% · Dano recebido ${Math.round(s.dmgTaken * 100)}% · Ouro/EXP ${Math.round(s.goldMul * 100)}%`, x + 154, top + 26, { size: 9, outline: false, color: '#9cc4ff', bold: false });
+      text(ctx, 'Orbes somam pontos permanentes. ★ = sua classe aproveita mais.', x + 154, top + 44, { size: 9, outline: false, color: '#aab4cc', bold: false });
       list = list.sort((a, b) => (a.kind === 'orb' ? 1 : 0) - (b.kind === 'orb' ? 1 : 0));
-      this.grid(ctx, m, list, x + 10, top + 68, w - 20, 3);
+      this.grid(ctx, m, list, x, top + 66, w, 3);
       return;
     }
     if (m.tab === 4) {
       const col = collectionCount(progress);
-      text(ctx, `Álbum: ${col.normal}/27 coletáveis · ${col.event}/8 itens de evento · bônus atual: +${Math.floor(col.normal / 4) * 2 + col.event * 3}% ataque e vida`, x + 14, top + 6, { size: 10, outline: false, color: '#ffe9a8' });
-      this.grid(ctx, m, list, x + 10, top + 18, w - 20, 4, true);
+      text(ctx, `Álbum: ${col.normal}/27 coletáveis · ${col.event}/8 itens de evento · bônus: +${Math.floor(col.normal / 4) * 2 + col.event * 3}% ataque e vida`, x + 4, top + 6, { size: 10, outline: false, color: '#ffe9a8' });
+      this.grid(ctx, m, list, x, top + 18, w, 4, true);
       return;
     }
     if (!list.length) text(ctx, 'Nada aqui ainda. Derrote inimigos e abra baús!', x + w / 2, top + 80, { size: 12, align: 'center', outline: false, color: '#aab4cc' });
-    this.grid(ctx, m, list, x + 10, top, w - 20, 4);
+    this.grid(ctx, m, list, x, top, w, 5);
+  }
+
+  /** Equipamento: personagem com os 11 espaços, inventário com filtros e detalhes do item escolhido. */
+  private drawInventory(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'bag' }>, x: number, top: number, w: number, h: number): void {
+    const { progress, world } = this.game;
+    const t = performance.now() / 1000;
+    // ── personagem ──
+    const pw = 176;
+    this.goldPanel(ctx, x, top, pw, h);
+    const cls = getClass(progress.classId);
+    ctx.fillStyle = '#1e1619'; ctx.fillRect(x + 30, top + 6, pw - 60, 16);
+    ctx.strokeStyle = '#8a6420'; ctx.lineWidth = 1; ctx.strokeRect(x + 30.5, top + 6.5, pw - 61, 15);
+    text(ctx, `Nv. ${progress.level}  ${cls.name}`, x + pw / 2, top + 14, { size: 10, align: 'center', outline: false, color: '#ffd36b' });
+    const S = 34, step = 37;
+    const LEFT: Slot[] = ['helmet', 'armor', 'gloves', 'pants', 'boots', 'weapon'];
+    const RIGHT: Slot[] = ['wings', 'wingsFront', 'cape', 'aura', 'accessory'];
+    const slotAt = (slot: Slot, sx: number, sy: number) => {
+      const id = progress.equipped[slot];
+      this.itemCell(ctx, sx, sy, S, id, !!id && m.sel === id);
+      if (!id) text(ctx, slot === 'wingsFront' ? 'Asas F.' : slot === 'wings' ? 'Asas' : SLOT_NAMES[slot], sx + S / 2, sy + S / 2, { size: 6, align: 'center', outline: false, color: '#8a7a6a' });
+      this.regions.push({ x: sx, y: sy, w: S, h: S, fn: () => { if (id) { m.sel = id; this.markSeen(id); } this.game.sfx.play('ui'); } });
+    };
+    LEFT.forEach((s, i) => slotAt(s, x + 6, top + 28 + i * step));
+    RIGHT.forEach((s, i) => slotAt(s, x + pw - 6 - S, top + 28 + i * step));
+    const fx = x + pw / 2, fy = top + 200;
+    glow(ctx, fx, fy - 30, 52, '#ffb840', 0.22);
+    ctx.strokeStyle = 'rgba(255,200,90,0.55)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(fx, fy, 30, 7, 0, 0, Math.PI * 2); ctx.stroke();
+    drawDollIdle(ctx, progress, fx, fy, 1, 1.45, t);
+    const s = world.stats;
+    const sy0 = top + h - 46;
+    ctx.fillStyle = '#160f12'; ctx.fillRect(x + 6, sy0, pw - 12, 40);
+    ctx.strokeStyle = '#6b4a1c'; ctx.strokeRect(x + 6.5, sy0 + 0.5, pw - 13, 39);
+    const st = (label: string, v: string, c: string, cx: number, cy: number) => {
+      text(ctx, label, cx, cy, { size: 8, outline: false, color: c });
+      text(ctx, v, cx + 72, cy, { size: 9, align: 'right', outline: false, color: '#ffffff' });
+    };
+    st('⚔ ATQ', `${s.atk}`, '#ffd36b', x + 12, sy0 + 10); st('🛡 DEF', `${s.def}`, '#ffd36b', x + 92, sy0 + 10);
+    st('❤ HP', `${s.maxHp}`, '#ff8a8a', x + 12, sy0 + 23); st('💧 MP', `${s.maxMp}`, '#8ac4ff', x + 92, sy0 + 23);
+    const sb = setBonus(progress);
+    text(ctx, sb ? `Set ${SET_NAMES[sb.cls]} ${sb.pieces}/4: +${Math.round(sb.mul * 100)}%` : `Crítico ${Math.round(s.crit * 100)}%`, x + pw / 2, sy0 + 34, { size: 7, align: 'center', outline: false, color: '#ffb840' });
+
+    // ── detalhes (direita) ──
+    const dw = Math.min(160, Math.max(140, w * 0.22));
+    const dx = x + w - dw;
+    this.goldPanel(ctx, dx, top, dw, h);
+    this.drawItemDetail(ctx, m, dx, top, dw, h);
+
+    // ── inventário (meio) ──
+    const gx = x + pw + 4, gw = dx - 4 - gx;
+    this.goldPanel(ctx, gx, top, gw, h);
+    const FILTERS: [string, (e: EquipmentDef) => boolean][] = [
+      ['ui_flt_all', () => true],
+      ['ui_flt_weapon', (e) => e.slot === 'weapon'],
+      ['ui_flt_armor', (e) => ['armor', 'gloves', 'pants', 'boots', 'cape'].includes(e.slot)],
+      ['ui_flt_helmet', (e) => e.slot === 'helmet'],
+      ['ui_flt_ring', (e) => e.slot === 'accessory'],
+      ['ui_flt_wings', (e) => e.slot === 'wings' || e.slot === 'wingsFront'],
+      ['ui_flt_gem', (e) => e.slot === 'aura'],
+    ];
+    const fw = Math.min(36, (gw - 12) / FILTERS.length);
+    FILTERS.forEach(([ic], i) => {
+      const bx = gx + 6 + i * fw, on = i === m.filter;
+      if (on) glow(ctx, bx + fw / 2, top + 18, fw * 0.7, '#ff7040', 0.35);
+      this.ui(ctx, ic, bx + 1, top + 6, fw - 2, 24, on ? 1 : 0.6);
+      if (on && i > 0) { ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 1.5; ctx.strokeRect(bx + 2, top + 7, fw - 4, 22); }
+      this.regions.push({ x: bx, y: top + 4, w: fw, h: 28, fn: () => { m.filter = i; m.page = 0; this.game.sfx.play('ui'); } });
+    });
+    const items = this.inventoryList(m, FILTERS[m.filter][1]);
+    const C = 34, gap = 3;
+    const cols = Math.max(1, Math.floor((gw - 12 + gap) / (C + gap)));
+    const rows = Math.max(1, Math.floor((h - 40 - 30 + gap) / (C + gap)));
+    const per = cols * rows;
+    const pages = Math.max(1, Math.ceil(items.length / per));
+    m.page = Math.min(m.page, pages - 1);
+    const ox = gx + (gw - (cols * (C + gap) - gap)) / 2;
+    for (let k = 0; k < per; k++) {
+      const id = items[m.page * per + k];
+      const cx = ox + (k % cols) * (C + gap), cy = top + 36 + Math.floor(k / cols) * (C + gap);
+      if (!id) { this.ui(ctx, 'ui_slot_off', cx, cy, C, C, 0.7); continue; }
+      const e = getItem(id);
+      this.itemCell(ctx, cx, cy, C, id, m.sel === id);
+      const lv = progress.upgrades[id] ?? 0;
+      if (lv) text(ctx, `+${lv}`, cx + 3, cy + 7, { size: 7, color: '#ffd36b' });
+      if (progress.equipped[e.slot] === id) this.ui(ctx, 'ui_badge_e', cx + C - 12, cy - 1, 13, 13);
+      else {
+        if (!(progress.seen ?? []).includes(id)) this.ui(ctx, 'ui_badge_n', cx + C - 12, cy - 1, 13, 13);
+        const cmp = this.compare(id);
+        if (cmp) this.ui(ctx, cmp > 0 ? 'ui_arrow_up' : 'ui_arrow_down', cx + C - 11, cy + C - 13, 10, 12);
+      }
+      this.regions.push({ x: cx, y: cy, w: C, h: C, fn: () => {
+        if (m.sel === id) this.game.equip(id); // toque duplo: equipar
+        else { m.sel = id; this.markSeen(id); this.game.sfx.play('ui'); }
+      } });
+    }
+    // contador e páginas
+    const by = top + h - 24;
+    ctx.fillStyle = '#1a1214'; ctx.fillRect(gx + gw / 2 - 36, by, 72, 18);
+    ctx.strokeStyle = '#8a6420'; ctx.lineWidth = 1; ctx.strokeRect(gx + gw / 2 - 35.5, by + 0.5, 71, 17);
+    text(ctx, `${progress.owned.length} / 100`, gx + gw / 2, by + 9, { size: 10, align: 'center', outline: false });
+    if (pages > 1) {
+      this.ui(ctx, 'ui_nav_left', gx + gw / 2 - 64, by - 3, 22, 24, m.page > 0 ? 1 : 0.35);
+      this.ui(ctx, 'ui_nav_right', gx + gw / 2 + 42, by - 3, 22, 24, m.page < pages - 1 ? 1 : 0.35);
+      this.regions.push({ x: gx + gw / 2 - 68, y: by - 6, w: 30, h: 30, fn: () => { m.page = Math.max(0, m.page - 1); this.game.sfx.play('ui'); } });
+      this.regions.push({ x: gx + gw / 2 + 38, y: by - 6, w: 30, h: 30, fn: () => { m.page = Math.min(pages - 1, m.page + 1); this.game.sfx.play('ui'); } });
+    }
+    // organizar
+    this.ui(ctx, 'ui_btn_sort', gx + gw - 66, by - 2, 60, 22);
+    this.regions.push({ x: gx + gw - 66, y: by - 4, w: 60, h: 26, fn: () => { m.sort = (m.sort + 1) % 2; m.page = 0; this.toast(m.sort ? 'Organizado por tipo' : 'Organizado por raridade'); this.game.sfx.play('ui'); } });
+  }
+
+  /** Equipamentos do inventário: equipados primeiro, depois por raridade (ou por tipo). */
+  private inventoryList(m: Extract<Modal, { kind: 'bag' }>, ok: (e: EquipmentDef) => boolean): string[] {
+    const { progress } = this.game;
+    const ORDER: Slot[] = ['weapon', 'helmet', 'armor', 'gloves', 'pants', 'boots', 'cape', 'wings', 'wingsFront', 'aura', 'accessory'];
+    const eq = new Set(Object.values(progress.equipped));
+    return progress.owned.filter((id) => hasItem(id) && ok(getItem(id))).sort((a, b) => {
+      const ea = getItem(a), eb = getItem(b);
+      const q = (eq.has(b) ? 1 : 0) - (eq.has(a) ? 1 : 0);
+      if (q) return q;
+      const byRar = (eb.rarity ?? 0) - (ea.rarity ?? 0);
+      const bySlot = ORDER.indexOf(ea.slot) - ORDER.indexOf(eb.slot);
+      return (m.sort ? bySlot || byRar : byRar || bySlot) || gearScore(eb) - gearScore(ea);
+    });
+  }
+
+  /** +1 melhor, -1 pior que o equipado no mesmo espaço, 0 igual/sem comparação. */
+  private compare(id: string): number {
+    const { progress } = this.game;
+    const e = getItem(id);
+    const cur = progress.equipped[e.slot];
+    if (!cur) return 1;
+    const a = gearScore(e, upgradeMul(progress, id)), b = gearScore(getItem(cur), upgradeMul(progress, cur));
+    return a > b * 1.001 ? 1 : a < b * 0.999 ? -1 : 0;
+  }
+
+  private markSeen(id: string): void {
+    const p = this.game.progress;
+    p.seen ??= [];
+    if (!p.seen.includes(id)) { p.seen.push(id); this.game.save(); }
+  }
+
+  /** Painel de detalhes: atributos, comparação com o equipado e os botões Equipar/Desequipar/Vender. */
+  private drawItemDetail(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'bag' }>, x: number, top: number, w: number, h: number): void {
+    const { progress } = this.game;
+    const id = m.sel && progress.owned.includes(m.sel) ? m.sel : null;
+    if (!id) {
+      text(ctx, 'Toque num item para', x + w / 2, top + h / 2 - 8, { size: 9, align: 'center', outline: false, color: '#aab4cc' });
+      text(ctx, 'ver os detalhes', x + w / 2, top + h / 2 + 6, { size: 9, align: 'center', outline: false, color: '#aab4cc' });
+      return;
+    }
+    const e = getItem(id);
+    const r = e.rarity ?? 0;
+    const u = upgradeMul(progress, id);
+    const lv = progress.upgrades[id] ?? 0;
+    this.itemCell(ctx, x + 8, top + 8, 44, id);
+    const lines = wrapText(ctx, `${e.name}${lv ? ` +${lv}` : ''}`, w - 64, 10);
+    lines.slice(0, 2).forEach((l, i) => text(ctx, l, x + 58, top + 14 + i * 12, { size: 10, outline: false, color: RARITY_COLORS[r] }));
+    const kind = e.weaponKind ? ` (${WEAPON_KINDS[e.weaponKind]?.name ?? ''})` : '';
+    text(ctx, `Tipo: ${SLOT_NAMES[e.slot]}${kind}`, x + 58, top + 40, { size: 8, outline: false, color: '#d8c8a8', bold: false });
+    text(ctx, `Raridade: `, x + 58, top + 51, { size: 8, outline: false, color: '#d8c8a8', bold: false });
+    text(ctx, RARITY_NAMES[r], x + 98, top + 51, { size: 8, outline: false, color: RARITY_COLORS[r] });
+    // atributos (com o aprimoramento) e diferença para o equipado no espaço
+    const cur = progress.equipped[e.slot];
+    const ce = cur && cur !== id ? getItem(cur) : null;
+    const cu = cur ? upgradeMul(progress, cur) : 1;
+    const rows: [string, string, number, number, boolean][] = [
+      ['⚔', 'ATQ', (e.atk ?? 0) * u, (ce?.atk ?? 0) * cu, false],
+      ['🛡', 'DEF', (e.def ?? 0) * u, (ce?.def ?? 0) * cu, false],
+      ['❤', 'HP', (e.hp ?? 0) * u, (ce?.hp ?? 0) * cu, false],
+      ['💧', 'MP', (e.mp ?? 0) * u, (ce?.mp ?? 0) * cu, false],
+      ['✦', 'Crítico', (e.crit ?? 0) * u * 100, (ce?.crit ?? 0) * cu * 100, true],
+    ];
+    const ry0 = top + 62;
+    ctx.fillStyle = '#160f12'; ctx.fillRect(x + 6, ry0, w - 12, rows.length * 15 + 6);
+    ctx.strokeStyle = '#6b4a1c'; ctx.lineWidth = 1; ctx.strokeRect(x + 6.5, ry0 + 0.5, w - 13, rows.length * 15 + 5);
+    rows.forEach(([ic, label, v, old, pct], i) => {
+      const yy = ry0 + 10 + i * 15;
+      const fmt = (n: number) => pct ? `${Math.round(n * 10) / 10}%` : `${Math.round(n)}`;
+      text(ctx, `${ic} ${label}`, x + 12, yy, { size: 9, outline: false, color: '#e8dcc0' });
+      text(ctx, v ? `+${fmt(v)}` : '—', x + w - (ce ? 42 : 12), yy, { size: 9, align: 'right', outline: false, color: '#ffffff' });
+      if (ce) {
+        const d = v - old;
+        if (Math.abs(d) > 0.05) text(ctx, `${d > 0 ? '▲' : '▼'}${fmt(Math.abs(d))}`, x + w - 10, yy, { size: 7, align: 'right', outline: false, color: d > 0 ? '#5fe05f' : '#ff5f5f' });
+      }
+    });
+    if (ce) text(ctx, `▲▼ comparado com ${ce.name}`, x + w / 2, ry0 + rows.length * 15 + 14, { size: 6, align: 'center', outline: false, color: '#9a8a7a', bold: false });
+    const desc = wrapText(ctx, e.description ?? '', w - 16, 7);
+    desc.slice(0, 3).forEach((l, i) => text(ctx, l, x + 8, ry0 + rows.length * 15 + 26 + i * 9, { size: 7, outline: false, color: '#aab4cc', bold: false }));
+    // botões
+    const bw = w - 16, bx = x + 8;
+    const equipped = progress.equipped[e.slot] === id;
+    const b1 = top + h - 64;
+    this.ui(ctx, equipped ? 'ui_btn_unequip' : 'ui_btn_equip', bx, b1, bw, 28);
+    this.regions.push({ x: bx, y: b1, w: bw, h: 28, fn: () => { if (equipped) this.game.unequip(e.slot); else this.game.equip(id); } });
+    const b2 = top + h - 32;
+    const v = this.game.sellValue(id);
+    const canSell = !equipped && id !== 'training_sword';
+    this.ui(ctx, 'ui_btn_sell', bx, b2, bw * 0.58, 26, canSell ? 1 : 0.4);
+    text(ctx, v.gems ? `${v.gems} 💎` : `${v.gold} G`, bx + bw, b2 + 13, { size: 8, align: 'right', outline: false, color: canSell ? '#ffd36b' : '#776' });
+    this.regions.push({ x: bx, y: b2, w: bw * 0.58, h: 26, fn: () => { this.game.sell(id); if (!progress.owned.includes(id)) m.sel = null; } });
   }
 
   /** Grade de ícones da bolsa; tocar seleciona, tocar de novo usa. */
@@ -822,9 +1096,9 @@ export class Ui {
       const n = progress.bag[it.id] ?? 0;
       const sel = m.sel === it.id;
       const equipped = progress.cards.includes(it.id) || progress.rune === it.id;
-      ctx.fillStyle = sel ? '#4a5a90' : '#252e45';
-      ctx.fillRect(cx, cy, cell - 4, cell - 4);
-      if (equipped) { ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 2; ctx.strokeRect(cx + 1, cy + 1, cell - 6, cell - 6); }
+      if (sel) glow(ctx, cx + (cell - 4) / 2, cy + (cell - 4) / 2, cell * 0.8, '#ffb840', 0.4);
+      this.ui(ctx, sel || equipped ? 'ui_slot_sel' : 'ui_slot_empty', cx, cy, cell - 4, cell - 4);
+      if (equipped) this.ui(ctx, 'ui_badge_e', cx + cell - 16, cy - 2, 13, 13);
       this.icon(ctx, 'it_' + it.id, cx + (cell - 4) / 2, cy + (cell - 4) / 2, 36, album && n === 0 ? 0.25 : 1);
       if (album) this.icon(ctx, n > 0 ? 'it_st_ok' : 'it_st_question', cx + cell - 12, cy + 9, 13);
       else text(ctx, `${n}`, cx + cell - 8, cy + cell - 12, { size: 9, align: 'right' });
@@ -841,47 +1115,11 @@ export class Ui {
       text(ctx, it.name, x + 4, fy, { size: 11, outline: false, color: '#ffe9a8' });
       const hint = album ? '' : it.kind === 'potion' ? ' · toque de novo para usar' : it.kind === 'chest' ? ' · toque de novo para abrir' : it.kind === 'card' || it.kind === 'rune' ? ' · toque de novo para equipar/tirar' : it.kind === 'ticket' ? ' · toque de novo para usar' : '';
       text(ctx, it.description + hint, x + 4, fy + 14, { size: 9, outline: false, color: '#aab4cc', bold: false });
+      if (!album && ['potion', 'chest', 'ticket', 'card', 'rune'].includes(it.kind)) {
+        this.ui(ctx, 'ui_btn_use', x + w - 76, fy - 8, 72, 26);
+        this.regions.push({ x: x + w - 76, y: fy - 8, w: 72, h: 26, fn: () => this.game.useBagItem(it.id) });
+      }
     }
-  }
-
-  /** Personagem com todas as camadas de equipamento e os 11 espaços em volta. */
-  private drawEquipped(ctx: CanvasRenderingContext2D, x: number, top: number, w: number): void {
-    const { progress, world } = this.game;
-    const cx = x + w / 2, cy = top + 168;
-    glow(ctx, cx, cy - 50, 90, '#7fc8ff', 0.15);
-    const t = performance.now() / 1000;
-    drawDollIdle(ctx, progress, cx, cy, 1, 2.2, t);
-    const o = w / 2 - 36, i = w / 2 - 98;
-    const SL: [Slot, number, number][] = [
-      ['helmet', -o, -150], ['armor', -o, -92], ['pants', -o, -34],
-      ['gloves', -i, -150], ['cape', -i, -92], ['aura', -i, -34],
-      ['weapon', o, -150], ['accessory', o, -92], ['boots', o, -34],
-      ['wings', i, -150], ['wingsFront', i, -92],
-    ];
-    for (const [slot, dx, dy] of SL) {
-      const sx = cx + dx - 22, sy = cy + dy;
-      const id = progress.equipped[slot];
-      ctx.fillStyle = '#252e45';
-      ctx.fillRect(sx, sy, 44, 44);
-      const r = id ? getItem(id).rarity ?? 0 : 0;
-      if (id && r >= 4) glow(ctx, sx + 22, sy + 22, 30, RARITY_COLORS[r], 0.25);
-      ctx.strokeStyle = id ? RARITY_COLORS[r] : '#3a4560';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(sx, sy, 44, 44);
-      if (id) {
-        const e = getItem(id);
-        this.icon(ctx, e.icon ?? 'icon_' + id, sx + 22, sy + 22, 34);
-        const lv = progress.upgrades[id] ?? 0;
-        if (lv) text(ctx, `+${lv}`, sx + 41, sy + 7, { size: 9, align: 'right', color: '#ffd36b' });
-        text(ctx, SLOT_NAMES[slot], sx + 22, sy + 51, { size: 7, align: 'center', outline: true, color: RARITY_COLORS[r] });
-      } else text(ctx, SLOT_NAMES[slot], sx + 22, sy + 22, { size: 7, align: 'center', outline: false, color: '#667' });
-      this.regions.push({ x: sx, y: sy, w: 44, h: 44, fn: () => { if (id) this.toast(`${getItem(id).name} · ${RARITY_NAMES[r]} · ${describeBonus(getItem(id))}`); } });
-    }
-    const s = world.stats;
-    text(ctx, `ATQ ${s.atk} · DEF ${s.def} · HP ${s.maxHp} · MP ${s.maxMp} · CRÍT ${Math.round(s.crit * 100)}%`, cx, top + 232, { size: 10, align: 'center', color: '#9cc4ff' });
-    const sb = setBonus(progress);
-    if (sb) text(ctx, `Set ${SET_NAMES[sb.cls]} ${sb.pieces}/4 (${RARITY_NAMES[sb.rarity]}): ${sb.label}`, cx, top + 248, { size: 9, align: 'center', color: '#ffd36b' });
-    void upgradeMul;
   }
 
   private drawReward(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'reward' }>): void {

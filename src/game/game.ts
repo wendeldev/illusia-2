@@ -3,8 +3,8 @@ import { bagItem, keyFor } from '../data/items';
 import { generateTerrain } from './terrain';
 import { DIFFICULTIES, EVENT_PHASES, EVENT_TIME, MYTHIC_BOSSES, TICKET_OF, bossId, minionId, rewardRarity, type MythicBoss } from '../data/mythic';
 import { RARITY_NAMES, SET_NAMES, SET_OF, setFor } from '../data/gear';
-import { autoEquip, rollChest, type Drop } from './loot';
-import type { SceneryTheme, StageDef } from '../types';
+import { autoEquip, gearScore, rollChest, type Drop } from './loot';
+import type { SceneryTheme, Slot, StageDef } from '../types';
 import { TRACKS } from '../data/music';
 import { Sfx, vibrate } from '../engine/audio';
 import type { Input } from '../engine/input';
@@ -433,6 +433,38 @@ export class Game implements GameApi {
     this.ui.toast(`Comprado e equipado: ${item.name}`);
     this.sfx.play('coin');
     saveProgress(this.progress);
+  }
+
+  /** Tira o equipamento do espaço (fica no inventário). */
+  unequip(slot: Slot): void {
+    if (!this.progress.equipped[slot]) return;
+    delete this.progress.equipped[slot];
+    this.world.refreshStats();
+    this.sfx.play('ui');
+    saveProgress(this.progress);
+  }
+
+  /** Valor de venda: metade do preço (gemas para Mítico/Divino); itens sem preço pela força. */
+  sellValue(itemId: string): { gold: number; gems: number } {
+    const e = getItem(itemId);
+    if (e.priceGems) return { gold: 0, gems: Math.max(1, Math.floor(e.priceGems / 2)) };
+    return { gold: Math.max(10, Math.round(e.price ? e.price / 2 : gearScore(e) * 25)), gems: 0 };
+  }
+
+  sell(itemId: string): void {
+    const p = this.progress;
+    const e = getItem(itemId);
+    if (!p.owned.includes(itemId)) return;
+    if (p.equipped[e.slot] === itemId) { this.ui.toast('Desequipe antes de vender'); this.sfx.play('nomp'); return; }
+    if (itemId === 'training_sword') { this.ui.toast('A espada de treino não pode ser vendida'); this.sfx.play('nomp'); return; }
+    const v = this.sellValue(itemId);
+    p.gold += v.gold;
+    p.gems += v.gems;
+    p.owned = p.owned.filter((id) => id !== itemId);
+    delete p.upgrades[itemId];
+    this.ui.toast(`Vendido: ${e.name} (+${v.gems ? `${v.gems} gemas` : `${v.gold} G`})`);
+    this.sfx.play('coin');
+    saveProgress(p);
   }
 
   equip(itemId: string): void {

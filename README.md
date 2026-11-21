@@ -105,6 +105,15 @@ classe). Arma preferida da classe: +25% no ataque da arma. A loja tem categorias
 adagas, arcos, cajados, halos, armaduras, braços, calças, capas, botas, asas, auras); Mítico e Divino
 custam gemas. Catálogo gerado em `src/data/gear.ts`.
 
+## Inventário
+
+Bolsa (🎒 ou G) no visual da prancha `assets-src/sheet-inventory.png` (recortada por `tools/ui_cells.py`):
+abas Equipamento, Itens, Materiais, Cartas/Orbes e Coleção. Em Equipamento: o personagem com os 11 espaços,
+o inventário com filtros (tudo, armas, armaduras, halos, acessórios, asas, auras), bordas por raridade, selos
+**E** (equipado) e **N** (novo), setas verde/vermelha comparando com o equipado, páginas e Organizar
+(por raridade ou por tipo). O painel de detalhes mostra os atributos com a diferença para o item equipado e os
+botões Equipar/Desequipar e Vender (metade do preço). Toque duplo num item também equipa.
+
 ## Spritesheets em camadas (spritesheets/)
 
 `python3 -I tools/build_layered.py` gera, para Guerreiro, Mago, Assassino e Arqueiro, uma spritesheet PNG por camada:

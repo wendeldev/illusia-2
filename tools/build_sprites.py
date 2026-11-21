@@ -809,6 +809,11 @@ for r, frs in MY.load_halos().items():
 # montagens prontas (prévias das recompensas)
 for name, im in MY.load_montages().items():
     put(f'mont_{name}', [im])
+# interface do inventário (botões, bordas de raridade, indicadores)
+import ui_cells as UIC
+for n, im in UIC.load_ui().items():
+    if n not in ('item_sel', 'tab_on', 'tab_off', 'tab_equip'):
+        put(f'ui_{n}', [im])
 # tíquetes dos eventos
 put('it_tk_legend', [recolor(I_DATA['tickets'][3], 1.12, 1.3, 1.15)])
 put('it_tk_myth', [recolor(I_DATA['tickets'][3], 1.0, 1.4, 1.0)])
