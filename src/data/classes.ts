@@ -19,9 +19,23 @@ const sk = (s: Partial<SkillDef> & Pick<SkillDef, 'id' | 'name' | 'description' 
   mpCost: 10, cooldown: 3, damageMul: 2, range: 80, radius: 30, knockback: 150, unlockLevel: 1, color: '#ffffff', ...s,
 });
 
-/** Atalho para os poderes da prancha de poderes: animação `pw_<id>`, efeito `fx_<id>`, ícone `ic_<id>`. */
+/** Atalho para os poderes: animação `pw_<id>`, ícone `ic_<id>` e efeito `fx2_<id>` (pranchas de efeitos fx-<classe>.png). */
 const pw = (id: string, s: Partial<SkillDef> & Pick<SkillDef, 'name' | 'description' | 'kind'>): SkillDef =>
-  sk({ id, anim: `pw_${id}`, icon: `ic_${id}`, fx: `fx_${id}`, ...s });
+  sk({ id, anim: `pw_${id}`, icon: `ic_${id}`, fx: `fx2_${id}`, ...s });
+/** Poderes do Arqueiro: só efeito e ícone da prancha de efeitos. */
+const rw = (id: string, s: Partial<SkillDef> & Pick<SkillDef, 'name' | 'description' | 'kind'>): SkillDef =>
+  sk({ id, icon: `ic2_${id}`, fx: `fx2_${id}`, ...s });
+
+const ARCHER: SkillDef[] = [
+  rw('r_wind', { name: 'Flecha de Vento', description: 'Uma flecha de vento veloz.', kind: 'projectile', mpCost: 6, cooldown: 1.1, damageMul: 2, range: 400, radius: 14, speed: 620, knockback: 110, unlockLevel: 1, color: '#7fe08a' }),
+  rw('r_triple', { fx: 'fx2_r_wind', name: 'Disparo Triplo', description: 'Três flechas de uma vez.', kind: 'projectile', mpCost: 9, cooldown: 1.8, damageMul: 1.4, range: 380, radius: 12, speed: 600, count: 3, knockback: 80, unlockLevel: 2, color: '#7fe08a' }),
+  rw('r_pierce', { name: 'Flecha Perfurante', description: 'Uma flecha dourada que atravessa todos à frente.', kind: 'projectile', mpCost: 11, cooldown: 2.4, damageMul: 2.6, range: 460, radius: 14, speed: 700, pierce: true, knockback: 120, unlockLevel: 4, color: '#ffd36b' }),
+  rw('r_rain', { name: 'Chuva de Flechas', description: 'Flechas caem do céu à frente.', kind: 'rain', mpCost: 18, cooldown: 5, damageMul: 1.8, range: 240, radius: 34, count: 5, knockback: 90, unlockLevel: 6, color: '#ffb840' }),
+  rw('r_explode', { name: 'Flecha Explosiva', description: 'A flecha explode em chamas à frente.', kind: 'blast', mpCost: 16, cooldown: 3.5, damageMul: 3.2, range: 170, radius: 50, knockback: 260, unlockLevel: 9, color: '#ff7a2a' }),
+  rw('r_ice', { name: 'Flecha de Gelo', description: 'Cristais de gelo brotam onde a flecha cai.', kind: 'blast', mpCost: 18, cooldown: 4, damageMul: 3, range: 200, radius: 46, knockback: 150, unlockLevel: 12, color: '#9fd3ff' }),
+  rw('r_poison', { name: 'Flecha Venenosa', description: 'Deixa uma nuvem venenosa que fere por 5 s.', kind: 'cloud', mpCost: 20, cooldown: 8, damageMul: 0.7, range: 150, radius: 55, duration: 5, knockback: 0, unlockLevel: 16, color: '#8fe07a' }),
+  rw('r_eagle', { name: 'Águia Espectral', description: 'Uma águia de energia atravessa tudo à frente.', kind: 'projectile', mpCost: 28, cooldown: 8, damageMul: 3.8, range: 520, radius: 30, speed: 420, pierce: true, knockback: 260, unlockLevel: 20, color: '#7fc8ff' }),
+];
 
 const WARRIOR: SkillDef[] = [
   pw('w_slash_h', { name: 'Corte Horizontal', description: 'Um corte largo à frente.', kind: 'melee', mpCost: 6, cooldown: 1.2, damageMul: 1.8, range: 70, radius: 26, knockback: 140, unlockLevel: 1, color: '#7fc8ff' }),
@@ -66,14 +80,10 @@ export const CLASSES: ClassDef[] = [
   },
   {
     id: 'archer', name: 'Arqueiro', sprite: 'archer',
-    description: 'Ataca de longe com flechas. Pouca vida: mantenha distância.',
+    description: 'Ataca de longe com flechas: vento, gelo, fogo, veneno e a águia espectral. Pouca vida.',
     mods: { hp: 0.8, mp: 1.1, atk: 0.9, def: 0.8, crit: 2 },
     basic: { kind: 'shot', fx: 'fx_arrow', speed: 560, range: 340, color: '#9ff07a' },
-    skills: [
-      sk({ id: 'pierce_arrow', name: 'Flecha Perfurante', description: 'Uma flecha que atravessa todos à frente.', kind: 'projectile', mpCost: 8, cooldown: 1.6, damageMul: 2, range: 420, radius: 12, speed: 640, pierce: true, knockback: 80, color: '#9ff07a', fx: 'fx_arrow' }),
-      sk({ id: 'leaf_storm', name: 'Tempestade de Folhas', description: 'Folhas cortantes ao redor.', kind: 'aoe', mpCost: 14, cooldown: 4, damageMul: 2, radius: 90, knockback: 200, unlockLevel: 3, color: '#b0f07a' }),
-      sk({ id: 'great_arrow', name: 'Flecha Gigante', description: 'Disparo carregado e devastador.', kind: 'projectile', mpCost: 22, cooldown: 6, damageMul: 4.5, range: 500, radius: 18, speed: 520, pierce: true, knockback: 300, unlockLevel: 5, color: '#e0ff9a', fx: 'fx_arrow' }),
-    ],
+    skills: ARCHER,
   },
   {
     id: 'mage', name: 'Maga', sprite: 'priest',

@@ -820,6 +820,17 @@ for r, frs in MY.load_halos().items():
 # montagens prontas (prévias das recompensas)
 for name, im in MY.load_montages().items():
     put(f'mont_{name}', [im])
+# efeitos dos poderes (pranchas fx-<classe>.png): fx2_<poder> com 6 quadros (metade do tamanho, centro como âncora)
+# e ícone ic2_<poder> (quadro mais forte num quadrado) para os poderes sem ícone próprio
+import fx_cells as FXC
+for sid, frs in FXC.load().items():
+    sm = [im.resize((max(1, im.size[0] // 2), max(1, im.size[1] // 2)), _I.LANCZOS) for im in frs]
+    put(f'fx2_{sid}', sm, center=True)
+    pk = frs[3]
+    side = max(pk.size)
+    sq = _I.new('RGBA', (side, side), (0, 0, 0, 0))
+    sq.paste(pk, ((side - pk.size[0]) // 2, (side - pk.size[1]) // 2))
+    put(f'ic2_{sid}', [sq.resize((64, 64), _I.LANCZOS)])
 # interface do inventário (botões, bordas de raridade, indicadores)
 import ui_cells as UIC
 for n, im in UIC.load_ui().items():

@@ -8,7 +8,10 @@ export const SLOT_COUNT = 4;
 /** Poderes nos botões (null = botão vazio). Sem escolha salva: os 4 primeiros da classe. */
 export function slotSkills(p: Progress): (SkillDef | null)[] {
   const cls = getClass(p.classId);
-  const ids = p.skillSlots?.[cls.id] ?? cls.skills.slice(0, SLOT_COUNT).map((s) => s.id);
+  const saved = p.skillSlots?.[cls.id];
+  const def = cls.skills.slice(0, SLOT_COUNT).map((s) => s.id);
+  // escolha salva com poderes que não existem mais (a classe mudou): volta ao padrão
+  const ids = saved && saved.some((id) => cls.skills.some((s) => s.id === id)) ? saved : def;
   const out: (SkillDef | null)[] = [];
   for (let i = 0; i < SLOT_COUNT; i++) out.push(cls.skills.find((s) => s.id === ids[i]) ?? null);
   return out;

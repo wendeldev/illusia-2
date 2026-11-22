@@ -53,6 +53,13 @@ Guerreiro, Maga e Assassino têm 8 poderes cada (prancha `assets-src/sheet-power
 `tools/powers_cells.py`), com animação do personagem, efeito próprio e ícone. 4 vão nos botões; troque em
 ☰ → ✦ Trocar poderes (alguns desbloqueiam com o nível). Teclado: K, L, I, O. Dados em `src/data/classes.ts`.
 
+### Efeitos dos poderes
+
+Pranchas `assets-src/fx-<classe>.png` (Guerreiro, Maga, Assassino e Arqueiro; 8 poderes × 6 quadros, recortadas
+por `tools/fx_cells.py`): cada poder mostra a sua animação (`fx2_<poder>`): cortes, investida, projéteis,
+explosões, chuvas, círculos, escudo, cura e clone. O Arqueiro ganhou 8 poderes: Flecha de Vento, Disparo Triplo,
+Flecha Perfurante, Chuva de Flechas, Flecha Explosiva, Flecha de Gelo, Flecha Venenosa e Águia Espectral.
+
 ## Chefes
 
 O chefe final de cada região usa a prancha `assets-src/sheet-bosses.png` (recortada por `tools/boss_cells.py`):

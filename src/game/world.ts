@@ -295,6 +295,8 @@ function bossFx(def: EnemyDef, kind: 'shot' | 'slam' | 'summon'): string | undef
 }
 
 export class World {
+  /** passos agendados dos poderes */
+  private castSteps: { t: number; run: () => void }[] = [];
   player: Player;
   stats: Stats;
   scenery: Scenery;
@@ -567,6 +569,13 @@ export class World {
       p.animT += dt;
       if (p.animT >= p.animDur) p.anim = null;
     }
+    if (this.castSteps.length) {
+      for (const st of this.castSteps) st.t -= dt;
+      const due = this.castSteps.filter((st) => st.t <= 0);
+      this.castSteps = this.castSteps.filter((st) => st.t > 0);
+      if (!p.dead && p.hitStun <= 0) due.forEach((st) => st.run());
+      else this.castSteps = [];
+    }
     if (p.pending) {
       p.pending.t -= dt;
       if (p.pending.t <= 0) {
@@ -765,7 +774,8 @@ export class World {
     p.attackTimer = dur * 0.8;
     p.climbing = false;
     const fx = hasSprite(skill.fx) ? skill.fx! : '';
-    const later = (k: number, run: () => void) => { p.pending = { t: dur * k, run }; };
+    // vários passos por poder (efeito visual e dano em tempos diferentes)
+    const later = (k: number, run: () => void) => { this.castSteps.push({ t: dur * k, run }); };
     const groundAt = (x: number) => this.terrain.surfacesAt(x).find((y) => y >= p.y - 2) ?? this.terrain.groundAt(x);
     const spell = (o: Partial<Spell> & Pick<Spell, 'x' | 'dur'>): void => {
       const g = o.ground ?? groundAt(o.x);
@@ -777,6 +787,7 @@ export class World {
     this.sound(skill.color === '#ff9a3c' || skill.color === '#ff7a2a' ? 'wind' : skill.kind === 'melee' ? 'swing' : 'whirl');
     switch (skill.kind) {
       case 'melee':
+        later(0.3, () => { if (fx) spell({ x: p.x + p.facing * skill.range * 0.5, ground: p.y, dur: 0.38, hits: [] }); });
         later(0.45, () => {
           const hits = this.hitFront(skill.range, skill.damageMul, skill.knockback, skill.radius, true);
           this.burst(p.x + p.facing * skill.range * 0.6, p.y, 26, 10, skill.color, 200, 2.5);
@@ -810,6 +821,7 @@ export class World {
         });
         break;
       case 'dash':
+        if (fx) spell({ x: p.x + p.facing * skill.range * 0.35, ground: p.y, dur: 0.4, hits: [] });
         p.dash = { vx: (p.facing * skill.range) / 0.24, t: 0.24, hit: new Set(), skill };
         p.invuln = Math.max(p.invuln, 0.4);
         p.attackTimer = 0.3;
@@ -838,7 +850,8 @@ export class World {
           for (let k = 0; k < count; k++) {
             const x = p.x + p.facing * (40 + ((skill.range - 40) * k) / Math.max(1, count - 1)) + (Math.random() - 0.5) * 24;
             const g = groundAt(x);
-            spell({ x, ground: g, y: g - 230 - Math.random() * 40, dur: 0.4, t: -k * 0.12, hits: [0], falling: true });
+            if (fx && frameCount(fx) > 2) spell({ x, ground: g, dur: 0.6, t: -k * 0.12, hits: [0.3] });
+            else spell({ x, ground: g, y: g - 230 - Math.random() * 40, dur: 0.4, t: -k * 0.12, hits: [0], falling: true });
           }
         });
         break;
@@ -848,6 +861,7 @@ export class World {
         break;
       case 'heal': {
         const amount = Math.round(p.maxHp * 0.4);
+        later(0.15, () => { if (fx) spell({ x: p.x, ground: p.y, dur: 0.8, hits: [] }); });
         later(0.5, () => {
           p.hp = Math.min(p.maxHp, p.hp + amount);
           this.floatText(p.x, p.y - 56, `+${amount}`, '#8fe07a', 16, 1);
@@ -857,10 +871,10 @@ export class World {
         break;
       }
       case 'shield':
-        later(0.6, () => { p.shieldT = skill.duration ?? 8; this.sound('levelup'); });
+        later(0.6, () => { p.shieldT = skill.duration ?? 8; this.sound('levelup'); if (fx) spell({ x: p.x, ground: p.y + 6, dur: 0.8, hits: [], scale: 1.3 }); });
         break;
       case 'empower':
-        later(0.6, () => { p.empowerT = skill.duration ?? 8; this.sound('wave'); });
+        later(0.6, () => { p.empowerT = skill.duration ?? 8; this.sound('wave'); if (fx) spell({ x: p.x - p.facing * 10, ground: p.y, dur: 0.7, hits: [] }); });
         break;
     }
   }
@@ -946,7 +960,7 @@ export class World {
         alpha = 1 - s.t / s.dur;
         if (n === 1) { scale = 0.8; alpha *= 0.6; }
       } else if (s.tick > 0) {
-        frame = n - 1;
+        frame = n > 4 ? 2 + (Math.floor(this.time * 5) % 2) : n - 1;
         alpha = Math.min(1, s.t * 4, (s.dur - s.t) * 3);
         scale = 1 + Math.sin(this.time * 4) * 0.05;
       } else {
@@ -1614,10 +1628,10 @@ export class World {
       if (spritesReady()) {
         const fx = pr.skill.fx ?? 'fx_slash';
         if (fx === 'fx_slash') drawSprite(ctx, fx, 0, pr.x, y + 11, pr.dir);
-        else if (pr.skill.anim) {
+        else if (frameCount(fx) > 1) {
           const n = frameCount(fx);
-          // efeitos da prancha de poderes: crescem (bola de fogo) ou giram em loop (tornado, onda)
-          const fr = pr.skill.pierce ? (pr.dist / 30) % n : Math.min(n - 1, pr.dist / 40);
+          // efeitos em 6 quadros: surge (quadro 0) e voa em loop nos quadros do meio; os antigos crescem/giram
+          const fr = n >= 6 ? (pr.dist < 25 ? 0 : 1 + (Math.floor(pr.dist / 28) % 3)) : pr.skill.pierce ? (pr.dist / 30) % n : Math.min(n - 1, pr.dist / 40);
           glow(ctx, pr.x, y, 26, pr.skill.color, 0.3);
           drawSprite(ctx, fx, fr, pr.x, y, pr.dir, { scale: pr.skill.count && pr.skill.count > 1 ? 0.6 : 1 });
         }
