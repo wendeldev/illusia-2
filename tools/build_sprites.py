@@ -794,11 +794,15 @@ PD = {}
 import split_head as SH
 import hero_white as HWH
 BODIES = MY.load_bodies()
-HW_FR = HWH.load()   # Guerreiro: corpo base novo com 32 quadros (parado, andar, correr, pular)
-BODIES['warrior'] = [im for im, _, _ in HW_FR]
+# corpo base novo (32 quadros: parado, andar, correr, pular) das classes que já têm a prancha
+NEW_BODY = {c: HWH.load(c) for c in HWH.available()}
+for c, fr in NEW_BODY.items():
+    BODIES[c] = [im for im, _, _ in fr]
+with open(os.path.join(ROOT, 'src', 'data', 'newbody.json'), 'w') as f:
+    json.dump(sorted(NEW_BODY), f)
 for cls, frs in BODIES.items():
-    if cls == 'warrior':
-        my_items['pd_warrior'] = (HW_FR, 1.0)
+    if cls in NEW_BODY:
+        my_items[f'pd_{cls}'] = (NEW_BODY[cls], 1.0)
     else:
         put(f'pd_{cls}', frs)
     PD[cls] = [AN.anatomy(im) for im in frs]

@@ -17,8 +17,14 @@ LOOP = {'idle', 'walk', 'run', 'fall'}
 STRIDE = {'warrior': [1, 2, 3, 4], 'assassin': [1, 2, 3, 4], 'mage': [0, 1, 2, 1], 'archer': [0, 1, 2, 1]}
 
 
-def warrior_rig():
-    """Guerreiro: corpo base com quadros próprios (prancha sheet-hero-white): 0-7 parado, 8-15 andar,
+import json as _json
+import os as _os
+_NB = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), 'src', 'data', 'newbody.json')
+NEW_BODY = set(_json.load(open(_NB))) if _os.path.exists(_NB) else {'warrior'}
+
+
+def new_body_rig():
+    """Corpo base novo (prancha 4×8 de cada classe): 0-7 parado, 8-15 andar,
     16-23 correr, 24-31 pular (24 de pé, 25 agacha, 26 impulso, 27 subindo, 28 encolhido, 29 descendo,
     30 retomada/pouso, 31 de pé). O movimento vem dos próprios desenhos (sem balanço artificial)."""
     fr = lambda f, **k: {'f': f, 'dx': 0, 'dy': 0, 'sy': 1.0, 'rot': 0, **k}
@@ -38,8 +44,8 @@ def warrior_rig():
 
 
 def body_rig(cls):
-    if cls == 'warrior':
-        return warrior_rig()
+    if cls in NEW_BODY:
+        return new_body_rig()
     S = STRIDE[cls]
     # "quadro 2" e "quadro 3" = passos da passada da classe (Maga/Arqueiro: 1 e 2)
     F = {0: 0, 2: S[1], 3: S[2]}
