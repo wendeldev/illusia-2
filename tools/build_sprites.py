@@ -809,14 +809,6 @@ for r, frs in MY.load_halos().items():
 # montagens prontas (prévias das recompensas)
 for name, im in MY.load_montages().items():
     put(f'mont_{name}', [im])
-# novo personagem (prancha sheet-hero-b.png): sem/com armadura × parado, andar, correr, pular
-import hero_cells as HC
-HERO2 = {}
-for k, frs in HC.load().items():
-    my_items[f'hn_{k}'] = ([(f['im'], f['ax'], f['ay']) for f in frs], 1.0)
-    HERO2[k] = [{'head': f['head'], 'hand': f['hand'], 'h': f['h']} for f in frs]
-with open(os.path.join(ROOT, 'src', 'data', 'hero2.json'), 'w') as f:
-    json.dump(HERO2, f, separators=(',', ':'))
 # interface do inventário (botões, bordas de raridade, indicadores)
 import ui_cells as UIC
 for n, im in UIC.load_ui().items():

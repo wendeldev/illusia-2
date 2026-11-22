@@ -9,7 +9,7 @@ import type { EnemyDef, HumanLook, NpcDef, PortalDef, SkillDef, StageDef } from 
 import { drawHuman, OUTLINE } from './art/human';
 import { drawMonster } from './art/monsters';
 import { glow } from './art/scene3d';
-import { dollLook, drawCharacter, rigFps, rigFrames, rigPose, type DollPose, type RigAnim } from './art/layers';
+import { dollLook, drawDoll, rigFps, rigFrames, rigPose, type DollPose, type RigAnim } from './art/layers';
 import { drawTerrain } from './art/ground';
 import { drawSprite, drawSpriteH, frameCount, hasSprite, spriteHeight, spritesReady } from '../engine/sprites';
 import { Scenery } from './art/scenery';
@@ -1819,9 +1819,6 @@ export class World {
       if (p.vy < 0) { anim = 'jump'; i = p.vy < -260 ? 1 : p.vy < -120 ? 2 : 3; }
       else { anim = 'fall'; i = this.time * rigFps('fall'); }
     } else if (p.moving) { anim = p.dash ? 'run' : 'walk'; i = p.walk; }
-    // personagem novo: idle tem 8 quadros a ~6/s, correr 8 quadros seguindo os passos
-    if (anim === 'idle') i = this.time * 6;
-    else if ((anim === 'walk' || anim === 'run') && !p.climbing) i = p.walk * 1.1;
     const pose: DollPose = { ...rigPose(L, anim, i), charge };
     // sombra na superfície embaixo (mesmo pulando)
     const below = this.terrain.surfacesAt(p.x).find((y) => y >= p.y - 1) ?? p.y;
@@ -1843,7 +1840,7 @@ export class World {
     const face = p.climbing ? (Math.floor(p.walk * 0.6) % 2 ? 1 : -1) : p.facing;
     if (p.empowerT > 0) {
       // sombras repetindo o movimento atrás do personagem
-      for (let k = 1; k <= 2; k++) drawCharacter(ctx, L, p.x - p.facing * k * 14, p.y + 1, face, 1, anim, i, { ...pose, alpha: 0.3 / k, flash: true }, this.time);
+      for (let k = 1; k <= 2; k++) drawDoll(ctx, L, p.x - p.facing * k * 14, p.y + 1, face, 1, { ...pose, alpha: 0.3 / k, flash: true }, this.time);
       glow(ctx, p.x, p.y - 22, 40, '#a06bff', 0.3);
     }
     // rastro da arma no golpe
@@ -1859,7 +1856,7 @@ export class World {
         ctx.globalAlpha = 1;
       }
     }
-    drawCharacter(ctx, L, p.x, p.y + 1, face, 1, anim, i, { ...pose, flash: p.flash > 0 }, this.time);
+    drawDoll(ctx, L, p.x, p.y + 1, face, 1, { ...pose, flash: p.flash > 0 }, this.time);
   }
 
   /** Inimigo em pixel art: um quadro só, animado com quique, preparo, bote e queda. */
