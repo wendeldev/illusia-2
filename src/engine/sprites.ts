@@ -263,3 +263,22 @@ export function frameRect(name: string, frame = 0): [number, number, number, num
   const f = ATLAS[name]?.frames[Math.max(0, Math.floor(frame)) % ATLAS[name].frames.length];
   return f ? [f[2], f[3], f[4], f[5]] : null;
 }
+
+/**
+ * Desenha um pedaço (sx, sy, sw, sh em px do quadro) deformado no paralelogramo p0 (canto de cima à esquerda),
+ * p1 (cima à direita), p2 (baixo à esquerda) — usado para vestir peças que seguem o corpo (pernas inclinadas).
+ */
+export function drawAffine(
+  ctx: CanvasRenderingContext2D, name: string, sx: number, sy: number, sw: number, sh: number,
+  p0: [number, number], p1: [number, number], p2: [number, number], flash = false,
+): void {
+  const d = ATLAS[name];
+  const sheet = d && sheetOf(d);
+  if (!d || !sheet || sw <= 0 || sh <= 0) return;
+  const f = d.frames[0];
+  ctx.save();
+  ctx.transform((p1[0] - p0[0]) / sw, (p1[1] - p0[1]) / sw, (p2[0] - p0[0]) / sh, (p2[1] - p0[1]) / sh, p0[0], p0[1]);
+  ctx.drawImage(sheet, f[0] + sx, f[1] + sy, sw, sh, 0, 0, sw, sh);
+  if (flash && mythicWhite && d.sheet === 5) { ctx.globalAlpha *= 0.85; ctx.drawImage(mythicWhite, f[0] + sx, f[1] + sy, sw, sh, 0, 0, sw, sh); }
+  ctx.restore();
+}
