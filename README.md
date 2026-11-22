@@ -105,6 +105,13 @@ classe). Arma preferida da classe: +25% no ataque da arma. A loja tem categorias
 adagas, arcos, cajados, halos, armaduras, braços, calças, capas, botas, asas, auras); Mítico e Divino
 custam gemas. Catálogo gerado em `src/data/gear.ts`.
 
+## Personagem novo (Guerreiro)
+
+Guerreiro, Lutador e Lanceiro usam a prancha `assets-src/sheet-hero-b.png` (recortada por `tools/hero_cells.py`):
+parado, correr e pular em 8 quadros cada, sem armadura e com armadura (botas, luvas e asas já desenhadas).
+Com uma armadura equipada aparece a versão com armadura. Por cima entram a arma na mão, o halo, a aura e,
+sem armadura, a capa e as asas equipadas. Prévia: `spritesheets/hero_preview.gif`.
+
 ## Inventário
 
 Bolsa (🎒 ou G) no visual da prancha `assets-src/sheet-inventory.png` (recortada por `tools/ui_cells.py`):
