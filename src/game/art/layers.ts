@@ -7,7 +7,7 @@ import { PREFERRED, RARITY_COLORS, RARITY_KEYS, SET_OF } from '../../data/gear';
 import PD from '../../data/paperdoll.json';
 import RIG from '../../data/rig.json';
 import HERO2 from '../../data/hero2.json';
-import { drawAffine, drawFit, drawSprite, frameRect, hasSprite } from '../../engine/sprites';
+import { drawFit, drawSprite, frameRect, hasSprite } from '../../engine/sprites';
 import type { Slot } from '../../types';
 import type { Progress } from '../progress';
 import { glow } from './scene3d';
@@ -252,13 +252,8 @@ export function rigPose(L: DollLook, anim: RigAnim, i: number): DollPose {
   return { frame: b.f, dx: b.dx, dy: b.dy, sy: b.sy, rot: (b.rot * Math.PI) / 180, weapon: (w.w * Math.PI) / 180, thrust: w.t };
 }
 
-// ── personagem novo (prancha sheet-hero-b): corpo sem armadura (parado, correr, pular) e cada peça
-// equipada vestida por cima, no lugar do corpo medido em cada quadro (tools/hero_cells.py → hero2.json) ──
-interface Hero2Body {
-  neck: number; hip: number; shorts: number; bottom: number; fy0: number; cx: number; tw: number;
-  hips: number[]; feet: number[][]; handB: number[];
-}
-interface Hero2Frame { head: number[]; hand: number[]; h: number; body: Hero2Body }
+// ── personagem novo (prancha sheet-hero-b): quadros prontos de parado, correr e pular, sem e com armadura ──
+interface Hero2Frame { head: number[]; hand: number[]; h: number }
 const H2 = HERO2 as unknown as Record<string, Hero2Frame[]>;
 /** Altura do personagem novo no jogo (px lógicos). */
 const HERO2_H = 60;
@@ -268,39 +263,31 @@ export function usesHero2(L: DollLook): boolean {
   return L.cls === 'warrior' && hasSprite('hn_bare_idle');
 }
 
-/** Metade (0 = esquerda, 1 = direita) de um desenho com par de peças (botas, braçadeiras, calças). */
-function half(name: string, side: number): [number, number, number, number] | null {
-  const r = frameRect(name, 0);
-  if (!r) return null;
-  const w = r[0] / 2;
-  return [side * w, 0, w, r[1]];
-}
-
-/** Escolha do quadro da prancha nova para cada animação do rig. */
-function hero2Frame(anim: RigAnim, i: number): [string, number] {
-  switch (anim) {
-    case 'walk': case 'run': return ['run', Math.floor(i) % 8];
-    case 'jump': return ['jump', [2, 2, 3, 4][Math.min(3, Math.floor(i))]];
-    case 'fall': return ['jump', 5];
-    case 'atk1': return ['run', 1];
-    case 'atk2': return ['run', 5];
-    case 'atk3': return ['run', 2];
-    case 'hurt': case 'death': return ['idle', 0];
-    default: return ['idle', Math.floor(i) % 8];
-  }
-}
-
-/** Desenha o personagem novo com tudo o que está equipado. */
+/**
+ * Desenha o personagem novo. A armadura (com botas, luvas e asas) já vem desenhada nos quadros "armor";
+ * por cima entram a aura, a arma na mão, o halo e (sem armadura) a capa e as asas equipadas.
+ */
 export function drawHero2(ctx: CanvasRenderingContext2D, L: DollLook, x: number, y: number, facing: number, k: number, anim: RigAnim, i: number, pose: DollPose, time: number): void {
-  const [seq, fi] = hero2Frame(anim, i);
-  const rot = anim === 'hurt' ? -0.15 : anim === 'death' ? pose.rot ?? 0 : 0;
-  const dx = anim === 'hurt' ? -2 : anim.startsWith('atk') ? pose.dx ?? 0 : 0;
-  const name = `hn_bare_${seq}`;
-  const F = H2[`bare_${seq}`]?.[fi];
-  const H0 = H2.bare_idle?.[0]?.h ?? 108;
+  const v = L.armor ? 'armor' : 'bare';
+  let seq = 'idle', fi = Math.floor(i) % 8;
+  let rot = 0, dx = 0;
+  switch (anim) {
+    case 'walk': case 'run': seq = 'run'; fi = Math.floor(i) % 8; break;
+    case 'jump': seq = 'jump'; fi = [2, 2, 3, 4][Math.min(3, Math.floor(i))]; break;
+    case 'fall': seq = 'jump'; fi = 5; break;
+    case 'atk1': seq = 'run'; fi = 1; dx = pose.dx ?? 0; break;
+    case 'atk2': seq = 'run'; fi = 5; dx = pose.dx ?? 0; break;
+    case 'atk3': seq = 'run'; fi = 2; dx = pose.dx ?? 0; break;
+    case 'hurt': fi = 0; rot = -0.15; dx = -2; break;
+    case 'death': fi = 0; rot = pose.rot ?? 0; break;
+    default: fi = Math.floor(i) % 8;
+  }
+  const name = `hn_${v}_${seq}`;
+  const F = H2[`${v}_${seq}`]?.[fi];
+  const H0 = H2[`${v}_idle`]?.[0]?.h ?? 108;
   const s = (HERO2_H / H0) * k;
   const fl = !!pose.flash;
-  // aura no chão e brilho da arma
+  // aura no chão
   if (L.aura) {
     const w = HERO2_H * 1.3 * k, pulse = 1 + Math.sin(time * 3) * 0.06;
     glow(ctx, x, y - HERO2_H * 0.4 * k, HERO2_H * 0.8 * k, L.auraColor, 0.16);
@@ -313,105 +300,43 @@ export function drawHero2(ctx: CanvasRenderingContext2D, L: DollLook, x: number,
     const c = L.weaponUp >= 10 ? '#ff5fd0' : L.weaponUp >= 7 ? '#ffd36b' : L.weaponColor;
     glow(ctx, x, y - HERO2_H * 0.45 * k, (28 + L.weaponUp * 2 + Math.sin(time * 4) * 3) * k, c, 0.14 + L.weaponUp * 0.02);
   }
-  if (!F) return;
-  const B = F.body;
   ctx.save();
   ctx.translate(x + dx * facing * k, y);
   if (pose.alpha !== undefined) ctx.globalAlpha *= pose.alpha;
   if (rot) ctx.rotate(rot * facing);
-  ctx.scale(facing * s, s);   // daqui em diante: px da prancha, relativos aos pés
-  ctx.imageSmoothingEnabled = true;
-  const span = Math.max(B.tw, 20);
-  // atrás do corpo: asas e capa
-  if (L.wings) {
-    const flap = 0.8 + Math.abs(Math.sin(time * (anim === 'jump' || anim === 'fall' ? 9 : 3))) * 0.25;
-    const wc = B.cx - span * 0.35;
-    ctx.save(); ctx.translate(wc, 0); ctx.scale(flap, 1); ctx.translate(-wc, 0);
-    if (L.wingsGlow) glow(ctx, wc, B.neck + 6, span * 1.4, '#ffffff', 0.18);
-    drawFit(ctx, L.wings, wc - span * 1.5, B.neck - span * 0.75, wc + span * 1.1, B.neck + span * 0.75, 'contain', 'mid', 0, fl);
+  ctx.scale(facing, 1);
+  // sem armadura: capa e asas equipadas atrás do corpo (com armadura, as asas já vêm no desenho)
+  if (v === 'bare' && L.wings) {
+    const flap = 0.8 + Math.abs(Math.sin(time * 3)) * 0.25;
+    ctx.save(); ctx.translate(-6 * s, 0); ctx.scale(flap, 1);
+    drawFit(ctx, L.wings, -HERO2_H * 0.5 * k, -HERO2_H * 0.72 * k, HERO2_H * 0.5 * k, -HERO2_H * 0.3 * k, 'contain', 'mid');
     ctx.restore();
   }
-  if (L.cape) {
-    const sway = 1 + Math.sin(time * 4) * 0.06;
-    const c0 = B.cx - span * 0.25;
-    ctx.save(); ctx.translate(c0, B.neck); ctx.scale(sway, 1); ctx.translate(-c0, -B.neck);
-    drawFit(ctx, L.cape, c0 - span * 0.62, B.neck - 1, c0 + span * 0.5, B.fy0, 'fill', 'top', 0, fl);
-    ctx.restore();
-  }
-  // corpo sem armadura
-  drawSprite(ctx, name, fi, 0, 0, 1, { scale: 1, flash: fl });
-  // calças: cada metade do desenho vira uma perna, do quadril até o pé (inclina junto com a perna)
-  if (L.pants) {
-    const [h0, h1] = B.hips;
-    const hm = (h0 + h1) / 2;
-    const feet = B.feet.length > 1 ? B.feet : [B.feet[0], B.feet[0]];
-    const top = B.hip - 2, bot = B.fy0 + 1;
-    for (const side of [0, 1]) {
-      const r = half(L.pants, side);
-      const ft = feet[side];
-      if (!r || !ft) continue;
-      const fw = Math.max(ft[1] - ft[0], (h1 - h0) / 2);
-      const fx = (ft[0] + ft[1]) / 2 - fw / 2;
-      const hx = side ? hm - 1 : h0 - 2;
-      const hw = (h1 - h0) / 2 + 3;
-      drawAffine(ctx, L.pants, r[0], r[1], r[2], r[3], [hx, top], [hx + hw, top], [fx, bot], fl);
-    }
-  }
-  // botas: uma em cada pé
-  if (L.boots) {
-    const feet = B.feet.length > 1 ? B.feet : [[B.feet[0][0], (B.feet[0][0] + B.feet[0][1]) / 2], [(B.feet[0][0] + B.feet[0][1]) / 2, B.feet[0][1]]];
-    feet.forEach((ft, side) => {
-      const r = half(L.boots!, side);
-      if (!r) return;
-      const w = Math.max(ft[1] - ft[0] + 4, span * 0.3);
-      const c = (ft[0] + ft[1]) / 2;
-      drawAffine(ctx, L.boots!, r[0], r[1], r[2], r[3], [c - w / 2, B.fy0 - 5], [c + w / 2, B.fy0 - 5], [c - w / 2, B.bottom + 1], fl);
-    });
-  }
-  // armadura no tronco
-  if (L.armor) drawFit(ctx, L.armor, B.cx - span * 0.68, B.neck - 3, B.cx + span * 0.68, B.hip + 4, 'fill', 'top', 0, fl);
-  // braçadeiras: uma em cada mão (a de trás um pouco mais escura)
-  if (L.arms) {
-    const g = span * 0.42;
-    [[B.handB, 0], [F.hand, 1]].forEach(([p, side]) => {
-      const r = half(L.arms!, side as number);
-      const [hx, hy] = p as number[];
-      if (!r) return;
-      const a = ctx.globalAlpha;
-      if (!side) ctx.globalAlpha = a * 0.85;
-      drawAffine(ctx, L.arms!, r[0], r[1], r[2], r[3], [hx - g * 0.6, hy - g], [hx + g * 0.4, hy - g], [hx - g * 0.6, hy + g * 0.15], fl);
-      ctx.globalAlpha = a;
-    });
-  }
+  if (v === 'bare' && L.cape) drawFit(ctx, L.cape, -HERO2_H * 0.3 * k, -HERO2_H * 0.6 * k, HERO2_H * 0.18 * k, -HERO2_H * 0.06 * k, 'fill', 'top');
+  drawSprite(ctx, name, fi, 0, 0, 1, { scale: s, flash: fl });
   // arma na mão da frente
   const wr = frameRect(L.weapon);
-  if (wr && anim !== 'death') {
-    const wh = H0 * (L.weaponKind === 'dagger' ? 0.32 : L.weaponKind === 'bow' ? 0.48 : 0.46);
+  if (wr && F && anim !== 'death') {
+    const wh = HERO2_H * k * (L.weaponKind === 'dagger' ? 0.32 : L.weaponKind === 'bow' ? 0.48 : 0.46);
     const ww = (wr[0] / wr[1]) * wh;
     ctx.save();
-    ctx.translate(F.hand[0] + ((pose.thrust ?? 0) * k) / s, F.hand[1]);
+    ctx.translate(F.hand[0] * s + (pose.thrust ?? 0) * k, F.hand[1] * s);
     ctx.rotate(pose.weapon ?? 0);
     drawFit(ctx, L.weapon, -ww * 0.14, -wh * 0.88, ww * 0.86, wh * 0.12, 'fill', 'top', 0, fl);
-    if (pose.charge) glow(ctx, ww * 0.7, -wh * 0.75, 30 * pose.charge, L.weaponColor, 0.5 * pose.charge);
+    if (pose.charge) glow(ctx, ww * 0.7, -wh * 0.75, 18 * pose.charge * k, L.weaponColor, 0.5 * pose.charge);
     ctx.restore();
   }
   // halo acima da cabeça
-  if (L.helmet) {
+  if (L.helmet && F) {
     const [h0, ht, h1] = F.head;
     const f = frameRect(L.helmet, 0);
+    const rar = L.helmet.replace('halo_', '');
     const HW: Record<string, number> = { comum: 0.72, incomum: 0.95, divino: 1.12, celestial: 1.12 };
-    const W = (h1 - h0) * 0.92 * (HW[L.helmet.replace('halo_', '')] ?? 1.05);
-    const Hh = f ? (W * f[1]) / f[0] : W * 0.6;
-    const cx = (h0 + h1) / 2, bottom = ht + 6 + Math.sin(time * 2.4) * 2;
-    glow(ctx, cx, bottom - Hh / 2, W * 0.55, L.haloColor, 0.22);
-    drawFit(ctx, L.helmet, cx - W / 2, bottom - Hh, cx + W / 2, bottom, 'fill', 'top', Math.floor(time * 5) % 4, fl);
-  }
-  // asas frontais
-  if (L.wingsFront) {
-    const a = ctx.globalAlpha;
-    ctx.globalAlpha = a * 0.85;
-    drawFit(ctx, L.wingsFront, B.cx - span * 0.9, B.neck - 2, B.cx + span * 0.7, B.neck + span * 0.55, 'contain', 'mid', 0, fl);
-    ctx.globalAlpha = a;
+    const W = (h1 - h0) * s * 0.92 * (HW[rar] ?? 1.05);
+    const H = f ? (W * f[1]) / f[0] : W * 0.6;
+    const cx = ((h0 + h1) / 2) * s, bottom = ht * s + 4 * k + Math.sin(time * 2.4) * 1.2 * k;
+    glow(ctx, cx, bottom - H / 2, W * 0.55, L.haloColor, 0.22);
+    drawFit(ctx, L.helmet, cx - W / 2, bottom - H, cx + W / 2, bottom, 'fill', 'top', Math.floor(time * 5) % 4, fl);
   }
   ctx.restore();
 }

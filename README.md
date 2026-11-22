@@ -108,10 +108,9 @@ custam gemas. Catálogo gerado em `src/data/gear.ts`.
 ## Personagem novo (Guerreiro)
 
 Guerreiro, Lutador e Lanceiro usam a prancha `assets-src/sheet-hero-b.png` (recortada por `tools/hero_cells.py`):
-o corpo sem armadura parado, correndo e pulando (8 quadros cada). Tudo o que é equipado é vestido por cima, no
-lugar do corpo medido em cada quadro (pescoço, quadril, mãos e cada pé): armadura no tronco, calças em duas
-pernas que seguem os pés, uma bota em cada pé, braçadeiras nas mãos, capa e asas atrás, arma na mão, halo e
-aura. Trocar qualquer peça muda o personagem. Prévia com as 8 raridades: `spritesheets/hero_dress.png`.
+parado, correr e pular em 8 quadros cada, sem armadura e com armadura (botas, luvas e asas já desenhadas).
+Com uma armadura equipada aparece a versão com armadura. Por cima entram a arma na mão, o halo, a aura e,
+sem armadura, a capa e as asas equipadas. Prévia: `spritesheets/hero_preview.gif`.
 
 ## Inventário
 
