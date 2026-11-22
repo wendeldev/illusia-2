@@ -792,8 +792,15 @@ for (row, key), im in LY.items():
 import anatomy as AN
 PD = {}
 import split_head as SH
-for cls, frs in MY.load_bodies().items():
-    put(f'pd_{cls}', frs)
+import hero_white as HWH
+BODIES = MY.load_bodies()
+HW_FR = HWH.load()   # Guerreiro: corpo base novo com 32 quadros (parado, andar, correr, pular)
+BODIES['warrior'] = [im for im, _, _ in HW_FR]
+for cls, frs in BODIES.items():
+    if cls == 'warrior':
+        my_items['pd_warrior'] = (HW_FR, 1.0)
+    else:
+        put(f'pd_{cls}', frs)
     PD[cls] = [AN.anatomy(im) for im in frs]
     neck0 = PD[cls][0]['neck']
     for im, an in zip(frs, PD[cls]):

@@ -95,6 +95,8 @@ export interface Player extends Body {
   /** escudo (reduz dano) e fúria das sombras (mais dano), em segundos */
   shieldT: number;
   empowerT: number;
+  /** retomada (pouso) depois de um pulo, em segundos */
+  landT: number;
   /** investida/teleporte em andamento */
   dash: { vx: number; t: number; hit: Set<Enemy>; skill: SkillDef } | null;
 }
@@ -353,7 +355,7 @@ export class World {
       mp: Math.min(keep?.mp ?? this.stats.maxMp, this.stats.maxMp), maxMp: this.stats.maxMp,
       hitStun: 0, flash: 0, attackTimer: 0, comboStep: 0, comboWindow: 0,
       anim: null, animT: 0, animDur: 1, moving: false, deadAnim: 0, pending: null,
-      cooldowns: {}, invuln: 0, dead: false, deadTimer: 0, walk: 0, buffered: null, bufferT: 0, jumpBuffer: 0, coyote: 0, climbing: false, castAnim: null, castT: 0, castDur: 1, shieldT: 0, empowerT: 0, dash: null,
+      cooldowns: {}, invuln: 0, dead: false, deadTimer: 0, walk: 0, buffered: null, bufferT: 0, jumpBuffer: 0, coyote: 0, climbing: false, castAnim: null, castT: 0, castDur: 1, shieldT: 0, empowerT: 0, landT: 0, dash: null,
     };
     this.camX = this.cameraTarget();
     this.camY = this.cameraTargetY();
@@ -464,6 +466,7 @@ export class World {
     p.invuln = Math.max(0, p.invuln - dt);
     p.shieldT = Math.max(0, p.shieldT - dt);
     p.empowerT = Math.max(0, p.empowerT - dt);
+    p.landT = Math.max(0, p.landT - dt);
     if (p.castAnim) { p.castT += dt; if (p.castT >= p.castDur) p.castAnim = null; }
 
     if (p.dead) {
@@ -556,7 +559,7 @@ export class World {
     const dashVx = p.dash ? p.dash.vx : 0;
     moveBody(p, (move * PLAYER_SPEED * (this.buffs.speed ? 1.3 : 1) + p.vx + dashVx) * dt, dt, this.terrain, minX, maxX);
     if (p.dash) this.updateDash(dt);
-    if (wasAir && p.onGround) this.sound('land');
+    if (wasAir && p.onGround) { this.sound('land'); p.landT = 0.2; }
     p.vx *= Math.pow(0.002, dt);
     p.moving = move !== 0 && p.onGround;
     if (p.moving) p.walk += dt * 11;
@@ -1819,6 +1822,7 @@ export class World {
       if (p.vy < 0) { anim = 'jump'; i = p.vy < -260 ? 1 : p.vy < -120 ? 2 : 3; }
       else { anim = 'fall'; i = this.time * rigFps('fall'); }
     } else if (p.moving) { anim = p.dash ? 'run' : 'walk'; i = p.walk; }
+    else if (p.landT > 0) { anim = 'land'; i = (1 - p.landT / 0.2) * 4; }
     const pose: DollPose = { ...rigPose(L, anim, i), charge };
     // sombra na superfície embaixo (mesmo pulando)
     const below = this.terrain.surfacesAt(p.x).find((y) => y >= p.y - 1) ?? p.y;

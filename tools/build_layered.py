@@ -125,8 +125,8 @@ class Body:
         self.H0 = self.anat[0]['H']
 
     def origin(self, fi):
-        im = self.frames[fi]
-        return AX - im.size[0] // 2, AY - im.size[1]
+        f = ATLAS[f'pd_{self.cls}']['frames'][fi]   # âncora do quadro (pés) no atlas
+        return AX - round(f[4]), AY - round(f[5])
 
     def boxes(self, fi):
         a = self.anat[fi]

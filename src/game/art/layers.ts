@@ -233,7 +233,7 @@ const R = RIG as unknown as {
   anims: [string, number][]; fps: Record<string, number>; loop: string[];
   body: Record<string, Record<string, RigBody[]>>; weapon: Record<string, Record<string, RigWeapon[]>>; styleOf: Record<string, string>;
 };
-export type RigAnim = 'idle' | 'walk' | 'run' | 'jump' | 'fall' | 'atk1' | 'atk2' | 'atk3' | 'hurt' | 'death';
+export type RigAnim = 'idle' | 'walk' | 'run' | 'jump' | 'fall' | 'land' | 'atk1' | 'atk2' | 'atk3' | 'hurt' | 'death';
 const RIG_COUNT: Record<string, number> = Object.fromEntries(R.anims);
 
 /** Quantos quadros a animação tem e a velocidade (quadros por segundo). */
@@ -242,12 +242,13 @@ export function rigFps(anim: RigAnim): number { return R.fps[anim] ?? 10; }
 
 /** Pose do quadro `i` da animação (corpo pela classe, arma pelo estilo da arma equipada). */
 export function rigPose(L: DollLook, anim: RigAnim, i: number): DollPose {
-  const body = R.body[L.cls]?.[anim] ?? R.body.warrior[anim];
+  const body = R.body[L.cls]?.[anim] ?? R.body[L.cls]?.idle ?? R.body.warrior.idle;
   const n = body.length;
   const k = ((Math.floor(i) % n) + n) % n;
   const b = body[k];
   const style = R.styleOf[L.weaponKind] ?? 'slash';
-  const w = (R.weapon[style] ?? R.weapon.slash)[anim]?.[k] ?? { w: 0, t: 0 };
+  const ws = R.weapon[style] ?? R.weapon.slash;
+  const w = ws[anim]?.[k] ?? ws.idle?.[k % 4] ?? { w: 0, t: 0 };
   return { frame: b.f, dx: b.dx, dy: b.dy, sy: b.sy, rot: (b.rot * Math.PI) / 180, weapon: (w.w * Math.PI) / 180, thrust: w.t };
 }
 

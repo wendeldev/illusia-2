@@ -17,7 +17,29 @@ LOOP = {'idle', 'walk', 'run', 'fall'}
 STRIDE = {'warrior': [1, 2, 3, 4], 'assassin': [1, 2, 3, 4], 'mage': [0, 1, 2, 1], 'archer': [0, 1, 2, 1]}
 
 
+def warrior_rig():
+    """Guerreiro: corpo base com quadros próprios (prancha sheet-hero-white): 0-7 parado, 8-15 andar,
+    16-23 correr, 24-31 pular (24 de pé, 25 agacha, 26 impulso, 27 subindo, 28 encolhido, 29 descendo,
+    30 retomada/pouso, 31 de pé). O movimento vem dos próprios desenhos (sem balanço artificial)."""
+    fr = lambda f, **k: {'f': f, 'dx': 0, 'dy': 0, 'sy': 1.0, 'rot': 0, **k}
+    return {
+        'idle': [fr(f) for f in (0, 1, 2, 7)],
+        'walk': [fr(8 + i) for i in range(8)],
+        'run': [fr(16 + i) for i in range(8)],
+        'jump': [fr(f) for f in (25, 26, 27, 28)],
+        'fall': [fr(f) for f in (28, 29, 29, 29)],
+        'land': [fr(f) for f in (30, 30, 31, 0)],
+        'atk1': [fr(f, dx=x) for f, x in zip((0, 0, 10, 10, 10, 0), (0, -1, 2, 4, 3, 1))],
+        'atk2': [fr(f, dx=x) for f, x in zip((14, 14, 10, 10, 14, 0), (0, 1, 3, 4, 2, 0))],
+        'atk3': [fr(f, dx=x, dy=d) for f, x, d in zip((0, 25, 25, 26, 18, 18, 30, 0), (0, -2, -1, 3, 6, 6, 3, 1), (0, 0, 0, -4, -2, 0, 0, 0))],
+        'hurt': [fr(0, dx=x, dy=d) for x, d in ((-2, 0), (-3, -1), (-2, 0), (-1, 0))],
+        'death': [fr(f, dx=x, rot=r) for f, x, r in zip((0, 30, 30, 30, 30, 30, 30, 30), (-1, -2, -3, -4, -4, -4, -4, -4), (0, -8, -20, -40, -60, -80, -90, -90))],
+    }
+
+
 def body_rig(cls):
+    if cls == 'warrior':
+        return warrior_rig()
     S = STRIDE[cls]
     # "quadro 2" e "quadro 3" = passos da passada da classe (Maga/Arqueiro: 1 e 2)
     F = {0: 0, 2: S[1], 3: S[2]}

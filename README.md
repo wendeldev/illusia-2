@@ -105,6 +105,13 @@ classe). Arma preferida da classe: +25% no ataque da arma. A loja tem categorias
 adagas, arcos, cajados, halos, armaduras, braços, calças, capas, botas, asas, auras); Mítico e Divino
 custam gemas. Catálogo gerado em `src/data/gear.ts`.
 
+## Corpo do Guerreiro
+
+O Guerreiro (e Lutador e Lanceiro) usa o corpo base da prancha `assets-src/sheet-hero-white.png`
+(`tools/hero_white.py`): 8 quadros de parado, andar, correr e pular (com a retomada no pouso). As peças
+equipadas continuam vestidas por cima em cada quadro (anatomia em `src/data/paperdoll.json`). Prévia com as
+8 raridades: `spritesheets/warrior_dress.png`.
+
 ## Inventário
 
 Bolsa (🎒 ou G) no visual da prancha `assets-src/sheet-inventory.png` (recortada por `tools/ui_cells.py`):
