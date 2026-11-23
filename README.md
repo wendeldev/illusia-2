@@ -138,6 +138,11 @@ vestidas, 32 quadros); sem armadura usa o corpo `assets-src/sheet-body-assassin.
 equipadas continuam vestidas por cima em cada quadro (anatomia em `src/data/paperdoll.json`). Prévia com as
 8 raridades: `spritesheets/warrior_dress.png`.
 
+Ataque, dano e morte desenhados: `assets-src/<classe>-combat/<raridade>.png` (3×8: ataque, dano, morte), recortados por
+`tools/combat_cells.py` (o fundo desfocado sai pelo degradê até o contorno) e somados ao visual da raridade (quadros 32-55,
+rig `lookc` em `tools/rig.py`). Raridades sem prancha de combate usam o movimento antigo. As pranchas do Guerreiro ficam
+guardadas até existirem as pranchas de movimento dele por raridade.
+
 ## Inventário
 
 Bolsa (🎒 ou G) no visual da prancha `assets-src/sheet-inventory.png` (recortada por `tools/ui_cells.py`):

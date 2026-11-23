@@ -22,6 +22,8 @@ import { calcDamage, computeStats, enemyScale, expToNext, levelPower, type Stats
 import { BASE_GROUND, JUMP_SPEED, moveBody, Terrain, WORLD_H, type PhysBody } from './terrain';
 
 const PLAYER_SPEED = 140;
+/** Tempo atordoado ao levar dano (a animação de dano acompanha). */
+const HURT_STUN = 0.3;
 /** altura do corpo do jogador (para acertos) */
 const PLAYER_H = 44;
 
@@ -1399,7 +1401,7 @@ export class World {
     this.damageTaken += Math.min(dmg, Math.max(0, p.hp));
     p.hp -= dmg;
     p.flash = 0.12;
-    p.hitStun = 0.3;
+    p.hitStun = HURT_STUN;
     p.attackTimer = 0;
     p.invuln = 0.6;
     p.vx = dir * (heavy ? 260 : 150);
@@ -1823,7 +1825,7 @@ export class World {
       const t = p.animT / p.animDur;
       i = frameOf(t, anim);
       if (anim === 'atk3' && p.anim !== 'combo2') charge = Math.sin(Math.min(1, t) * Math.PI) * 0.6;
-    } else if (p.hitStun > 0) { anim = 'hurt'; i = this.time * rigFps('hurt'); }
+    } else if (p.hitStun > 0) { anim = 'hurt'; i = frameOf(1 - p.hitStun / HURT_STUN, anim); }
     else if (p.climbing) { anim = 'walk'; i = p.walk; }
     else if (!p.onGround) {
       if (p.vy < 0) { anim = 'jump'; i = p.vy < -260 ? 1 : p.vy < -120 ? 2 : 3; }

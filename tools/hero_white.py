@@ -6,6 +6,8 @@ import os
 
 from PIL import Image
 
+import combat_cells as CC
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROWS = ['idle', 'walk', 'run', 'jump']
 # fileiras desenhadas olhando para a esquerda (espelhadas para a direita)
@@ -130,4 +132,7 @@ def load_looks(cls='mage'):
         path = sets(n)
         if os.path.exists(path):
             out[rar] = _frames(_cells(path, cls, light_bg=True), k, anchors)
+            # ataque, dano e morte desenhados (assets-src/<classe>-combat/<raridade>.png): quadros 32-55
+            if os.path.exists(CC.path(cls, rar)):
+                out[rar] += CC.frames(cls, rar, out[rar][0])
     return out

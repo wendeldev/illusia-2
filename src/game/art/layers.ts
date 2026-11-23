@@ -6,7 +6,7 @@ import { getItem } from '../../data';
 import { PREFERRED, RARITY_COLORS, RARITY_KEYS, SET_OF } from '../../data/gear';
 import PD from '../../data/paperdoll.json';
 import RIG from '../../data/rig.json';
-import { drawFit, frameRect, hasSprite } from '../../engine/sprites';
+import { drawFit, frameCount, frameRect, hasSprite } from '../../engine/sprites';
 import type { Slot } from '../../types';
 import type { Progress } from '../progress';
 import { glow } from './scene3d';
@@ -254,8 +254,9 @@ export function rigFps(anim: RigAnim): number { return R.fps[anim] ?? 10; }
 
 /** Pose do quadro `i` da animação (corpo pela classe, arma pelo estilo da arma equipada). */
 export function rigPose(L: DollLook, anim: RigAnim, i: number): DollPose {
-  // visual completo (32 quadros das pranchas vestidas) usa o rig dos corpos novos
-  const B = L.look ? R.body.look : R.body[L.cls];
+  // visual completo (32 quadros das pranchas vestidas) usa o rig dos corpos novos; com as pranchas de
+  // combate (56 quadros), ataque, dano e morte vêm dos próprios desenhos
+  const B = L.look ? (frameCount(L.look) >= 56 ? R.body.lookc : R.body.look) : R.body[L.cls];
   const body = B?.[anim] ?? B?.idle ?? R.body.warrior.idle;
   const n = body.length;
   const k = ((Math.floor(i) % n) + n) % n;
