@@ -163,9 +163,9 @@ class Body:
             hx0, hy0, hx1, _ = self.anat[fi]['head']
             w = (hx1 - hx0) * HALO_W.get(name, 1.05)
             h = w * h0 / w0
-            cx = ox + (hx0 + hx1) / 2
+            cx = ox + self.ovals[fi][0]   # centrado no rosto (igual ao jogo)
             bob = round(math.sin(fr['_i'] * 1.4) * 1.2)
-            bottom = oy + hy0 + 4 + bob
+            bottom = oy + hy0 - 1 + bob
             img = frames[fr['_i'] % len(frames)].resize((max(1, round(w)), max(1, round(h))), NEAREST)
             paste(cv, img, round(cx - w / 2), round(bottom - h))
         else:

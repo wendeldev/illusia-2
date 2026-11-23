@@ -30,15 +30,16 @@ const HALO_W: Record<string, number> = { comum: 0.72, incomum: 0.95, raro: 1.05,
 const HALO_FPS = 5;
 
 /** Caixa do halo no quadro do corpo (px do quadro) e o quadro de animação do halo. */
-export function haloBox(A: { head: number[] }, name: string, time: number): [number, number, number, number, number] {
+export function haloBox(A: { head: number[]; oval?: number[] }, name: string, time: number): [number, number, number, number, number] {
   const rar = name.replace('halo_', '');
   const f = frameRect(name, 0);
   const [hx0, hy0, hx1] = A.head;
   const w = (hx1 - hx0) * (HALO_W[rar] ?? 1.05);
   const h = f ? (w * f[1]) / f[0] : w * 0.6;
-  const cx = (hx0 + hx1) / 2;
+  // centrado no rosto (o cabelo comprido da Maga e o volume do Assassino deslocam a caixa da cabeça)
+  const cx = A.oval ? A.oval[0] : (hx0 + hx1) / 2;
   // a parte de baixo do desenho fica logo acima do topo do cabelo, balançando de leve
-  const bottom = hy0 + 4 + Math.sin(time * 2.4) * 1.2;
+  const bottom = hy0 - 1 + Math.sin(time * 2.4) * 1.2;
   return [cx - w / 2, bottom - h, cx + w / 2, bottom, Math.floor(time * HALO_FPS) % 4];
 }
 
