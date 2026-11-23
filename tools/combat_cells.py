@@ -49,10 +49,40 @@ def cut_bg(im):
     return res
 
 
+def cut_alpha(im, min_px=80):
+    """Prancha já com transparência: fica só o que é opaco, sem os pontinhos soltos do brilho do fundo."""
+    a = np.asarray(im).copy()
+    m = a[..., 3] >= 200
+    H, W = m.shape
+    seen = np.zeros((H, W), bool)
+    keep = np.zeros((H, W), bool)
+    for y0, x0 in zip(*np.nonzero(m)):
+        if seen[y0, x0]:
+            continue
+        seen[y0, x0] = True
+        st, comp = [(y0, x0)], []
+        while st:
+            y, x = st.pop()
+            comp.append((y, x))
+            for ny, nx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
+                if 0 <= ny < H and 0 <= nx < W and m[ny, nx] and not seen[ny, nx]:
+                    seen[ny, nx] = True
+                    st.append((ny, nx))
+        if len(comp) >= min_px:
+            ys, xs = zip(*comp)
+            keep[list(ys), list(xs)] = True
+    a[~keep] = 0
+    a[keep, 3] = 255
+    return Image.fromarray(a)
+
+
 def cells(cls, rar):
     S = Image.open(path(cls, rar)).convert('RGBA')
+    # com transparência de verdade (fundo vazio) recorta pelo alfa; senão, pelo degradê do fundo
+    transparent = (np.asarray(S.getchannel('A')) == 0).mean() > 0.1
+    cut = cut_alpha if transparent else cut_bg
     cw, ch = S.size[0] / 8, S.size[1] / 3
-    return [[cut_bg(S.crop((round(c * cw), round(r * ch), round((c + 1) * cw), round((r + 1) * ch)))) for c in range(8)]
+    return [[cut(S.crop((round(c * cw), round(r * ch), round((c + 1) * cw), round((r + 1) * ch)))) for c in range(8)]
             for r in range(3)]
 
 
