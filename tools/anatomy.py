@@ -6,7 +6,8 @@ def anatomy(im):
     op = lambda x, y: px[x, y][3] > 40
     def shorts(c):
         r, g, b, a = c
-        return a > 40 and b > r + 15 and b > g + 5
+        # calção/saia: azul ou roxo, verde ou rosa/magenta
+        return a > 40 and ((b > r + 15 and b > g + 5) or (g > r + 10 and g > b + 10) or (r > 100 and r > g + 50 and b > g + 15))
     sx = [x for y in range(int(H * 0.5), H) for x in range(W) if shorts(px[x, y])]
     sy = [y for y in range(int(H * 0.5), H) for x in range(W) if shorts(px[x, y])]
     hips = (min(sx), min(sy), max(sx), max(sy))
@@ -22,9 +23,17 @@ def anatomy(im):
     # pescoço: linha mais estreita entre 30% e topo do quadril
     lo, hi = int(H * 0.3), hips[1] - 3
     neck = min(range(lo, hi), key=lambda y: (rows[y][1] - rows[y][0]) if rows[y] else 999)
+    # regata clara (Maga): o tronco começa no topo dela — o cabelo comprido engana a busca pelo pescoço
+    light = [y for y in range(int(H * 0.35), hips[1]) for x in range(W)
+             if px[x, y][3] > 40 and min(px[x, y][:3]) > 195 and max(px[x, y][:3]) - min(px[x, y][:3]) < 45]
+    if len(light) >= 6:
+        neck = max(neck, min(light) - 1)
     # mãos: extremos entre o pescoço e o fim do quadril
     band = [rows[y] for y in range(neck + 2, hips[3] + 1) if rows[y]]
     hand_l = min(b[0] for b in band); hand_r = max(b[1] for b in band)
+    # cabelo comprido para os lados não conta como braço: limita à largura do quadril
+    hwid = hips[2] - hips[0]
+    hand_l = max(hand_l, int(hips[0] - hwid * 0.9)); hand_r = min(hand_r, int(hips[2] + hwid * 0.9))
     # cabeça: do topo ao pescoço
     hx = [x for y in range(0, neck) for x in range(W) if op(x, y)]
     head = (min(hx), 0, max(hx), neck)
