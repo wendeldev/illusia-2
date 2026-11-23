@@ -86,50 +86,53 @@ def cells(cls, rar):
             for r in range(3)]
 
 
-def frames(cls, rar, idle):
-    """24 quadros (ataque 0-7, dano 8-15, morte 16-23) na escala e nos pés do quadro parado do visual
-    (`idle` = (imagem, ax, ay) do quadro 0 do visual da mesma raridade). Cada fileira começa parada,
-    então a âncora de cada fileira vem do 1º quadro dela, alinhado ao quadro parado do visual."""
-    im0, ax0, ay0 = idle
+def frames(cls, rar, look_cell, k, anchor):
+    """24 quadros (ataque 0-7, dano 8-15, morte 16-23) na escala e nos pés do visual da mesma raridade.
+    `look_cell` = quadro parado do visual em tamanho original, `k` = escala dele no jogo e `anchor` = pés
+    (x, y) na célula. Medido pelo corpo sem o halo, em tamanho original (reduzido, o halo encosta no cabelo)."""
+    bl, fl = _body(look_cell)
+    hl = bl[3] - bl[1]
     out = []
-    rows = cells(cls, rar)
-    for row in rows:
-        b0 = row[0].getchannel('A').getbbox()
-        k = im0.size[1] / (b0[3] - b0[1])
-        fx, fy = b0[0] + ax0 / k, b0[1] + ay0 / k     # pés na célula
+    for row in cells(cls, rar):
+        bc, fc = _body(row[0])
+        r = (bc[3] - bc[1]) / hl                 # px da prancha de combate por px do visual
+        kc = k / r
+        fy = bc[3] - (bl[3] - anchor[1]) * r
+        fx = fc + (anchor[0] - fl) * r
         for im in row:
             bb = im.getchannel('A').getbbox()
             crop = im.crop(bb)
-            sm = crop.resize((max(1, round(crop.size[0] * k)), max(1, round(crop.size[1] * k))), Image.LANCZOS)
-            out.append((sm, round((fx - bb[0]) * k), round((fy - bb[1]) * k)))
+            sm = crop.resize((max(1, round(crop.size[0] * kc)), max(1, round(crop.size[1] * kc))), Image.LANCZOS)
+            out.append((sm, round((fx - bb[0]) * kc), round((fy - bb[1]) * kc)))
     return out
 
 
 def _body(im):
-    """Maior pedaço ligado do quadro (o personagem sem o halo solto): (bbox, centro dos pés)."""
+    """Corpo do quadro sem o halo solto: todas as partes, menos as que ficam inteiras acima do topo da
+    maior parte (o halo). Devolve (bbox, centro dos pés)."""
     a = np.asarray(im.getchannel('A')) > 0
     H, W = a.shape
     lab = np.zeros((H, W), np.int32)
-    best, best_n, cur = 0, 0, 0
+    comps = []
     for y0, x0 in zip(*np.nonzero(a)):
         if lab[y0, x0]:
             continue
-        cur += 1
-        lab[y0, x0] = cur
-        st, n = [(y0, x0)], 0
+        lab[y0, x0] = len(comps) + 1
+        st, ys, xs = [(y0, x0)], [], []
         while st:
             y, x = st.pop()
-            n += 1
+            ys.append(y); xs.append(x)
             for ny, nx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
                 if 0 <= ny < H and 0 <= nx < W and a[ny, nx] and not lab[ny, nx]:
-                    lab[ny, nx] = cur
+                    lab[ny, nx] = len(comps) + 1
                     st.append((ny, nx))
-        if n > best_n:
-            best, best_n = cur, n
-    if not best:
+        comps.append((np.array(ys), np.array(xs)))
+    if not comps:
         return None
-    m = lab == best
-    ys, xs = np.nonzero(m)
+    big = max(comps, key=lambda c: len(c[0]))
+    top = big[0].min()
+    keep = [c for c in comps if c[0].max() > top + 3]
+    ys = np.concatenate([c[0] for c in keep]); xs = np.concatenate([c[1] for c in keep])
     y0, y1 = ys.min(), ys.max() + 1
     band = xs[ys >= y1 - max(4, (y1 - y0) // 14)]
     return (xs.min(), y0, xs.max() + 1, y1), (band.min() + band.max() + 1) / 2

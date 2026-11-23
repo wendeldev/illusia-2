@@ -4,6 +4,7 @@
 # (61 px de altura) e ancorado pelo chão de cada fileira, para as peças em camadas seguirem cada quadro.
 import os
 
+import numpy as np
 from PIL import Image
 
 import combat_cells as CC
@@ -26,7 +27,8 @@ def available():
 
 
 # Maga vestida em cada raridade (prancha inteira com armadura, botas, halo, asas e cajado): assets-src/mage-sets/<n>.png
-LOOKS = {'mage': {'comum': 0, 'incomum': 1, 'celestial': 2, 'lendario': 3, 'raro': 4, 'divino': 5, 'mitico': 6, 'epico': 7},
+LOOKS = {'warrior': {'mitico': 0, 'celestial': 1, 'epico': 2, 'incomum': 3, 'divino': 4, 'comum': 5, 'raro': 6, 'lendario': 7},
+         'mage': {'comum': 0, 'incomum': 1, 'celestial': 2, 'lendario': 3, 'raro': 4, 'divino': 5, 'mitico': 6, 'epico': 7},
          'assassin': {'incomum': 0, 'celestial': 1, 'lendario': 2, 'comum': 3, 'raro': 4, 'epico': 5, 'mitico': 6, 'divino': 7}}
 
 
@@ -34,18 +36,18 @@ def _cells(path, cls, light_bg=False):
     S = Image.open(path).convert('RGBA')
     cols, rows = 8, 4
     cw, ch = S.size[0] / cols, S.size[1] / rows
-    transparent = S.getchannel('A').getextrema()[0] == 0
+    transparent = S.getchannel('A').getextrema()[0] == 0 or (np.asarray(S.getchannel('A')) < 100).mean() > 0.1
     cells = []
     for r in range(rows):
         row = []
         for c in range(cols):
             im = S.crop((round(c * cw), round(r * ch), round((c + 1) * cw), round((r + 1) * ch)))
-            if light_bg:
-                # fundo desfocado: sai pelo degradê até o contorno (não come as asas e halos brancos)
-                im = CC.cut_bg(im)
-            elif transparent:
+            if transparent:
                 # prancha transparente com brilho/sujeira em volta: só as partes grandes e opacas
                 im = CC.cut_alpha(im)
+            elif light_bg:
+                # fundo desfocado: sai pelo degradê até o contorno (não come as asas e halos brancos)
+                im = CC.cut_bg(im)
             px = im.load()
             for y in range(im.size[1]):
                 for x in range(im.size[0]):
@@ -113,8 +115,9 @@ def load_looks(cls='mage'):
     for rar, n in looks.items():
         path = sets(n)
         if os.path.exists(path):
-            out[rar] = _frames(_cells(path, cls, light_bg=True), k, anchors)
+            lc = _cells(path, cls, light_bg=True)
+            out[rar] = _frames(lc, k, anchors)
             # ataque, dano e morte desenhados (assets-src/<classe>-combat/<raridade>.png): quadros 32-55
             if os.path.exists(CC.path(cls, rar)):
-                out[rar] += CC.frames(cls, rar, out[rar][0])
+                out[rar] += CC.frames(cls, rar, lc[0][0], k, anchors[0])
     return out
