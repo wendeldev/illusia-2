@@ -70,7 +70,7 @@ export function levelPower(level: number): number {
 }
 
 /** Curvas de crescimento dos monstros (ajustadas pela simulação tools/sim/balance.ts). */
-export const ENEMY_CURVE = { hp: 1.4, atk: 1.3, exp: 1.15, gold: 1.0, commonAtk: 1.6 };
+export const ENEMY_CURVE = { hp: 1.42, atk: 1.32, exp: 1.15, gold: 1.0, commonAtk: 1.7 };
 
 /** Atributos de um monstro no nível dado (mesma conta no jogo e na simulação). */
 export function enemyScale(def: { hp: number; atk: number; def: number; exp: number; gold: number; boss?: boolean }, level: number) {
