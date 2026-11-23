@@ -10,8 +10,15 @@ validateContent();
 void loadSprites();
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
-// modo 3D: ?3d no endereço. Fundo, terreno e personagens em Three.js; efeitos e menus no canvas 2D por cima.
-const use3d = new URLSearchParams(location.search).has('3d');
+// 3D é o padrão; ?2d no endereço força o modo 2D (mais leve). Sem WebGL, o jogo fica em 2D.
+const webgl = (() => {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    gl?.getExtension('WEBGL_lose_context')?.loseContext(); // só o teste: libera o contexto
+    return !!gl;
+  } catch { return false; }
+})();
+const use3d = webgl && !new URLSearchParams(location.search).has('2d');
 const bgCanvas = document.getElementById('bg3d') as HTMLCanvasElement;
 let backdrop: Backdrop3D | null = null;
 const view = setupCanvas(canvas, use3d);
