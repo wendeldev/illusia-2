@@ -118,7 +118,7 @@ O Guerreiro (e Lutador e Lanceiro) usa o corpo base da prancha `assets-src/sheet
 `assets-src/sheet-body-mage.png` (`tools/hero_white.py`; a fileira de correr da Maga vem espelhada). Com uma armadura equipada, a Maga aparece
 como na prancha da raridade dessa armadura (`assets-src/mage-sets/`: a Maga inteira vestida, com halo, asas e
 cajado desenhados), no lugar das peças encaixadas. O Assassino faz o mesmo com `assets-src/assassin-sets/` (8 pranchas
-vestidas, 32 quadros); sem armadura ele continua com o corpo antigo e as peças por cima: 8 quadros de parado, andar, correr e pular (com a retomada no pouso). As peças
+vestidas, 32 quadros); sem armadura usa o corpo `assets-src/sheet-body-assassin.png` com as peças por cima: 8 quadros de parado, andar, correr e pular (com a retomada no pouso). As peças
 equipadas continuam vestidas por cima em cada quadro (anatomia em `src/data/paperdoll.json`). Prévia com as
 8 raridades: `spritesheets/warrior_dress.png`.
 

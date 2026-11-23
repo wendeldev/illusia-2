@@ -7,9 +7,24 @@ def anatomy(im):
     def shorts(c):
         r, g, b, a = c
         # calção/saia: azul ou roxo, verde ou rosa/magenta
-        return a > 40 and ((b > r + 15 and b > g + 5) or (g > r + 10 and g > b + 10) or (r > 100 and r > g + 50 and b > g + 15))
+        return a > 40 and ((b > r + 15 and b > g + 5) or (g > r + 10 and g > b + 10) or (r > 100 and r > g + 50 and b > g + 15)
+                         or (40 < r < 115 and g < 75 and b < 105 and b > g + 8 and r > g + 12 and abs(r - b) < 40))   # roxo escuro (Assassino)
     sx = [x for y in range(int(H * 0.5), H) for x in range(W) if shorts(px[x, y])]
     sy = [y for y in range(int(H * 0.5), H) for x in range(W) if shorts(px[x, y])]
+    # só as linhas com calção de verdade (3+ pixels), no maior bloco contínuo (sombras soltas ficam de fora)
+    from collections import Counter as _C
+    cnt = _C(sy)
+    rows_ = sorted(y for y, n in cnt.items() if n >= 3)
+    if rows_ and max(sy) - min(sy) > H * 0.2:   # só quando sombras soltas esticam a caixa
+        runs, cur = [], [rows_[0]]
+        for y in rows_[1:]:
+            if y - cur[-1] <= 2: cur.append(y)
+            else: runs.append(cur); cur = [y]
+        runs.append(cur)
+        best = max(runs, key=lambda r: sum(cnt[y] for y in r))
+        y0_, y1_ = best[0], best[-1]
+        pts = [(x, y) for x, y in zip(sx, sy) if y0_ <= y <= y1_]
+        sx, sy = [p[0] for p in pts], [p[1] for p in pts]
     hips = (min(sx), min(sy), max(sx), max(sy))
     # pés: últimas linhas
     fy0 = H - max(3, H // 12)
