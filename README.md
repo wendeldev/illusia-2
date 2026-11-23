@@ -140,8 +140,9 @@ equipadas continuam vestidas por cima em cada quadro (anatomia em `src/data/pape
 
 Ataque, dano e morte desenhados: `assets-src/<classe>-combat/<raridade>.png` (3×8: ataque, dano, morte), recortados por
 `tools/combat_cells.py` (o fundo desfocado sai pelo degradê até o contorno) e somados ao visual da raridade (quadros 32-55,
-rig `lookc` em `tools/rig.py`). Raridades sem prancha de combate usam o movimento antigo. As pranchas do Guerreiro ficam
-guardadas até existirem as pranchas de movimento dele por raridade.
+rig `lookc` em `tools/rig.py`). Raridades sem prancha de combate usam o movimento antigo. O Guerreiro (sem visual vestido) usa
+as pranchas só no ataque, no dano e na morte (`pd_warrior_cb_<raridade>`, na escala do corpo base), conforme a raridade
+da armadura; no resto do tempo continua com as peças em camadas.
 
 ## Inventário
 

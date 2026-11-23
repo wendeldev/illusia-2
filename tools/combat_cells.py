@@ -73,3 +73,58 @@ def frames(cls, rar, idle):
             sm = crop.resize((max(1, round(crop.size[0] * k)), max(1, round(crop.size[1] * k))), Image.LANCZOS)
             out.append((sm, round((fx - bb[0]) * k), round((fy - bb[1]) * k)))
     return out
+
+
+def _body(im):
+    """Maior pedaço ligado do quadro (o personagem sem o halo solto): (bbox, centro dos pés)."""
+    a = np.asarray(im.getchannel('A')) > 0
+    H, W = a.shape
+    lab = np.zeros((H, W), np.int32)
+    best, best_n, cur = 0, 0, 0
+    for y0, x0 in zip(*np.nonzero(a)):
+        if lab[y0, x0]:
+            continue
+        cur += 1
+        lab[y0, x0] = cur
+        st, n = [(y0, x0)], 0
+        while st:
+            y, x = st.pop()
+            n += 1
+            for ny, nx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
+                if 0 <= ny < H and 0 <= nx < W and a[ny, nx] and not lab[ny, nx]:
+                    lab[ny, nx] = cur
+                    st.append((ny, nx))
+        if n > best_n:
+            best, best_n = cur, n
+    if not best:
+        return None
+    m = lab == best
+    ys, xs = np.nonzero(m)
+    y0, y1 = ys.min(), ys.max() + 1
+    band = xs[ys >= y1 - max(4, (y1 - y0) // 14)]
+    return (xs.min(), y0, xs.max() + 1, y1), (band.min() + band.max() + 1) / 2
+
+
+def frames_on_body(cls, body_idle):
+    """Classe sem visual vestido (Guerreiro): quadros de combate de cada raridade na escala do corpo base
+    (`body_idle` = (imagem, ax, ay) do quadro parado), com os pés no mesmo lugar. A escala é a mesma em
+    todas as raridades: altura mediana do corpo parado (sem o halo solto) igual à do corpo base."""
+    im0, ax0, ay0 = body_idle
+    bb0, feet0 = _body(im0)
+    dfx = feet0 - ax0                      # pés em relação à âncora, px do corpo base
+    sheets = {rar: cells(cls, rar) for rar in available(cls)}
+    hs = sorted(_body(rows[0][0])[0][3] - _body(rows[0][0])[0][1] for rows in sheets.values())
+    k = (bb0[3] - bb0[1]) / hs[len(hs) // 2]
+    out = {}
+    for rar, rows in sheets.items():
+        fr = []
+        for row in rows:
+            bb, feet = _body(row[0])
+            fx, fy = feet - dfx / k, bb[3]
+            for im in row:
+                b = im.getchannel('A').getbbox()
+                crop = im.crop(b)
+                sm = crop.resize((max(1, round(crop.size[0] * k)), max(1, round(crop.size[1] * k))), Image.LANCZOS)
+                fr.append((sm, round((fx - b[0]) * k), round((fy - b[1]) * k)))
+        out[rar] = fr
+    return out

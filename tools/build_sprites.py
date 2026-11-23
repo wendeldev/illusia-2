@@ -712,6 +712,11 @@ for cls, frs in BODIES.items():
     # visual completo por raridade (classe vestida, 32 quadros): pd_<classe>_look_<raridade>
     for rar, fr in HWH.load_looks(cls).items():
         my_items[f'pd_{cls}_look_{rar}'] = (fr, 1.0)
+    # classe sem visual vestido (Guerreiro): só ataque, dano e morte desenhados por raridade (24 quadros)
+    if cls in NEW_BODY and not HWH.LOOKS.get(cls):
+        import combat_cells as CC
+        for rar, fr in CC.frames_on_body(cls, NEW_BODY[cls][0]).items():
+            my_items[f'pd_{cls}_cb_{rar}'] = (fr, 1.0)
     PD[cls] = [AN.anatomy(im) for im in frs]
     neck0 = PD[cls][0]['neck']
     for im, an in zip(frs, PD[cls]):
