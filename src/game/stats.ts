@@ -69,6 +69,23 @@ export function levelPower(level: number): number {
   return 1 + (level - 1) * 0.105;
 }
 
+/** Curvas de crescimento dos monstros (ajustadas pela simulação tools/sim/balance.ts). */
+export const ENEMY_CURVE = { hp: 1.4, atk: 1.3, exp: 1.15, gold: 1.0, commonAtk: 1.6 };
+
+/** Atributos de um monstro no nível dado (mesma conta no jogo e na simulação). */
+export function enemyScale(def: { hp: number; atk: number; def: number; exp: number; gold: number; boss?: boolean }, level: number) {
+  const pw = levelPower(level);
+  return {
+    hp: def.hp * Math.pow(pw, ENEMY_CURVE.hp),
+    // comuns batem mais forte (em grupo precisam ser uma ameaça); entra aos poucos até o nível 10 para o começo
+    // continuar tranquilo. Chefes já têm poderes e fúria.
+    atk: def.atk * Math.pow(pw, ENEMY_CURVE.atk) * (def.boss ? 1 : 1 + (ENEMY_CURVE.commonAtk - 1) * Math.min(1, (level - 1) / 9)),
+    armor: def.def * Math.sqrt(pw),
+    exp: def.exp * Math.pow(pw, ENEMY_CURVE.exp) * 1.2,
+    gold: def.gold * Math.pow(pw, ENEMY_CURVE.gold),
+  };
+}
+
 /** Bônus de set: 3 peças do mesmo set = +6%; 4 peças (completo) = +15% (ATQ, DEF, HP). Set da própria classe vale 1,5×.
  *  A raridade do set é a menor entre as peças contadas. */
 export function setBonus(p: Progress): { cls: string; pieces: number; rarity: number; mul: number; label: string } | null {
@@ -157,7 +174,17 @@ export function describeBonus(e: EquipmentDef): string {
   return parts.join('  ');
 }
 
+/**
+ * Dano médio de um golpe. A defesa reduz o dano em proporção (A² / (A + D)): defesa igual ao ataque corta pela metade,
+ * e o golpe nunca vira 1 só porque a defesa passou do ataque (antes era A − 0,6·D, que zerava os monstros comuns).
+ */
+export function baseDamage(atk: number, def: number, mul: number): number {
+  const a = atk * mul;
+  return Math.max(1, (a * a) / (a + Math.max(0, def) * DEF_WEIGHT));
+}
+/** peso da defesa na fórmula do dano */
+export const DEF_WEIGHT = 0.9;
+
 export function calcDamage(atk: number, def: number, mul: number): number {
-  const base = Math.max(1, atk * mul - def * 0.6);
-  return Math.max(1, Math.round(base * (0.9 + Math.random() * 0.2)));
+  return Math.max(1, Math.round(baseDamage(atk, def, mul) * (0.9 + Math.random() * 0.2)));
 }

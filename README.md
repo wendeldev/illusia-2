@@ -194,6 +194,16 @@ começam no nível 8 e sobem 1 por fase (fase 90 = nível 92). Alguns vêm 1 ní
 intermediário tem +2 e o chefe da região +3. A cor compara com o seu nível: cinza = fácil,
 branco = parelho, laranja/vermelho = perigoso. Regra em `monsterLevel()` (`src/data/campaign.ts`).
 
+## Balanceamento
+
+`npm run sim` roda `tools/sim/balance.ts`: um jogador típico passa uma vez por cada uma das 90 fases, ganha a EXP e o
+ouro dos monstros, compra o melhor set que couber e enfrenta os eventos. A tabela mostra, por fase e classe: nível do
+jogador × nível dos monstros, tempo para derrotar um comum e o chefe, e quantos golpes o jogador aguenta. Metas:
+nível do jogador perto do nível dos monstros; comum cai em 1–2 s e o jogador aguenta 15–25 golpes; chefe da região em
+20–45 s, jogador aguenta 5–10 golpes; eventos de 1 a 2,5 minutos no chefe. As curvas ficam em `ENEMY_CURVE` e
+`enemyScale` (`src/game/stats.ts`), usadas pelo jogo e pela simulação; dano em `baseDamage` (a defesa reduz em
+proporção, A²/(A + 0,9·D)); dificuldade dos eventos em `DIFFICULTIES` (`src/data/mythic.ts`).
+
 ## Estrelas
 
 Cada fase tem 3 estrelas: ★ vencer, ★ vencer dentro do tempo-limite e ★ perder no máximo 50% da vida.

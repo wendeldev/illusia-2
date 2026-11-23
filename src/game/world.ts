@@ -18,7 +18,7 @@ import { npcLook, npcPose, playerLook, playerPose, type ActionAnim } from './art
 import { bar, text } from './draw';
 import type { Progress } from './progress';
 import { DAMAGE_LIMIT, type StageResult } from './stars';
-import { calcDamage, computeStats, expToNext, levelPower, type Stats } from './stats';
+import { calcDamage, computeStats, enemyScale, expToNext, levelPower, type Stats } from './stats';
 import { BASE_GROUND, JUMP_SPEED, moveBody, Terrain, WORLD_H, type PhysBody } from './terrain';
 
 const PLAYER_SPEED = 140;
@@ -679,7 +679,8 @@ export class World {
     p.comboStep = (p.comboStep + 1) % COMBO.length;
     p.comboWindow = 0.55;
     const basic = this.cls.basic;
-    const time = step.time * basic.speed;
+    // duração do golpe: no corpo a corpo `speed` é o multiplicador; nos disparos `speed` é a velocidade do projétil
+    const time = step.time * (basic.kind === 'melee' ? basic.speed : basic.rate);
     p.attackTimer = time;
     this.startAnim((['combo0', 'combo1', 'combo2'] as const)[COMBO.indexOf(step)], time + 0.06);
     const finisher = step === COMBO[COMBO.length - 1];
@@ -1369,12 +1370,13 @@ export class World {
     const base = this.stage.level ?? 1;
     const level = def.boss ? base + (def.hp >= 600 ? 3 : 2) : base + (!summoned && Math.random() < 0.35 ? 1 : 0);
     const pw = levelPower(level);
-    // a vida e o ataque crescem um pouco mais rápido que a força, para acompanhar o nível do jogador
-    const hp = Math.round(def.hp * Math.pow(pw, 1.4) * (this.stage.hpMul ?? 1));
+    // vida, ataque, armadura e recompensas pelo nível (curvas em ENEMY_CURVE, ajustadas pela simulação)
+    const sc = enemyScale(def, level);
+    const hp = Math.round(sc.hp * (this.stage.hpMul ?? 1));
     const e: Enemy = {
       def, level, x, y, vx: 0, vy: 0, onGround: false, dropT: 0, jumpCd: 0, atkAlt: 0, facing, radius: def.radius, hp, maxHp: hp,
-      atk: def.atk * Math.pow(pw, 1.3) * (this.stage.atkMul ?? 1), armor: def.def * Math.sqrt(pw),
-      exp: Math.round(def.exp * pw * 1.2), gold: Math.round(def.gold * pw),
+      atk: sc.atk * (this.stage.atkMul ?? 1), armor: sc.armor,
+      exp: Math.round(sc.exp), gold: Math.round(sc.gold),
       speed: def.speed * (1 + Math.min(0.3, (pw - 1) * 0.03)),
       hitStun: 0, flash: 0, state: 'chase', timer: 0, dead: false, deadTimer: 0, seed: Math.random() * 10, strike: 0, moving: false,
       abilityCd: (def.abilities ?? []).map((a) => a.cooldown * (0.3 + Math.random() * 0.5)),

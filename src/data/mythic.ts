@@ -23,8 +23,8 @@ export const MYTHIC_BOSSES: MythicBoss[] = [
 export const EVENT_PHASES = 8;
 export const EVENT_TIME = 40 * 60;
 export const DIFFICULTIES = [
-  { name: 'Difícil', levelAdd: 3, hpMul: 1.25, atkMul: 1.1 },
-  { name: 'Épico', levelAdd: 8, hpMul: 1.8, atkMul: 1.4 },
+  { name: 'Difícil', levelAdd: 2, hpMul: 1.15, atkMul: 1.0 },
+  { name: 'Épico', levelAdd: 5, hpMul: 1.45, atkMul: 1.2 },
 ];
 export const TICKET_OF = { legend: 'tk_legend', myth: 'tk_myth' } as const;
 /** Raridade do set de recompensa: Lendário → Lendário/Divino; Mítico → Divino/Celestial. */

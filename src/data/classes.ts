@@ -9,7 +9,9 @@ export interface ClassDef {
   /** multiplicadores de atributos */
   mods: { hp: number; mp: number; atk: number; def: number; crit: number };
   /** ataque básico: corpo a corpo (alcance) ou disparo (projétil) */
-  basic: { kind: 'melee'; range: number; speed: number } | { kind: 'shot'; fx: string; speed: number; range: number; color: string; pierce?: boolean };
+  /** ataque básico. melee: alcance e duração dos golpes (×); shot: velocidade do disparo (px/s), alcance (px) e
+   *  `rate` = duração de cada disparo do combo (×) */
+  basic: { kind: 'melee'; range: number; speed: number } | { kind: 'shot'; fx: string; speed: number; range: number; color: string; rate: number; pierce?: boolean };
   skills: SkillDef[];
 }
 
@@ -73,14 +75,14 @@ export const CLASSES: ClassDef[] = [
     id: 'mage', name: 'Maga',
     description: 'Magias de longe e muito MP: fogo, gelo, raios, meteoros, círculos mágicos e cura. Frágil.',
     mods: { hp: 0.8, mp: 1.8, atk: 1.05, def: 0.75, crit: 1 },
-    basic: { kind: 'shot', fx: 'fx_orb', speed: 380, range: 280, color: '#9fd3ff' },
+    basic: { kind: 'shot', fx: 'fx_orb', speed: 380, range: 280, color: '#9fd3ff', rate: 1.15 },
     skills: MAGE,
   },
   {
     id: 'assassin', name: 'Assassino',
     description: 'Golpes rapidíssimos, adagas, teleporte, veneno e clones sombrios. Crítico altíssimo.',
-    mods: { hp: 0.9, mp: 1.1, atk: 1.1, def: 0.85, crit: 2.4 },
-    basic: { kind: 'melee', range: 0.9, speed: 0.6 },
+    mods: { hp: 0.9, mp: 1.1, atk: 1.1, def: 0.85, crit: 1.9 },
+    basic: { kind: 'melee', range: 0.9, speed: 0.75 },
     skills: ASSASSIN,
   },
 ];

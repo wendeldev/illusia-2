@@ -7,7 +7,8 @@
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sim": "esbuild tools/sim/balance.ts --bundle --platform=node --outfile=node_modules/.cache/balance.cjs --log-level=error && node node_modules/.cache/balance.cjs"
   },
   "devDependencies": {
     "@types/three": "^0.169.0",

@@ -34,11 +34,13 @@ const FLAVOR: Record<string, { hp: number; mp: number; atk: number; crit: number
   mage: { hp: 0.85, mp: 1.8, atk: 1.05, crit: 1 },
 };
 
+/** Preço na loja: tudo em ouro, crescendo com a raridade (Celestial só sai dos eventos). Mítico e Divino são o destino
+ *  do ouro do fim do jogo (antes só aceitavam gemas e o ouro se acumulava sem uso). */
 function price(r: number, weight: number): { price: number; priceGems?: number } {
   if (r >= 7) return { price: 0 };
-  if (r >= 5) return { price: 0, priceGems: Math.round((r === 5 ? 30 : 70) * weight) };
-  return { price: Math.round(90 * Math.pow(MULT[r], 1.7) * weight) };
+  return { price: Math.round(90 * Math.pow(MULT[r], PRICE_EXP) * weight) };
 }
+const PRICE_EXP = 1.7;
 
 const round = (v: number) => Math.round(v * 10) / 10;
 const out: EquipmentDef[] = [];
