@@ -23,7 +23,9 @@ Abra o jogo com `?3d` no endereço (ex.: `https://wendeldev.github.io/illusia-2/
   topo indo para dentro da tela e laterais nos degraus.
 - **Personagens, monstros, NPCs, objetos, escadas e portais**: desenhados pelo mesmo código 2D numa camada própria
   (`World.layer3d`), que entra na cena por cima do terreno e é iluminada pelas luzes dos poderes.
-- Efeitos, números, textos e menus continuam no canvas 2D, por cima, com o fundo transparente.
+- **Efeitos**: as partículas (faíscas, poeira, brilhos) são pontos de luz que voam também em profundidade; as ondas
+  de choque são anéis de luz no chão; poderes, projéteis e tiros ganham um halo de luz na frente dos personagens.
+- Os desenhos dos poderes, números, textos e menus continuam no canvas 2D, por cima, com o fundo transparente.
 O Three.js só é baixado no modo 3D. Sem WebGL, o jogo segue em 2D.
 
 ## Controles

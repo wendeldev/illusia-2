@@ -3,8 +3,10 @@
 //   perspectiva), com o brilho colorido dos poderes;
 // - terreno: cada degrau do chão e cada plataforma é um bloco com espessura (frente, topo e laterais);
 // - personagens, monstros, NPCs, objetos, escadas e portais: desenhados pelo código 2D numa camada própria, que entra
-//   na cena 3D por cima do terreno, iluminada pelos poderes.
-// Os efeitos, textos e menus continuam no canvas 2D, por cima de tudo, com o fundo transparente.
+//   na cena 3D por cima do terreno, iluminada pelos poderes;
+// - efeitos: partículas como pontos de luz que voam também em profundidade, ondas de choque como anéis no chão e halos
+//   de luz nos poderes, projéteis e tiros.
+// Os desenhos dos poderes, números, textos e menus continuam no canvas 2D, por cima de tudo, com o fundo transparente.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { BackdropSpec } from '../game/art/scenery';
@@ -35,7 +37,16 @@ export interface BackdropState {
   lights: BackdropLight[];
   theme: SceneryTheme;
   terrain: { ground: TerrainSeg[]; platforms: TerrainSeg[] };
+  /** partículas: x, y (chão), z (altura), d (profundidade), vida, tamanho, cor */
+  particles: { x: number; y: number; z: number; d?: number; life: number; maxLife: number; size: number; color: string }[];
+  /** ondas de choque (anel no chão) */
+  effects: { kind: 'ring'; x: number; y: number; dir: number; radius: number; color: string; life: number; maxLife: number }[];
+  /** halos de luz na frente dos personagens (poderes, projéteis, tiros) */
+  halos: { x: number; y: number; r: number; color: string; a: number }[];
 }
+
+const MAX_PARTICLES = 700;
+const MAX_FX = 24;
 
 /** Profundidade do topo dos blocos (para dentro da tela) e fundo do chão. */
 const GROUND_D = 90;
@@ -66,6 +77,15 @@ export class Backdrop3D {
   /** luzes dos poderes no primeiro plano (terreno e personagens) */
   private points: THREE.PointLight[] = [];
   private moodTint = new THREE.Color(0xffffff);
+  /** efeitos em 3D: partículas (pontos de luz com profundidade), anéis no chão e halos */
+  private sparks: THREE.Points;
+  private sparkPos = new Float32Array(MAX_PARTICLES * 3);
+  private sparkCol = new Float32Array(MAX_PARTICLES * 3);
+  private sparkSize = new Float32Array(MAX_PARTICLES);
+  private sparkMat: THREE.ShaderMaterial;
+  private rings: THREE.Mesh[] = [];
+  private halos: THREE.Sprite[] = [];
+  private tmpColor = new THREE.Color();
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
@@ -92,6 +112,37 @@ export class Backdrop3D {
     this.actorMesh.renderOrder = 20;
     this.actorMesh.visible = false;
     this.scene.add(this.actorMesh);
+    // partículas: pontos aditivos com tamanho em perspectiva (o tamanho é o do 2D no plano do jogo)
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(this.sparkPos, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('color', new THREE.BufferAttribute(this.sparkCol, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('aSize', new THREE.BufferAttribute(this.sparkSize, 1).setUsage(THREE.DynamicDrawUsage));
+    this.sparkMat = new THREE.ShaderMaterial({
+      uniforms: { uScale: { value: 1 } },
+      vertexShader: `attribute float aSize; varying vec3 vColor; uniform float uScale;
+        void main() { vColor = color; vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = aSize * uScale / -mv.z; gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `varying vec3 vColor;
+        void main() { float d = length(gl_PointCoord - 0.5) * 2.0; if (d > 1.0) discard;
+          float a = 1.0 - d * d; gl_FragColor = vec4(vColor * (0.6 + 0.8 * (1.0 - d)), a); }`,
+      vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    this.sparks = new THREE.Points(geo, this.sparkMat);
+    this.sparks.frustumCulled = false;
+    this.sparks.renderOrder = 30;
+    this.scene.add(this.sparks);
+    const fxMat = () => new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    for (let i = 0; i < MAX_FX; i++) {
+      // onda de choque: anel quase deitado no chão (inclinado para a câmera, que fica na altura do chão)
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.74, 1, 48), fxMat());
+      ring.rotation.x = -1.15;
+      (ring.material as THREE.MeshBasicMaterial).depthTest = false;
+      ring.renderOrder = 18;
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, depthTest: false }));
+      halo.renderOrder = 26;
+      for (const m of [ring, halo]) { m.visible = false; this.scene.add(m); }
+      this.rings.push(ring); this.halos.push(halo);
+    }
     const resize = () => this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     resize();
     window.addEventListener('resize', resize);
@@ -377,6 +428,49 @@ export class Backdrop3D {
     return g;
   }
 
+  // ───────────────────────── efeitos ─────────────────────────
+
+  private updateEffects(st: BackdropState): void {
+    // partículas: posição no plano do jogo + profundidade; somem diminuindo
+    const n = Math.min(MAX_PARTICLES, st.particles.length);
+    for (let i = 0; i < n; i++) {
+      const pt = st.particles[i];
+      const k = pt.life / pt.maxLife;
+      this.sparkPos[i * 3] = pt.x;
+      this.sparkPos[i * 3 + 1] = -(pt.y - pt.z);
+      this.sparkPos[i * 3 + 2] = pt.d ?? 0;
+      this.tmpColor.set(pt.color).multiplyScalar(Math.min(1, k * 1.5));
+      this.sparkCol[i * 3] = this.tmpColor.r; this.sparkCol[i * 3 + 1] = this.tmpColor.g; this.sparkCol[i * 3 + 2] = this.tmpColor.b;
+      this.sparkSize[i] = pt.size * (0.7 + 0.8 * k) * 1.6;
+    }
+    const g = this.sparks.geometry;
+    g.setDrawRange(0, n);
+    for (const a of ['position', 'color', 'aSize']) (g.getAttribute(a) as THREE.BufferAttribute).needsUpdate = true;
+    this.sparkMat.uniforms.uScale.value = this.renderer.domElement.height / (2 * Math.tan((this.camera.fov / 2) * Math.PI / 180));
+    // ondas de choque
+    this.rings.forEach((m, i) => {
+      const f = st.effects[i];
+      m.visible = !!f;
+      if (!f) return;
+      const a = f.life / f.maxLife, r = f.radius * (1.25 - a * 0.45);
+      m.position.set(f.x, -f.y + 1, 0);
+      m.scale.set(r, r * 0.8, 1);
+      const mat = m.material as THREE.MeshBasicMaterial;
+      mat.color.set(f.color);
+      mat.opacity = a;
+    });
+    this.halos.forEach((h, i) => {
+      const f = st.halos[i];
+      h.visible = !!f && f.a > 0.02;
+      if (!f) return;
+      h.position.set(f.x, -f.y, 12);
+      h.scale.set(f.r * 2.2, f.r * 2.2, 1);
+      const mat = h.material as THREE.SpriteMaterial;
+      mat.color.set(f.color);
+      mat.opacity = Math.min(0.75, f.a);
+    });
+  }
+
   /** Pronto para desenhar (prancha de cenário carregada)? */
   ready(): boolean {
     return !!spriteSource('layer_clouds');
@@ -425,6 +519,7 @@ export class Backdrop3D {
       L.color.set(src.color);
       L.intensity = src.power * Math.PI * 26;
     }
+    this.updateEffects(st);
     // camada dos personagens: placa do tamanho da área visível, sem tremer (a câmera é que treme)
     const av = this.actorView;
     if (av.w) {

@@ -232,10 +232,14 @@ interface Particle {
   size: number;
   color: string;
   gravity: number;
+  /** profundidade (modo 3D: a partícula voa também para dentro/fora da tela) */
+  d?: number;
+  vd?: number;
 }
 
+/** Onda de choque no chão (área de poder ou pancada de chefe). */
 interface Effect {
-  kind: 'swing' | 'ring';
+  kind: 'ring';
   x: number;
   y: number;
   dir: number;
@@ -502,6 +506,9 @@ export class World {
       pt.life -= dt;
       pt.x += pt.vx * dt;
       pt.y += pt.vy * dt;
+      // profundidade: cada partícula sai numa direção para dentro ou para fora da tela (modo 3D)
+      if (pt.vd === undefined) { pt.d = 0; pt.vd = (Math.random() - 0.5) * (Math.abs(pt.vx) + Math.abs(pt.vz) + 40) * 0.9; }
+      pt.d! += pt.vd * dt;
       pt.vz -= pt.gravity * dt;
       pt.z = Math.max(0, pt.z + pt.vz * dt);
     }
@@ -1547,7 +1554,21 @@ export class World {
       time: this.time, shakeX: this.shakeX, shakeY: this.shakeY,
       spec: () => this.scenery.backdropSpec(this.stage.width), lights,
       theme: this.stage.theme, terrain: { ground: this.terrain.ground, platforms: this.terrain.platforms },
+      particles: this.particles, effects: this.effects, halos: this.halos(),
     };
+  }
+
+  /** Halos de luz (modo 3D) dos poderes em cena, projéteis e tiros dos inimigos, na frente dos personagens. */
+  private halos(): BackdropState['halos'] {
+    const out: BackdropState['halos'] = [];
+    for (const s of this.spells) {
+      if (!s.name || s.t < 0) continue;
+      const k = s.falling && !s.landed ? 0.6 : Math.max(0, 1 - s.t / s.dur);
+      out.push({ x: s.x, y: s.y - 28, r: Math.max(30, s.radius * 1.4), color: s.color, a: 0.55 * k });
+    }
+    for (const pr of this.projectiles) out.push({ x: pr.x, y: pr.y, r: Math.max(22, pr.skill.radius * 2.2), color: pr.skill.color, a: 0.5 });
+    for (const sh of this.enemyShots) out.push({ x: sh.x, y: sh.y, r: 22, color: sh.color, a: 0.45 });
+    return out;
   }
 
   render(ctx: CanvasRenderingContext2D): void {
@@ -1639,26 +1660,21 @@ export class World {
       ctx.arc(sh.x - 2, sy - 18, sh.r * 0.35, 0, Math.PI * 2);
       ctx.fill();
     }
-    for (const pt of this.particles) {
+    // modo 3D: partículas, ondas de choque e rastros dos golpes são da cena 3D
+    for (const pt of this.layer3d ? [] : this.particles) {
       ctx.globalAlpha = Math.min(1, (pt.life / pt.maxLife) * 1.5);
       ctx.fillStyle = pt.color;
       const sz = pt.size * (0.5 + 0.5 * pt.life / pt.maxLife);
       ctx.fillRect(pt.x - sz / 2, pt.y - pt.z - sz / 2, sz, sz);
     }
     ctx.globalAlpha = 1;
-    for (const fx of this.effects) {
+    for (const fx of this.layer3d ? [] : this.effects) {
       const a = fx.life / fx.maxLife;
       ctx.globalAlpha = a;
       ctx.strokeStyle = fx.color;
-      ctx.lineWidth = fx.kind === 'ring' ? 5 : 4;
+      ctx.lineWidth = 5;
       ctx.beginPath();
-      if (fx.kind === 'ring') {
-        ctx.ellipse(fx.x, fx.y, fx.radius * (1.2 - a * 0.4), fx.radius * 0.35 * (1.2 - a * 0.4), 0, 0, Math.PI * 2);
-      } else {
-        const cy = fx.y - 22;
-        const start = fx.dir > 0 ? -1.2 : Math.PI - 0.6;
-        ctx.arc(fx.x, cy, fx.radius * 0.8, start, start + 1.8);
-      }
+      ctx.ellipse(fx.x, fx.y, fx.radius * (1.2 - a * 0.4), fx.radius * 0.35 * (1.2 - a * 0.4), 0, 0, Math.PI * 2);
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
