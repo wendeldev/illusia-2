@@ -2,7 +2,7 @@
 // Enquanto a imagem não carrega, o jogo usa os desenhos vetoriais como reserva.
 import atlasData from '../data/atlas.json';
 
-/** [x, y, largura, altura, âncoraX, âncoraY, (cabeçaX, cabeçaY relativos à âncora)] no atlas */
+/** [x, y, largura, altura, âncoraX, âncoraY] no atlas */
 type Frame = [number, number, number, number, number, number];
 
 interface SpriteDef {
@@ -243,4 +243,13 @@ export function drawFit(
 export function frameRect(name: string, frame = 0): [number, number, number, number] | null {
   const f = ATLAS[name]?.frames[Math.max(0, Math.floor(frame)) % ATLAS[name].frames.length];
   return f ? [f[2], f[3], f[4], f[5]] : null;
+}
+
+/** Imagem da prancha e recorte de um quadro (para o fundo em Three.js). Nulo enquanto a prancha não carregou. */
+export function spriteSource(name: string, frame = 0): { img: HTMLImageElement; x: number; y: number; w: number; h: number; scale: number } | null {
+  const d = ATLAS[name];
+  const sheet = d && sheetOf(d);
+  if (!d || !sheet) return null;
+  const f = d.frames[Math.max(0, Math.floor(frame)) % d.frames.length];
+  return { img: sheet, x: f[0], y: f[1], w: f[2], h: f[3], scale: d.scale };
 }

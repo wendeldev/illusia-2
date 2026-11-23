@@ -13,6 +13,7 @@ import { dollLook, drawDoll, rigFps, rigFrames, rigPose, type DollPose, type Rig
 import { drawTerrain } from './art/ground';
 import { drawSprite, drawSpriteH, frameCount, hasSprite, spriteHeight, spritesReady } from '../engine/sprites';
 import { Scenery } from './art/scenery';
+import type { BackdropState } from '../engine/backdrop3d';
 import { npcLook, npcPose, playerLook, playerPose, type ActionAnim } from './art/poses';
 import { bar, text } from './draw';
 import type { Progress } from './progress';
@@ -324,6 +325,8 @@ export class World {
   private shakeT = 0;
   private shakeDur = 1;
   private shakeMag = 0;
+  private shakeX = 0;
+  private shakeY = 0;
   private hurtFlash = 0;
   /** tempo de jogo nesta fase (estrela de rapidez) */
   elapsed = 0;
@@ -1530,13 +1533,31 @@ export class World {
 
   // ───────────────────────── desenho ─────────────────────────
 
+  /** Estado para o fundo em Three.js (modo 3D): câmera e luzes dos poderes, projéteis e tiros. */
+  backdropState(): BackdropState {
+    const lights: BackdropState['lights'] = [];
+    for (const s of this.spells) if (s.name && s.t >= 0) lights.push({ x: s.x, y: s.y - 30, color: s.color, power: 3.5 * Math.max(0, 1 - s.t / s.dur) });
+    for (const pr of this.projectiles) lights.push({ x: pr.x, y: pr.y, color: pr.skill.color, power: 2.5 });
+    for (const sh of this.enemyShots) lights.push({ x: sh.x, y: sh.y, color: sh.color ?? '#ff8a5a', power: 1.5 });
+    lights.sort((a, b) => b.power - a.power);
+    return {
+      stageId: this.stage.id, stageWidth: this.stage.width, camX: Math.round(this.camX), camY: Math.round(this.camY),
+      time: this.time, shakeX: this.shakeX, shakeY: this.shakeY,
+      spec: () => this.scenery.backdropSpec(this.stage.width), lights,
+    };
+  }
+
   render(ctx: CanvasRenderingContext2D): void {
     const s = this.stage;
     const camX = Math.round(this.camX);
     ctx.save();
     if (this.shakeT > 0) {
       const m = this.shakeMag * (this.shakeT / this.shakeDur);
-      ctx.translate((Math.random() * 2 - 1) * m, (Math.random() * 2 - 1) * m);
+      this.shakeX = (Math.random() * 2 - 1) * m;
+      this.shakeY = (Math.random() * 2 - 1) * m;
+      ctx.translate(this.shakeX, this.shakeY);
+    } else {
+      this.shakeX = this.shakeY = 0;
     }
     const camY = Math.round(this.camY);
     this.scenery.drawBackground(ctx, camX, camY, this.time);

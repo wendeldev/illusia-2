@@ -13,6 +13,14 @@ npm run build    # gera a versão final em dist/ (pode hospedar em qualquer site
 
 Para depurar, abra com `?debug` e use `window.__game` no console.
 
+## Modo 3D (protótipo, Three.js)
+
+Abra o jogo com `?3d` no endereço (ex.: `https://wendeldev.github.io/illusia-2/?3d`). O fundo passa a ser uma cena
+Three.js (`src/engine/backdrop3d.ts`): céu, panorama, nuvens, fileira de árvores/ruínas e névoa ficam a
+distâncias reais da câmera, e a paralaxe vem da perspectiva. Os poderes, projéteis e tiros dos chefes acendem
+um brilho colorido no cenário ao fundo. O terreno, os personagens, os efeitos e os menus continuam no canvas 2D,
+desenhado por cima com fundo transparente. O Three.js só é baixado no modo 3D. Sem WebGL, o jogo segue em 2D.
+
 ## Controles
 
 | | PC | Celular |

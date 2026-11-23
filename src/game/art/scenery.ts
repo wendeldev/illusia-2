@@ -77,6 +77,27 @@ const PROPS_BY_THEME: Record<StageDef['theme'], PropKind[]> = {
   sky: ['goldCrystal', 'cloud', 'vase', 'cloud'],
 };
 
+/** Camadas do fundo para o modo 3D (Three.js): o que desenhar e a que distância. */
+export interface BackdropSpec {
+  pano: string;
+  sky: [string, string];
+  /** topo do panorama na tela com a câmera em repouso */
+  panoTop: number;
+  panoScale: number;
+  clouds: boolean;
+  fog: boolean;
+  moon: string | null;
+  /** fileira intermediária: [sprite, x na tela com câmera em 0, y da base na tela, altura, lado] */
+  row: [string, number, number, number, number][];
+  rowParallax: number;
+  mood: string | undefined;
+  theme: SceneryTheme;
+}
+
+/** Fundo desenhado por Three.js (modo 3D): o Scenery só desenha o primeiro plano e as luzes. */
+export let BACKDROP_3D = false;
+export function setBackdrop3D(on: boolean): void { BACKDROP_3D = on; }
+
 export class Scenery {
   props: SceneProp[] = [];
   private seed: number;
@@ -121,6 +142,7 @@ export class Scenery {
     this.lights = [];
     // o fundo desce um pouco quando a câmera sobe (paralaxe vertical)
     this.bgOff = -(camY - CAM_REST) * 0.35;
+    if (BACKDROP_3D && sceneryReady()) return;
     if (sceneryReady()) {
       this.pixelBackground(ctx, camX, camY, t);
       this.moodLight(ctx, t);
@@ -145,6 +167,41 @@ export class Scenery {
   }
 
   // ───────────────────────── fundo em pixel art (prancha de cenários) ─────────────────────────
+
+  /** Descrição do fundo (mesmas regras do fundo 2D) para montar a cena 3D. */
+  backdropSpec(stageWidth: number): BackdropSpec {
+    const pano = this.panoName();
+    const [, ph] = frameSize(pano);
+    const sc = Math.min(2.6, 235 / ph);
+    const bottom = 276;
+    const theme = this.stage.theme;
+    const mood = this.stage.mood;
+    const own = pano.startsWith('pano_my_') || pano === 'pano_haunted' || pano === 'pano_castle' || pano === 'pano_void' || pano === 'pano_cave';
+    const moon = !own && (mood === 'night' || mood === 'dusk') ? (mood === 'night' ? (theme === 'volcano' ? 'moon_red' : 'moon_blue') : 'sunset') : null;
+    const row: BackdropSpec['row'] = [];
+    const rowParallax = 0.6;
+    const span = stageWidth * rowParallax + VIEW_W + 280;
+    const list = BACK_ROW[theme];
+    if (list && theme !== 'village') {
+      for (let i = -2; i * 70 < span; i++) {
+        if (rnd(this.seed, i, 200) < 0.3) continue;
+        const [name, h] = list[Math.floor(rnd(this.seed, i, 201) * list.length)];
+        row.push([name, i * 70 + rnd(this.seed, i, 202) * 40, bottom - 10 + rnd(this.seed, i, 203) * 6, h * (0.75 + rnd(this.seed, i, 204) * 0.2), rnd(this.seed, i, 205) < 0.5 ? 1 : -1]);
+      }
+    }
+    if (theme === 'village') {
+      for (let i = -2; i * 90 < span; i++) {
+        if (rnd(this.seed, i, 200) < 0.4) continue;
+        const name = ['o_tree1', 'o_tree_pink', 'o_tree2', 'o_bush_y'][Math.floor(rnd(this.seed, i, 201) * 4)];
+        row.push([name, i * 90, bottom - 12, name.startsWith('o_bush') ? 22 : 70, 1]);
+      }
+    }
+    return {
+      pano, sky: panoSky(pano), panoTop: bottom - ph * sc, panoScale: sc,
+      clouds: CLOUDY.has(theme) && pano !== 'pano_void', fog: FOGGY.has(theme) || pano === 'pano_void',
+      moon, row, rowParallax, mood, theme,
+    };
+  }
 
   private panoName(): string {
     const st = this.stage;

@@ -25,7 +25,8 @@ export interface View {
   toLogical(clientX: number, clientY: number): Point;
 }
 
-export function setupCanvas(canvas: HTMLCanvasElement): View {
+/** transparent: o fundo vem de outra camada (modo 3D): limpa em vez de pintar de preto. */
+export function setupCanvas(canvas: HTMLCanvasElement, transparent = false): View {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas 2D indisponível');
   let dpr = 1, scale = 1, ox = 0, oy = 0;
@@ -53,8 +54,11 @@ export function setupCanvas(canvas: HTMLCanvasElement): View {
     ctx,
     begin() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (transparent) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      else {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
       ctx.save();
       ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
       ctx.beginPath();
