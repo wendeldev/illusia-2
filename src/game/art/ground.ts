@@ -8,7 +8,7 @@ import { ellipse, glow, OL, rnd, tone, type Ctx } from './scene3d';
 import { drawTile, spritesReady, tileAspect } from '../../engine/sprites';
 
 /** Blocos de pixel art por região: topo do chão, recheio e plataforma. */
-const PX_TILES: Record<SceneryTheme, { top: string; fill: string; plat: string }> = {
+export const PX_TILES: Record<SceneryTheme, { top: string; fill: string; plat: string }> = {
   village: { top: 'b_grass', fill: 'b_grass_fill', plat: 'b_grass2' },
   forest: { top: 'b_grass2', fill: 'b_grass2_fill', plat: 'b_grass' },
   swamp: { top: 'b_purple', fill: 'b_purple_fill', plat: 'b_purple2' },
@@ -21,7 +21,7 @@ const PX_TILES: Record<SceneryTheme, { top: string; fill: string; plat: string }
   sky: { top: 'b_grass', fill: 'b_grass_fill', plat: 'b_grass2' },
 };
 /** largura de cada bloco na tela */
-const TILE_W = 48;
+export const TILE_W = 48;
 
 function pxGround(ctx: Ctx, s: TerrainSeg, prev: TerrainSeg | undefined, next: TerrainSeg | undefined, theme: SceneryTheme, camX: number, camY: number): void {
   const tiles = PX_TILES[theme];

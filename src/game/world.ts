@@ -327,6 +327,8 @@ export class World {
   private shakeMag = 0;
   private shakeX = 0;
   private shakeY = 0;
+  /** modo 3D: camada onde personagens, monstros, NPCs e objetos são desenhados (vira uma placa na cena 3D) */
+  layer3d: { beginActors(vw: number, vh: number): CanvasRenderingContext2D } | null = null;
   private hurtFlash = 0;
   /** tempo de jogo nesta fase (estrela de rapidez) */
   elapsed = 0;
@@ -1544,6 +1546,7 @@ export class World {
       stageId: this.stage.id, stageWidth: this.stage.width, camX: Math.round(this.camX), camY: Math.round(this.camY),
       time: this.time, shakeX: this.shakeX, shakeY: this.shakeY,
       spec: () => this.scenery.backdropSpec(this.stage.width), lights,
+      theme: this.stage.theme, terrain: { ground: this.terrain.ground, platforms: this.terrain.platforms },
     };
   }
 
@@ -1561,24 +1564,28 @@ export class World {
     }
     const camY = Math.round(this.camY);
     this.scenery.drawBackground(ctx, camX, camY, this.time);
-    this.scenery.drawLandmarks(ctx, camX, camY, this.time);
-    drawTerrain(ctx, this.terrain, s.theme, camX, camY, this.time, this.scenery.props.length + s.width);
-    this.scenery.drawFixtures(ctx, camX, camY, this.time);
+    // modo 3D: o terreno é a cena 3D; construções, escadas, portais, objetos e personagens vão para a camada 3D
+    const a = this.layer3d ? this.layer3d.beginActors(VIEW_W, VIEW_H) : ctx;
+    this.scenery.drawLandmarks(a, camX, camY, this.time);
+    if (!this.layer3d) drawTerrain(ctx, this.terrain, s.theme, camX, camY, this.time, this.scenery.props.length + s.width);
+    this.scenery.drawFixtures(a, camX, camY, this.time);
+
+    a.save();
+    a.translate(-camX, -camY);
+    for (const portal of s.portals) this.drawPortal(a, portal);
+    for (const e of this.enemies) if (!e.dead && (e.state === 'ability' || e.state === 'charging')) this.drawTelegraph(a, e);
+    // objetos do cenário, NPCs, inimigos e por último o jogador
+    a.save();
+    a.translate(camX, camY);
+    for (const prop of this.scenery.props) this.scenery.drawProp(a, prop, camX, camY, this.time);
+    a.restore();
+    for (const n of this.npcs) this.drawNpc(a, n);
+    for (const e of this.enemies) this.drawEnemy(a, e);
+    this.drawPlayer(a);
+    a.restore();
 
     ctx.save();
     ctx.translate(-camX, -camY);
-
-    for (const portal of s.portals) this.drawPortal(ctx, portal);
-    for (const e of this.enemies) if (!e.dead && (e.state === 'ability' || e.state === 'charging')) this.drawTelegraph(ctx, e);
-
-    // objetos do cenário, NPCs, inimigos e por último o jogador
-    ctx.save();
-    ctx.translate(camX, camY);
-    for (const prop of this.scenery.props) this.scenery.drawProp(ctx, prop, camX, camY, this.time);
-    ctx.restore();
-    for (const n of this.npcs) this.drawNpc(ctx, n);
-    for (const e of this.enemies) this.drawEnemy(ctx, e);
-    this.drawPlayer(ctx);
     this.drawSpells(ctx);
     for (const k of this.pickups) {
       const bob = k.landed ? Math.sin(this.time * 4 + k.x) * 2 : 0;

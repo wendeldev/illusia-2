@@ -10,7 +10,7 @@ validateContent();
 void loadSprites();
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
-// modo 3D (protótipo): ?3d no endereço. O fundo em profundidade é do Three.js; o jogo é desenhado por cima.
+// modo 3D: ?3d no endereço. Fundo, terreno e personagens em Three.js; efeitos e menus no canvas 2D por cima.
 const use3d = new URLSearchParams(location.search).has('3d');
 const bgCanvas = document.getElementById('bg3d') as HTMLCanvasElement;
 let backdrop: Backdrop3D | null = null;
@@ -37,12 +37,15 @@ function frame(now: number) {
   // um erro num quadro não pode congelar o jogo: registra e segue para o próximo
   try {
     game.update(dt);
-    if (backdrop) {
-      worldView(true);
-      try { backdrop.render(game.world.backdropState()); } finally { worldView(false); }
-    }
+    // modo 3D: o jogo desenha personagens e objetos na camada do Three.js, e a cena 3D vem logo depois
+    const bd = backdrop && backdrop.ready() ? backdrop : null;
+    game.world.layer3d = bd;
     view.begin();
     game.render(view.ctx);
+    if (bd) {
+      worldView(true);
+      try { bd.render(game.world.backdropState()); } finally { worldView(false); }
+    }
   } catch (err) {
     console.error(err);
   } finally {
