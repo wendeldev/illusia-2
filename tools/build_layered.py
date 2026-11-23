@@ -164,7 +164,7 @@ class Body:
             w = (hx1 - hx0) * HALO_W.get(name, 1.05)
             h = w * img0.size[1] / img0.size[0]
             cx = ox + self.ovals[fi][0]
-            cy = oy + hy0 - w * HALO_LIFT + math.sin(fr['_i'] * 1.4) * 0.8
+            cy = oy + hy0 - w * (HALO_LIFT + HALO_LIFT_CLS.get(self.cls, 0)) + math.sin(fr['_i'] * 1.4) * 0.8
             img = img0.resize((max(1, round(w)), max(1, round(h))), NEAREST)
             paste(cv, img, round(cx - w / 2), round(cy - h / 2))
         else:
@@ -186,6 +186,7 @@ class Body:
 ORDER = ['cape', 'body', 'face', 'hair', 'pants', 'boots', 'armor', 'gloves', 'weapon', 'halo']
 # largura do halo em relação à largura da cabeça (o anel simples é estreito; com asas abre mais) — igual ao jogo
 HALO_LIFT = 0.2
+HALO_LIFT_CLS = {'mage': 0.16, 'assassin': 0.16}
 HALO_W = {'comum': 0.72, 'incomum': 0.95, 'raro': 1.05, 'epico': 1.05, 'lendario': 1.05, 'mitico': 1.05, 'divino': 1.12, 'celestial': 1.12}
 
 

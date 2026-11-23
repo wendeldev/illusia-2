@@ -30,11 +30,13 @@ const HALO_W: Record<string, number> = { comum: 0.72, incomum: 0.95, raro: 1.05,
 const HALO_FPS = 5;
 /** Altura do centro do anel acima do topo do cabelo (fração da largura do halo). */
 const HALO_LIFT = 0.2;
+/** Elevação extra por classe (cabelo volumoso da Maga e do Assassino). */
+const HALO_LIFT_CLS: Record<string, number> = { mage: 0.16, assassin: 0.16 };
 
 /** Caixa do halo no quadro do corpo (px do quadro) e o quadro de animação do halo.
  * O anel fica centrado no rosto e logo acima do cabelo, encostando nele (igual nas 3 classes); cada
  * quadro do halo usa a própria proporção (os desenhos têm alturas diferentes). */
-export function haloBox(A: { head: number[]; oval?: number[] }, name: string, time: number): [number, number, number, number, number] {
+export function haloBox(A: { head: number[]; oval?: number[] }, name: string, time: number, cls = ''): [number, number, number, number, number] {
   const rar = name.replace('halo_', '');
   const hf = Math.floor(time * HALO_FPS) % Math.max(1, frameCount(name));
   const f = frameRect(name, hf);
@@ -44,7 +46,7 @@ export function haloBox(A: { head: number[]; oval?: number[] }, name: string, ti
   // centrado no rosto (o cabelo comprido da Maga e o volume do Assassino deslocam a caixa da cabeça)
   const cx = A.oval ? A.oval[0] : (hx0 + hx1) / 2;
   // centro do desenho (o anel) um pouco acima do topo do cabelo, balançando de leve
-  const cy = hy0 - w * HALO_LIFT + Math.sin(time * 2.4) * 0.8;
+  const cy = hy0 - w * (HALO_LIFT + (HALO_LIFT_CLS[cls] ?? 0)) + Math.sin(time * 2.4) * 0.8;
   return [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2, hf];
 }
 
@@ -229,7 +231,7 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   if (L.arms) drawFit(ctx, L.arms, X(hl) - 1, handY - 6, X(hr) + 1, handY + 2, 'fill', 'top', 0, fl);
   // halo flutuando acima da cabeça (brilho por cima, sem esconder o cabelo)
   if (L.helmet) {
-    const [h0, h1, h2, h3, hf] = haloBox(A, L.helmet, time);
+    const [h0, h1, h2, h3, hf] = haloBox(A, L.helmet, time, L.cls);
     const bx = [X(h0), Y(h1), X(h2), Y(h3)];
     glow(ctx, (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2, (bx[2] - bx[0]) * 0.55, L.haloColor, 0.22);
     drawFit(ctx, L.helmet, bx[0], bx[1], bx[2], bx[3], 'fill', 'top', hf, fl);
