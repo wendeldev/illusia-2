@@ -73,7 +73,7 @@ def cut_alpha(im, min_px=80):
             keep[list(ys), list(xs)] = True
     a[~keep] = 0
     a[keep, 3] = 255
-    return Image.fromarray(a)
+    return Image.fromarray(a).copy()
 
 
 def cells(cls, rar):

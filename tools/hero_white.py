@@ -34,6 +34,7 @@ def _cells(path, cls, light_bg=False):
     S = Image.open(path).convert('RGBA')
     cols, rows = 8, 4
     cw, ch = S.size[0] / cols, S.size[1] / rows
+    transparent = S.getchannel('A').getextrema()[0] == 0
     cells = []
     for r in range(rows):
         row = []
@@ -42,6 +43,9 @@ def _cells(path, cls, light_bg=False):
             if light_bg:
                 # fundo desfocado: sai pelo degradê até o contorno (não come as asas e halos brancos)
                 im = CC.cut_bg(im)
+            elif transparent:
+                # prancha transparente com brilho/sujeira em volta: só as partes grandes e opacas
+                im = CC.cut_alpha(im)
             px = im.load()
             for y in range(im.size[1]):
                 for x in range(im.size[0]):
