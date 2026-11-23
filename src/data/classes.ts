@@ -1,13 +1,11 @@
-// Classes jogáveis. Cada uma tem atributos, ataque básico e 3 poderes próprios.
-// O desenho vem do atlas: `${sprite}_idle`, `${sprite}_walk`, `${sprite}_atk0`...
+// Classes jogáveis (Guerreiro, Maga e Assassino): atributos, ataque básico e 8 poderes cada.
+// O desenho é o boneco em camadas (src/game/art/layers.ts).
 import type { SkillDef } from '../types';
 
 export interface ClassDef {
   id: string;
   name: string;
   description: string;
-  /** prefixo das animações no atlas */
-  sprite: string;
   /** multiplicadores de atributos */
   mods: { hp: number; mp: number; atk: number; def: number; crit: number };
   /** ataque básico: corpo a corpo (alcance) ou disparo (projétil) */
@@ -19,23 +17,16 @@ const sk = (s: Partial<SkillDef> & Pick<SkillDef, 'id' | 'name' | 'description' 
   mpCost: 10, cooldown: 3, damageMul: 2, range: 80, radius: 30, knockback: 150, unlockLevel: 1, color: '#ffffff', ...s,
 });
 
-/** Atalho para os poderes: animação `pw_<id>`, ícone `ic_<id>` e efeito `fx2_<id>` (pranchas de efeitos fx-<classe>.png). */
-const pw = (id: string, s: Partial<SkillDef> & Pick<SkillDef, 'name' | 'description' | 'kind'>): SkillDef =>
-  sk({ id, anim: `pw_${id}`, icon: `ic_${id}`, fx: `fx2_${id}`, ...s });
-/** Poderes do Arqueiro: só efeito e ícone da prancha de efeitos. */
-const rw = (id: string, s: Partial<SkillDef> & Pick<SkillDef, 'name' | 'description' | 'kind'>): SkillDef =>
-  sk({ id, icon: `ic2_${id}`, fx: `fx2_${id}`, ...s });
+/** Quadros da animação de lançar cada poder (define a duração do lançamento: 0,1 s por quadro, de 0,32 a 0,6 s). */
+const CAST: Record<string, number> = {
+  w_slash_h: 4, w_slash_v: 4, w_dash: 4, w_whirl: 4, w_shock: 4, w_flame: 5, w_quake: 3, w_shield: 5,
+  m_fireball: 2, m_fireburst: 2, m_icespear: 2, m_icestorm: 2, m_arcane: 2, m_meteor: 2, m_circle: 2, m_heal: 5,
+  a_quick: 5, a_blades: 3, a_teleport: 4, a_thrust: 4, a_shadowburst: 4, a_daggers: 3, a_poison: 2, a_clone: 6,
+};
 
-const ARCHER: SkillDef[] = [
-  rw('r_wind', { name: 'Flecha de Vento', description: 'Uma flecha de vento veloz.', kind: 'projectile', mpCost: 6, cooldown: 1.1, damageMul: 2, range: 400, radius: 14, speed: 620, knockback: 110, unlockLevel: 1, color: '#7fe08a' }),
-  rw('r_triple', { fx: 'fx2_r_wind', name: 'Disparo Triplo', description: 'Três flechas de uma vez.', kind: 'projectile', mpCost: 9, cooldown: 1.8, damageMul: 1.4, range: 380, radius: 12, speed: 600, count: 3, knockback: 80, unlockLevel: 2, color: '#7fe08a' }),
-  rw('r_pierce', { name: 'Flecha Perfurante', description: 'Uma flecha dourada que atravessa todos à frente.', kind: 'projectile', mpCost: 11, cooldown: 2.4, damageMul: 2.6, range: 460, radius: 14, speed: 700, pierce: true, knockback: 120, unlockLevel: 4, color: '#ffd36b' }),
-  rw('r_rain', { name: 'Chuva de Flechas', description: 'Flechas caem do céu à frente.', kind: 'rain', mpCost: 18, cooldown: 5, damageMul: 1.8, range: 240, radius: 34, count: 5, knockback: 90, unlockLevel: 6, color: '#ffb840' }),
-  rw('r_explode', { name: 'Flecha Explosiva', description: 'A flecha explode em chamas à frente.', kind: 'blast', mpCost: 16, cooldown: 3.5, damageMul: 3.2, range: 170, radius: 50, knockback: 260, unlockLevel: 9, color: '#ff7a2a' }),
-  rw('r_ice', { name: 'Flecha de Gelo', description: 'Cristais de gelo brotam onde a flecha cai.', kind: 'blast', mpCost: 18, cooldown: 4, damageMul: 3, range: 200, radius: 46, knockback: 150, unlockLevel: 12, color: '#9fd3ff' }),
-  rw('r_poison', { name: 'Flecha Venenosa', description: 'Deixa uma nuvem venenosa que fere por 5 s.', kind: 'cloud', mpCost: 20, cooldown: 8, damageMul: 0.7, range: 150, radius: 55, duration: 5, knockback: 0, unlockLevel: 16, color: '#8fe07a' }),
-  rw('r_eagle', { name: 'Águia Espectral', description: 'Uma águia de energia atravessa tudo à frente.', kind: 'projectile', mpCost: 28, cooldown: 8, damageMul: 3.8, range: 520, radius: 30, speed: 420, pierce: true, knockback: 260, unlockLevel: 20, color: '#7fc8ff' }),
-];
+/** Atalho para os poderes: ícone `ic_<id>`, efeito `fx2_<id>` (pranchas fx-<classe>.png) e tempo de lançamento. */
+const pw = (id: string, s: Partial<SkillDef> & Pick<SkillDef, 'name' | 'description' | 'kind'>): SkillDef =>
+  sk({ id, icon: `ic_${id}`, fx: `fx2_${id}`, castTime: Math.min(0.6, Math.max(0.32, (CAST[id] ?? 4) * 0.1)), ...s });
 
 const WARRIOR: SkillDef[] = [
   pw('w_slash_h', { name: 'Corte Horizontal', description: 'Um corte largo à frente.', kind: 'melee', mpCost: 6, cooldown: 1.2, damageMul: 1.8, range: 70, radius: 26, knockback: 140, unlockLevel: 1, color: '#7fc8ff' }),
@@ -72,54 +63,25 @@ const ASSASSIN: SkillDef[] = [
 
 export const CLASSES: ClassDef[] = [
   {
-    id: 'warrior', name: 'Guerreiro', sprite: 'hero',
+    id: 'warrior', name: 'Guerreiro',
     description: 'Equilibrado. Cortes de espada, investida, redemoinho, ondas de choque e escudo.',
     mods: { hp: 1, mp: 1, atk: 1, def: 1, crit: 1 },
     basic: { kind: 'melee', range: 1, speed: 1 },
     skills: WARRIOR,
   },
   {
-    id: 'archer', name: 'Arqueiro', sprite: 'archer',
-    description: 'Ataca de longe com flechas: vento, gelo, fogo, veneno e a águia espectral. Pouca vida.',
-    mods: { hp: 0.8, mp: 1.1, atk: 0.9, def: 0.8, crit: 2 },
-    basic: { kind: 'shot', fx: 'fx_arrow', speed: 560, range: 340, color: '#9ff07a' },
-    skills: ARCHER,
-  },
-  {
-    id: 'mage', name: 'Maga', sprite: 'priest',
+    id: 'mage', name: 'Maga',
     description: 'Magias de longe e muito MP: fogo, gelo, raios, meteoros, círculos mágicos e cura. Frágil.',
     mods: { hp: 0.8, mp: 1.8, atk: 1.05, def: 0.75, crit: 1 },
     basic: { kind: 'shot', fx: 'fx_orb', speed: 380, range: 280, color: '#9fd3ff' },
     skills: MAGE,
   },
   {
-    id: 'assassin', name: 'Assassino', sprite: 'assassin',
+    id: 'assassin', name: 'Assassino',
     description: 'Golpes rapidíssimos, adagas, teleporte, veneno e clones sombrios. Crítico altíssimo.',
     mods: { hp: 0.9, mp: 1.1, atk: 1.1, def: 0.85, crit: 2.4 },
     basic: { kind: 'melee', range: 0.9, speed: 0.6 },
     skills: ASSASSIN,
-  },
-  {
-    id: 'monk', name: 'Lutador', sprite: 'monk',
-    description: 'Socos rapidíssimos e muita vida. Alcance curto: lute colado.',
-    mods: { hp: 1.3, mp: 0.8, atk: 0.85, def: 1.2, crit: 1.5 },
-    basic: { kind: 'melee', range: 0.75, speed: 0.65 },
-    skills: [
-      sk({ id: 'fire_fist', name: 'Punho de Fogo', description: 'Uma bola de fogo curta e forte.', kind: 'projectile', mpCost: 8, cooldown: 1.4, damageMul: 2.2, range: 200, radius: 16, speed: 460, knockback: 200, color: '#ff9a3c', fx: 'fx_fireball' }),
-      sk({ id: 'fire_spin', name: 'Giro Flamejante', description: 'Chute giratório em chamas.', kind: 'aoe', mpCost: 14, cooldown: 3.5, damageMul: 2.4, radius: 80, knockback: 260, unlockLevel: 3, color: '#ffb040' }),
-      sk({ id: 'dragon_kick', name: 'Chute do Dragão', description: 'Salta e chuta com toda a força.', kind: 'melee', mpCost: 20, cooldown: 5, damageMul: 4.2, range: 90, radius: 34, knockback: 380, unlockLevel: 5, color: '#ff7a2a' }),
-    ],
-  },
-  {
-    id: 'lancer', name: 'Lanceiro', sprite: 'lancer',
-    description: 'Lança de longo alcance e boa defesa. Mantém os inimigos longe.',
-    mods: { hp: 1.1, mp: 0.9, atk: 1, def: 1.15, crit: 1 },
-    basic: { kind: 'melee', range: 1.45, speed: 1.15 },
-    skills: [
-      sk({ id: 'wave_thrust', name: 'Estocada Onda', description: 'Uma onda de água à frente.', kind: 'projectile', mpCost: 9, cooldown: 1.6, damageMul: 1.9, range: 300, radius: 16, speed: 420, pierce: true, knockback: 160, color: '#7fc8ff', fx: 'fx_slash' }),
-      sk({ id: 'whirl_spear', name: 'Lança Giratória', description: 'Gira a lança atingindo todos ao redor.', kind: 'aoe', mpCost: 14, cooldown: 4, damageMul: 2.3, radius: 95, knockback: 240, unlockLevel: 3, color: '#7fc8ff' }),
-      sk({ id: 'tidal_strike', name: 'Golpe Maré', description: 'Salta e crava a lança, levantando uma onda.', kind: 'melee', mpCost: 22, cooldown: 6, damageMul: 3.8, range: 120, radius: 40, knockback: 340, unlockLevel: 5, color: '#5fb0ff' }),
-    ],
   },
 ];
 

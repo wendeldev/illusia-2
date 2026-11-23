@@ -42,8 +42,6 @@ export function haloBox(A: { head: number[] }, name: string, time: number): [num
   return [cx - w / 2, bottom - h, cx + w / 2, bottom, Math.floor(time * HALO_FPS) % 4];
 }
 
-const WALK: Record<string, number[]> = { warrior: [1, 2, 3, 4], assassin: [1, 2, 3, 4], mage: [0, 1, 2, 1], archer: [0, 1, 2, 1] };
-
 export interface DollLook {
   body: string; cls: string;
   /** halo (auréola) no espaço da cabeça */
@@ -128,12 +126,6 @@ export function dollLook(p: Progress): DollLook {
     weapon, weaponKind: kind, weaponColor: RARITY_COLORS[wr], weaponRarity: wr,
     weaponUp: p.upgrades?.[wid ?? ''] ?? 0,
   };
-}
-
-/** Quadro do corpo andando (t = distância/tempo acumulado). */
-export function walkFrame(look: DollLook, t: number): number {
-  const w = WALK[look.cls] ?? [0];
-  return w[Math.floor(t) % w.length];
 }
 
 /** Desenha o personagem com os pés em (x, y). `k` = escala extra (telas de menu). */
@@ -223,7 +215,7 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   // arma na mão da frente (pivô no cabo, embaixo à esquerda do desenho)
   const wr = frameRect(L.weapon);
   if (wr) {
-    const wh = A.H * (L.weaponKind === 'dagger' ? 0.38 : L.weaponKind === 'bow' ? 0.46 : 0.5) * (frames[0].H / A.H);
+    const wh = A.H * (L.weaponKind === 'dagger' ? 0.38 : 0.5) * (frames[0].H / A.H);
     const ww = (wr[0] / wr[1]) * wh;
     ctx.save();
     ctx.translate(X(hr) - 2 + (pose.thrust ?? 0), handY + 1);

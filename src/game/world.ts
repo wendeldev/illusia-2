@@ -708,67 +708,15 @@ export class World {
     p.cooldowns[skill.id] = skill.cooldown * this.stats.cdMul;
     // cartas/orbes/runas aumentam o dano dos poderes
     skill = { ...skill, damageMul: skill.damageMul * this.stats.skillMul };
-    if (skill.anim) return this.castPower(skill);
-    p.attackTimer = 0.3;
-    switch (skill.kind) {
-      case 'projectile':
-        this.startAnim('wind', 0.3);
-        this.sound('wind');
-        this.projectiles.push({ x: p.x + p.facing * 20, y: p.y - 22, dir: p.facing, dist: 0, skill, hit: new Set() });
-        break;
-      case 'aoe':
-        this.startAnim('whirl', 0.4);
-        p.attackTimer = 0.4;
-        for (const e of this.enemies) {
-          if (e.dead) continue;
-          const b = enemyBox(e);
-          const dx = e.x - p.x, dy = (b.top + b.bottom) / 2 - (p.y - PLAYER_H / 2);
-          if (dx * dx + dy * dy <= (skill.radius + e.radius) ** 2) {
-            this.damageEnemy(e, skill.damageMul, skill.knockback * (Math.sign(dx) || p.facing), true);
-          }
-        }
-        this.sound('whirl');
-        this.shake(3, 0.2);
-        this.freeze(0.06);
-        for (let i = 0; i < 18; i++) {
-          const a = (i / 18) * Math.PI * 2;
-          this.particles.push({
-            x: p.x + Math.cos(a) * 20, y: p.y + Math.sin(a) * 10, z: 12, vx: Math.cos(a) * 260, vy: Math.sin(a) * 90, vz: 40,
-            life: 0.35, maxLife: 0.35, size: 3, color: skill.color, gravity: 100,
-          });
-        }
-        this.effects.push({ kind: 'ring', x: p.x, y: p.y, dir: 1, radius: skill.radius, color: skill.color, life: 0.35, maxLife: 0.35 });
-        break;
-      case 'melee':
-        // pula e o golpe acerta ao aterrissar
-        this.startAnim('thunder', 0.55);
-        p.attackTimer = 0.55;
-        if (p.onGround) { p.vy = -380; p.onGround = false; }
-        p.invuln = Math.max(p.invuln, 0.4);
-        this.sound('swing');
-        p.pending = {
-          t: 0.27,
-          run: () => {
-            this.sound('thunder');
-            this.hitFront(skill.range, skill.damageMul, skill.knockback, skill.radius, true);
-            this.shake(8, 0.35);
-            this.freeze(0.12);
-            this.hooks.vibrate(60);
-            this.burst(p.x + p.facing * skill.range * 0.6, p.y, 30, 22, skill.color, 260, 3, 200);
-            this.effects.push({ kind: 'swing', x: p.x, y: p.y, dir: p.facing, radius: skill.range, color: skill.color, life: 0.3, maxLife: 0.3 });
-          },
-        };
-        break;
-    }
+    this.castPower(skill);
   }
 
   // ───────────────────────── poderes (prancha de poderes) ─────────────────────────
 
   private castPower(skill: SkillDef): void {
     const p = this.player;
-    const n = Math.max(2, frameCount(skill.anim!));
-    const dur = Math.min(0.6, Math.max(0.32, n * 0.1));
-    p.castAnim = skill.anim!;
+    const dur = skill.castTime ?? 0.4;
+    p.castAnim = skill.id;
     p.castT = 0;
     p.castDur = dur;
     p.attackTimer = dur * 0.8;
@@ -1819,7 +1767,6 @@ export class World {
   private drawPlayerSprite(ctx: CanvasRenderingContext2D): void {
     const p = this.player;
     const L = dollLook(this.progress);
-    const kind = L.weaponKind;
     // animação do rig (as mesmas 10 animações das spritesheets em camadas)
     const frameOf = (t: number, anim: RigAnim) => Math.min(rigFrames(anim) - 1, Math.floor(Math.max(0, t) * rigFrames(anim)));
     let anim: RigAnim = 'idle', i = this.time * rigFps('idle'), charge = 0;
@@ -1862,7 +1809,7 @@ export class World {
       glow(ctx, p.x, p.y - 22, 40, '#a06bff', 0.3);
     }
     // rastro da arma no golpe
-    if (p.anim && !p.dead && kind !== 'bow') {
+    if (p.anim && !p.dead) {
       const t = p.animT / p.animDur;
       if (t > 0.15 && t < 0.75) {
         ctx.strokeStyle = L.weaponColor;

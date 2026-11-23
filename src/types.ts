@@ -68,7 +68,7 @@ export interface EquipmentDef extends StatBonus {
   priceGems?: number;
   /** tipo de arma (espada, machado, lança, adaga, arco, cajado) */
   weaponKind?: string;
-  /** peça de set: classe do set (warrior/assassin/mage/archer) */
+  /** peça de set: classe do set (warrior/assassin/mage) */
   setClass?: string;
   /** categoria na loja */
   category?: string;
@@ -111,8 +111,8 @@ export interface SkillDef {
   color: string;
   /** desenho do projétil/efeito (atlas) */
   fx?: string;
-  /** animação do personagem lançando o poder (atlas) e ícone do botão */
-  anim?: string;
+  /** tempo para lançar o poder (s) e ícone do botão */
+  castTime?: number;
   icon?: string;
   /** quantidade (projéteis, meteoros...) */
   count?: number;

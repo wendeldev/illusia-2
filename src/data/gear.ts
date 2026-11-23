@@ -12,16 +12,15 @@ export const WEAPON_KINDS: Record<string, { name: string; atk: number; crit?: nu
   axe: { name: 'Machado', atk: 7.5 },
   spear: { name: 'Lança', atk: 6.5, crit: 0.005 },
   dagger: { name: 'Adaga', atk: 5, crit: 0.02 },
-  bow: { name: 'Arco', atk: 5.5, crit: 0.015 },
   staff: { name: 'Cajado', atk: 5, mp: 18 },
 };
 /** Arma preferida de cada classe: +25% no ataque da arma. */
 export const PREFERRED: Record<string, string[]> = {
-  warrior: ['sword', 'axe'], monk: ['axe'], lancer: ['spear'], assassin: ['dagger'], mage: ['staff'], archer: ['bow'],
+  warrior: ['sword', 'axe', 'spear'], assassin: ['dagger'], mage: ['staff'],
 };
-/** Set de armadura de cada classe (as classes sem set próprio usam o do Guerreiro). */
-export const SET_OF: Record<string, string> = { warrior: 'warrior', monk: 'warrior', lancer: 'warrior', assassin: 'assassin', mage: 'mage', archer: 'archer' };
-export const SET_NAMES: Record<string, string> = { warrior: 'Guerreiro', assassin: 'Assassino', mage: 'Mago', archer: 'Arqueiro' };
+/** Set de armadura de cada classe. */
+export const SET_OF: Record<string, string> = { warrior: 'warrior', assassin: 'assassin', mage: 'mage' };
+export const SET_NAMES: Record<string, string> = { warrior: 'Guerreiro', assassin: 'Assassino', mage: 'Mago' };
 
 const PIECES: { key: string; slot: Slot; name: string; def?: number; hp?: number; atk?: number; mp?: number; crit?: number }[] = [
   { key: 'armor', slot: 'armor', name: 'Armadura', def: 4, hp: 35 },
@@ -29,10 +28,10 @@ const PIECES: { key: string; slot: Slot; name: string; def?: number; hp?: number
   { key: 'pants', slot: 'pants', name: 'Calças', def: 3, hp: 20 },
   { key: 'cape', slot: 'cape', name: 'Capa', def: 1, mp: 10, crit: 0.005 },
 ];
-/** Tempero de cada set: mago mais MP, assassino mais crítico, arqueiro mais ataque, guerreiro mais vida. */
+/** Tempero de cada set: mago mais MP, assassino mais crítico, guerreiro mais vida. */
 const FLAVOR: Record<string, { hp: number; mp: number; atk: number; crit: number }> = {
   warrior: { hp: 1.3, mp: 0.8, atk: 1, crit: 0.8 }, assassin: { hp: 0.9, mp: 1, atk: 1.1, crit: 1.8 },
-  mage: { hp: 0.85, mp: 1.8, atk: 1.05, crit: 1 }, archer: { hp: 0.95, mp: 1, atk: 1.25, crit: 1.3 },
+  mage: { hp: 0.85, mp: 1.8, atk: 1.05, crit: 1 },
 };
 
 function price(r: number, weight: number): { price: number; priceGems?: number } {
@@ -91,7 +90,7 @@ export function setFor(classId: string | undefined, rarity: number): string[] {
 }
 
 export const SHOP_CATEGORIES: [string, string][] = [
-  ['sword', 'Espadas'], ['axe', 'Machados'], ['spear', 'Lanças'], ['dagger', 'Adagas'], ['bow', 'Arcos'], ['staff', 'Cajados'],
+  ['sword', 'Espadas'], ['axe', 'Machados'], ['spear', 'Lanças'], ['dagger', 'Adagas'], ['staff', 'Cajados'],
   ['hl', 'Halos'], ['armor', 'Armaduras'], ['arms', 'Braços'], ['pants', 'Calças'], ['cape', 'Capas'],
   ['bt', 'Botas'], ['wb', 'Asas T.'], ['wf', 'Asas F.'], ['au', 'Auras'], ['classic', 'Clássicos'],
 ];

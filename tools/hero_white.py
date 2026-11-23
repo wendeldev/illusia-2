@@ -12,10 +12,10 @@ ROWS = ['idle', 'walk', 'run', 'jump']
 FLIP_ROWS = {'mage': {2}}
 # âncora pelos pés (média da fileira) em vez do centro da célula: corpos com cabelo comprido para um lado
 FEET_ANCHOR = {'mage'}
-TARGET_H = {'warrior': 61, 'assassin': 53, 'mage': 46, 'archer': 47}  # altura do corpo antigo de cada classe
+TARGET_H = {'warrior': 61, 'assassin': 53, 'mage': 46}  # altura do corpo antigo de cada classe
 
 
-FILES = {'warrior': 'sheet-hero-white.png', 'mage': 'sheet-body-mage.png', 'assassin': 'sheet-body-assassin.png', 'archer': 'sheet-body-archer.png'}
+FILES = {'warrior': 'sheet-hero-white.png', 'mage': 'sheet-body-mage.png', 'assassin': 'sheet-body-assassin.png'}
 
 
 def available():

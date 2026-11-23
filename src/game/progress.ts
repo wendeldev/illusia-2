@@ -1,4 +1,4 @@
-import { hasItem, hasStage, LEGACY_STAGE_IDS } from '../data';
+import { CLASSES, hasItem, hasStage, LEGACY_STAGE_IDS } from '../data';
 import { expToNext, legacyExpToNext } from './stats';
 import type { Slot } from '../types';
 
@@ -83,10 +83,18 @@ export function loadProgress(): Progress {
     p.bag = { ...(p.bag ?? {}) };
     p.upgrades = { ...(p.upgrades ?? {}) };
     p.cards = Array.isArray(p.cards) ? [p.cards[0] ?? null, p.cards[1] ?? null] : [null, null];
+    // classes que saíram do jogo (Arqueiro, Lutador, Lanceiro): vira Guerreiro
+    if (p.classId && !CLASSES.some((c) => c.id === p.classId)) p.classId = 'warrior';
+    if (p.skillSlots) p.skillSlots = Object.fromEntries(Object.entries(p.skillSlots).filter(([c]) => CLASSES.some((k) => k.id === c)));
     p.cleared = [...new Set(p.cleared.map((id) => LEGACY_STAGE_IDS[id] ?? id).filter(hasStage))];
     for (const slot of Object.keys(p.equipped) as Slot[]) {
       const id = p.equipped[slot];
       if (!id || !p.owned.includes(id)) delete p.equipped[slot];
+    }
+    // sem arma (a equipada saiu do jogo): volta para a espada de treino
+    if (!p.equipped.weapon) {
+      if (!p.owned.includes('training_sword')) p.owned.push('training_sword');
+      p.equipped.weapon = 'training_sword';
     }
     return p;
   } catch {

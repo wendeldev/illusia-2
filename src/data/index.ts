@@ -2,10 +2,9 @@ import { ENEMIES } from './enemies';
 import { EQUIPMENT } from './equipment';
 import { NPCS } from './npcs';
 import { QUESTS } from './quests';
-import { SKILLS } from './skills';
 import { MAP_PORTAL, STAGES, START_STAGE } from './stages';
 
-export { ENEMIES, EQUIPMENT, MAP_PORTAL, NPCS, QUESTS, SKILLS, STAGES, START_STAGE };
+export { ENEMIES, EQUIPMENT, MAP_PORTAL, NPCS, QUESTS, STAGES, START_STAGE };
 export type { QuestDef, QuestGoal, QuestReward } from './quests';
 export { CLASSES, DEFAULT_CLASS, getClass, type ClassDef } from './classes';
 export { LEGACY_STAGE_IDS, REGIONS, STAGES_PER_REGION, stageId } from './campaign';
@@ -53,5 +52,4 @@ export function validateContent(): void {
     if (q.goal.kind === 'clear') getStage(q.goal.stageId);
     else if (q.goal.kind === 'kill') q.goal.enemyIds?.forEach(getEnemy);
   }
-  if (SKILLS.length > 3) throw new Error('No máximo 3 poderes (3 botões).');
 }

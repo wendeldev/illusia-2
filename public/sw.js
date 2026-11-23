@@ -1,5 +1,5 @@
 // Service worker simples: rede primeiro, cache como reserva (permite jogar offline após a 1ª visita).
-const CACHE = 'lumen-v1';
+const CACHE = 'lumen-v2';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => {
   e.waitUntil(

@@ -4,7 +4,7 @@ import type { Music } from '../engine/music';
 import { drawFit, drawSprite, drawSpriteH, drawSub, frameSize, hasSprite, spritesReady, tileAspect } from '../engine/sprites';
 import { glow } from './art/scene3d';
 import { drawDollIdle } from './art/layers';
-import { RARITY_COLORS, RARITY_NAMES, SET_NAMES, SET_OF, SHOP_CATEGORIES, WEAPON_KINDS, setFor } from '../data/gear';
+import { PREFERRED, RARITY_COLORS, RARITY_NAMES, SET_NAMES, SET_OF, SHOP_CATEGORIES, WEAPON_KINDS, setFor } from '../data/gear';
 import { gearScore } from './loot';
 import { DIFFICULTIES, EVENT_PHASES, MYTHIC_BOSSES, rewardRarity, TICKET_OF, type MythicBoss } from '../data/mythic';
 import { rewardText, type QuestBook } from './quests';
@@ -1495,10 +1495,10 @@ export class Ui {
       ctx.lineWidth = sel ? 2 : 1;
       ctx.strokeRect(cx, cy, cw, ch);
       if (spritesReady()) {
-        // a classe escolhida mostra o ataque; as outras ficam paradas
-        const anim = sel ? `${c.sprite}_atk0` : `${c.sprite}_idle`;
-        const fr = sel ? (t * 3) % 3 : t * 2;
-        drawSprite(ctx, anim, fr, cx + cw / 2 - (sel ? 10 : 0), cy + 96, 1, { scale: 1.3 });
+        // prévia: o corpo da classe com a arma inicial
+        const weapon = `wp_${(PREFERRED[c.id] ?? ['sword'])[0]}_0`;
+        const preview = { ...this.game.progress, classId: c.id, equipped: { weapon }, upgrades: {} };
+        drawDollIdle(ctx, preview, cx + cw / 2, cy + 98, 1, sel ? 1.5 : 1.35, t);
       }
       text(ctx, c.name, cx + cw / 2, cy + 116, { size: 13, align: 'center', color: sel ? '#ffe9a8' : '#ffffff' });
       text(ctx, c.basic.kind === 'shot' ? 'Ataque à distância' : 'Corpo a corpo', cx + cw / 2, cy + 134, { size: 9, align: 'center', outline: false, color: '#aab4cc' });

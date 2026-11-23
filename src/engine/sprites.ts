@@ -3,7 +3,7 @@
 import atlasData from '../data/atlas.json';
 
 /** [x, y, largura, altura, âncoraX, âncoraY, (cabeçaX, cabeçaY relativos à âncora)] no atlas */
-type Frame = [number, number, number, number, number, number, number?, number?];
+type Frame = [number, number, number, number, number, number];
 
 interface SpriteDef {
   /** escala para o tamanho no jogo */
@@ -13,7 +13,7 @@ interface SpriteDef {
   frames: Frame[];
   /** cores do céu acima de um panorama [topo, logo abaixo] */
   sky?: [string, string];
-  /** 1 = prancha de cenário (public/sprites/scenery.png) */
+  /** 1 = prancha de cenário (public/sprites/scenery.webp) */
   sheet?: number;
 }
 
@@ -54,19 +54,19 @@ let ready = false;
 export function loadSprites(): Promise<void> {
   const sc = new Image();
   sc.onload = () => { scenery = sc; };
-  sc.src = './sprites/scenery.png';
+  sc.src = './sprites/scenery.webp';
   const pw = new Image();
   pw.onload = () => { powers = pw; powersWhite = whiteCopy(pw); };
-  pw.src = './sprites/powers.png';
+  pw.src = './sprites/powers.webp';
   const bs = new Image();
   bs.onload = () => { bosses = bs; bossesWhite = whiteCopy(bs); };
-  bs.src = './sprites/bosses.png';
+  bs.src = './sprites/bosses.webp';
   const it = new Image();
   it.onload = () => { itemsImg = it; };
-  it.src = './sprites/items.png';
+  it.src = './sprites/items.webp';
   const my = new Image();
   my.onload = () => { mythic = my; mythicWhite = whiteCopy(my); };
-  my.src = './sprites/mythic.png';
+  my.src = './sprites/mythic.webp';
   return new Promise((resolve) => {
     const im = new Image();
     im.onload = () => {
@@ -87,7 +87,7 @@ export function loadSprites(): Promise<void> {
       resolve();
     };
     im.onerror = () => resolve();
-    im.src = './sprites/atlas.png';
+    im.src = './sprites/atlas.webp';
   });
 }
 
@@ -210,25 +210,6 @@ export function drawSub(ctx: CanvasRenderingContext2D, name: string, sx: number,
 
 export function panoSky(name: string): [string, string] {
   return ATLAS[name]?.sky ?? ['#6aa8e8', '#9fd0f0'];
-}
-
-/** Prancha de poderes carregada? */
-export function powersReady(): boolean {
-  return !!powers;
-}
-
-/** Topo da cabeça no quadro (em px do jogo, relativo aos pés), já virado para `facing`. */
-export function headOf(name: string, frame: number, facing: number, scale = 1): { x: number; y: number } {
-  const d = ATLAS[name];
-  if (!d) return { x: 0, y: -48 };
-  const f = d.frames[Math.max(0, Math.floor(frame)) % d.frames.length];
-  const s = d.scale * scale;
-  const flip = facing === d.faces ? 1 : -1;
-  return { x: (f[6] ?? 0) * s * flip, y: (f[7] ?? -f[3]) * s };
-}
-
-export function mythicReady(): boolean {
-  return !!mythic;
 }
 
 /**

@@ -14,7 +14,7 @@ FPS = {'idle': 6, 'walk': 12, 'run': 16, 'jump': 10, 'fall': 10, 'atk1': 16, 'at
 LOOP = {'idle', 'walk', 'run', 'fall'}
 
 # quadros de passada de cada classe (os quadros 3 e 4 da Maga e do Arqueiro mudam o penteado)
-STRIDE = {'warrior': [1, 2, 3, 4], 'assassin': [1, 2, 3, 4], 'mage': [0, 1, 2, 1], 'archer': [0, 1, 2, 1]}
+STRIDE = {'warrior': [1, 2, 3, 4], 'assassin': [1, 2, 3, 4], 'mage': [0, 1, 2, 1]}
 
 
 import json as _json
@@ -83,14 +83,7 @@ def weapon_rig(style):
         'hurt': w([20, 30, 25, 10]),
         'death': w([30, 50, 80, 110, 130, 135, 135, 135]),
     }
-    if style == 'bow':
-        base.update({
-            'idle': w([-30, -30, -28, -30]), 'walk': w([-30] * 8), 'run': w([-25] * 8),
-            'atk1': w([-35, -45, -45, -45, -40, -32], [2, 3, 6, 6, 4, 2]),
-            'atk2': w([-45, -45, -40, -45, -45, -35], [4, 6, 4, 6, 4, 2]),
-            'atk3': w([-60, -70, -70, -55, -45, -45, -45, -35], [2, 3, 5, 6, 6, 4, 6, 3]),
-        })
-    elif style == 'staff':
+    if style == 'staff':
         base.update({
             'idle': w([-25, -24, -22, -24]),
             'atk1': w([-30, -40, 10, 30, 20, 0], [0, -2, 4, 7, 5, 2]),
@@ -112,14 +105,14 @@ def weapon_rig(style):
     return base
 
 
-STYLE_OF = {'sword': 'slash', 'axe': 'slash', 'dagger': 'slash', 'spear': 'spear', 'bow': 'bow', 'staff': 'staff'}
-CLASSES = ['warrior', 'assassin', 'mage', 'archer']
+STYLE_OF = {'sword': 'slash', 'axe': 'slash', 'dagger': 'slash', 'spear': 'spear', 'staff': 'staff'}
+CLASSES = ['warrior', 'assassin', 'mage']
 
 
 def full_rig():
     return {
         'anims': [[n, c] for n, c in ANIMS], 'fps': FPS, 'loop': sorted(LOOP),
         'body': {**{c: body_rig(c) for c in CLASSES}, 'look': new_body_rig()},
-        'weapon': {s: weapon_rig(s) for s in ('slash', 'spear', 'bow', 'staff')},
+        'weapon': {s: weapon_rig(s) for s in ('slash', 'spear', 'staff')},
         'styleOf': STYLE_OF,
     }

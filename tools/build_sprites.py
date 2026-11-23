@@ -39,20 +39,6 @@ assert len(comps) == 238, f'segmentação mudou ({len(comps)} componentes): revi
 
 # ── o que entra no jogo ───────────────────────────────────────────────
 # grupo: (lista de recortes, altura no jogo em px lógicos, lado para onde olha: 1 = direita, -1 = esquerda)
-HERO = {
-    'hero_idle': [14, 15, 16],
-    'hero_walk': [46, 47, 48, 49, 50],
-    'hero_jump': [26],
-    'hero_fall': [13],
-    'hero_atk0': [71, 74, 75],
-    'hero_atk1': [72, 76, 77],
-    'hero_atk2': [73, 78, 79],
-    'hero_wind': [90, 93],
-    'hero_whirl': [91, 94],
-    'hero_thunder': [92, 95],
-    'hero_hurt': [118, 119],
-    'hero_dead': [122, 124, 126, 128],
-}
 SINGLE = {
     # NPCs
     'npc_brida': (2, 50, 1), 'npc_taro': (11, 48, 1), 'npc_ivy': (1, 52, 1),
@@ -72,30 +58,7 @@ SINGLE = {
 }
 HERO_H = 52  # altura do herói parado no jogo
 
-# classes jogáveis (prancha 2): animação -> quadros; um quadro pode juntar vários recortes (tupla)
-CLASS_FRAMES = {
-    'archer': {
-        'idle': [106, 107], 'walk': [106, 107, 108, 107], 'jump': [109], 'fall': [110],
-        'atk0': [109, 110, 111], 'atk1': [110, 111], 'atk2': [109, 111], 'wind': [110, 111],
-        'whirl': [113, 114], 'thunder': [113, 114], 'hurt': [109], 'dead': [115],
-    },
-    'mage': {
-        'idle': [133, 134], 'walk': [133, 134, 135, 134], 'jump': [136], 'fall': [136],
-        'atk0': [136, 137], 'atk1': [137, 141], 'atk2': [141, 142], 'wind': [137, 138],
-        'whirl': [141, 142], 'thunder': [137, 142], 'hurt': [138], 'dead': [143],
-    },
-    'monk': {
-        'idle': [147, 148], 'walk': [147, 148, 149, 148], 'jump': [150], 'fall': [150],
-        'atk0': [150, 151], 'atk1': [150, 152], 'atk2': [153], 'wind': [151],
-        'whirl': [153], 'thunder': [152], 'hurt': [154], 'dead': [(166, 167)],
-    },
-    'lancer': {
-        'idle': [188, 189], 'walk': [188, 189, 190, 189], 'jump': [191], 'fall': [191],
-        'atk0': [191, 192], 'atk1': [192, 191], 'atk2': [193], 'wind': [192, 193],
-        'whirl': [194, 195], 'thunder': [193], 'hurt': [195], 'dead': [203],
-    },
-}
-CLASS_FX = {'fx_arrow': 112, 'fx_orb': 139}
+CLASS_FX = {'fx_orb': 139}   # ataque básico da Maga
 
 # ícones dos equipamentos (id do item -> recorte), altura 28
 ICONS = {
@@ -284,28 +247,10 @@ def feet(im):
 
 frames = {}   # nome -> [(imagem, ax, ay)]
 meta = {}     # nome -> {scale, faces}
-hero_ref = clean(crop(HERO['hero_idle'][0])).size[1]
-for name, ks in HERO.items():
-    imgs = [clean(crop(k)) for k in ks]
-    frames[name] = [(im, *feet(im)) for im in imgs]
-    meta[name] = {'scale': HERO_H / hero_ref, 'faces': 1}
 for name, (k, h, faces) in SINGLE.items():
     im = clean(crop(k))
     frames[name] = [(im, *feet(im))]
     meta[name] = {'scale': h / im.size[1], 'faces': faces}
-for cls, anims in CLASS_FRAMES.items():
-    ref = clean(crop2(anims['walk'][0]))
-    ref_ax = feet(ref)[0]
-    scale = HERO_H / ref.size[1]
-    for anim, ks in anims.items():
-        imgs = [clean(crop2(k)) for k in ks]
-        name = f'{cls}_{anim}'
-        if anim in ('idle', 'walk', 'dead'):
-            frames[name] = [(im, *feet(im)) for im in imgs]
-        else:
-            # ataques: o personagem fica à esquerda do quadro e o efeito à direita
-            frames[name] = [(im, min(ref_ax, im.size[0] - 1), im.size[1]) for im in imgs]
-        meta[name] = {'scale': scale, 'faces': 1}
 for name, k in CLASS_FX.items():
     im = clean(crop2(k))
     frames[name] = [(im, im.size[0] // 2, im.size[1] // 2)]
@@ -334,10 +279,6 @@ for name, (base, dh, sat, val) in VARIANTS.items():
     im = recolor(frames[base][0][0], dh, sat, val)
     frames[name] = [(im, *feet(im))]
     meta[name] = dict(meta[base])
-# ataques: a âncora dos quadros com efeito usa a do corpo (primeiro quadro) para o herói não "pular"
-for name in ('hero_atk0', 'hero_atk1', 'hero_atk2', 'hero_wind', 'hero_whirl', 'hero_thunder'):
-    base_ax = frames[name][0][1]
-    frames[name] = [(im, base_ax if i else ax, ay) for i, (im, ax, ay) in enumerate(frames[name])]
 
 # empacotamento em prateleiras
 items = [(name, i, im, ax, ay) for name, lst in frames.items() for i, (im, ax, ay) in enumerate(lst)]
@@ -512,40 +453,11 @@ POWERS = {
     'a_shadowburst': ([0, 1, 2, 3], [], 'left'), 'a_daggers': ([0, 1, 2], [4], 'left'),
     'a_poison': ([0, 1], [4], 'left'), 'a_clone': ([0, 1, 2, 3, 4, 5], [], 'left'),
 }
+# só os ícones dos poderes (os efeitos vêm das pranchas fx-<classe>.png e o personagem é o boneco em camadas)
 pw_extra = {}
-for name, (cast, fx, anchor) in POWERS.items():
-    fr = P_FRAMES[name]
-    ref = fr[0]
-    scale = HERO_H / ref.size[1]
-    ref_ax = feet(ref)[0]
-    lst = []
-    for i in cast:
-        im = fr[i]
-        w, h = im.size
-        ax = min(ref_ax, w - 1) if anchor == 'left' else (max(0, w - (ref.size[0] - ref_ax)) if anchor == 'right' else w // 2)
-        lst.append((im, ax, h))
-    pw_extra['pw_' + name] = (lst, scale)
-    if fx:
-        # efeitos com âncora no centro (o jogo posiciona pelo meio)
-        pw_extra['fx_' + name] = ([(fr[i], fr[i].size[0] // 2, fr[i].size[1] // 2) for i in fx], scale)
+for name in POWERS:
     ic = P_ICONS[name]
     pw_extra['ic_' + name] = ([(ic, ic.size[0] // 2, ic.size[1])], 1.0)
-
-# bases (parado/andando/dano/nocaute) da maga loira e do assassino, da prancha de classes
-BASES = {
-    'priest': {'idle': [74, 75], 'walk': [74, 75, 76, 77], 'jump': [80], 'fall': [80], 'hurt': [81], 'dead': [82],
-               'atk0': [78, 80], 'atk1': [80, 78], 'atk2': [79], 'wind': [80], 'whirl': [79], 'thunder': [79]},
-    'assassin': {'idle': [55, 56], 'walk': [55, 56, 57, 56], 'jump': [63], 'fall': [63], 'hurt': [62], 'dead': [64],
-                 'atk0': [58, 59], 'atk1': [59, 58], 'atk2': [60, 61], 'wind': [59], 'whirl': [61], 'thunder': [63]},
-}
-for cls, anims in BASES.items():
-    ref = clean(crop2(anims['walk'][0]))
-    ref_ax = feet(ref)[0]
-    scale = HERO_H / ref.size[1]
-    for anim, ks in anims.items():
-        imgs = [clean(crop2(k)) for k in ks]
-        lst = [(im, *feet(im)) for im in imgs] if anim in ('idle', 'walk', 'dead', 'hurt') else [(im, min(ref_ax, im.size[0] - 1), im.size[1]) for im in imgs]
-        pw_extra[f'{cls}_{anim}'] = (lst, scale)
 
 # 3º atlas: poderes
 items4 = [(n, i, im, ax, ay) for n, (lst, _) in pw_extra.items() for i, (im, ax, ay) in enumerate(lst)]
@@ -762,20 +674,14 @@ for name, im in MY.load_maps().items():
 
 # equipamentos: armas e sets (7 raridades da prancha + celestial = divino recolorido)
 for (kind, r), im in MY.load_weapons().items():
+    if kind == 'bow':
+        continue
     put(f'gw_{kind}_{r}', [im])
     if r == 'divino':
         put(f'gw_{kind}_celestial', [recolor(im, *RAR_HUE[7])])
-def _no_dark(im):
-    # abertura do rosto dos capacetes (fundo escuro preso no desenho) fica transparente
-    im = im.copy(); px = im.load()
-    for y in range(im.size[1]):
-        for x in range(im.size[0]):
-            if px[x, y][3] and max(px[x, y][:3]) < 40:
-                px[x, y] = (0, 0, 0, 0)
-    return im
 for (cls, r, piece), im in MY.load_sets().items():
-    if piece == 'helmet':
-        im = _no_dark(im)
+    if cls not in ('warrior', 'assassin', 'mage') or piece == 'helmet':
+        continue   # só as classes do jogo; o espaço da cabeça é o halo
     put(f'gs_{cls}_{r}_{piece}', [im])
     if r == 'divino':
         put(f'gs_{cls}_celestial_{piece}', [recolor(im, *RAR_HUE[7])])
@@ -786,14 +692,12 @@ for key, short in (('boots', 'gb'), ('wings_back', 'gwb'), ('wings_front', 'gwf'
     for ri, r in enumerate(RAR):
         hue = RAR_HUE[ri]
         put(f'{short}_{r}', [base if hue is None else recolor(base, *hue)])
-for (row, key), im in LY.items():
-    put(f'ly_{key}_{row}', [im])
 # corpos base (boneco em camadas) + anatomia de cada quadro → src/data/paperdoll.json
 import anatomy as AN
 PD = {}
 import split_head as SH
 import hero_white as HWH
-BODIES = MY.load_bodies()
+BODIES = {c: f for c, f in MY.load_bodies().items() if c in ('warrior', 'assassin', 'mage')}
 # corpo base novo (32 quadros: parado, andar, correr, pular) das classes que já têm a prancha
 NEW_BODY = {c: HWH.load(c) for c in HWH.available()}
 for c, fr in NEW_BODY.items():
@@ -822,18 +726,13 @@ for r, frs in MY.load_halos().items():
         put('halo_celestial', [recolor(im, *RAR_HUE[7]) for im in frs], center=True)
 # montagens prontas (prévias das recompensas)
 for name, im in MY.load_montages().items():
-    put(f'mont_{name}', [im])
+    if not name.startswith('archer'):
+        put(f'mont_{name}', [im])
 # efeitos dos poderes (pranchas fx-<classe>.png): fx2_<poder> com 6 quadros (metade do tamanho, centro como âncora)
-# e ícone ic2_<poder> (quadro mais forte num quadrado) para os poderes sem ícone próprio
 import fx_cells as FXC
 for sid, frs in FXC.load().items():
     sm = [im.resize((max(1, im.size[0] // 2), max(1, im.size[1] // 2)), _I.LANCZOS) for im in frs]
     put(f'fx2_{sid}', sm, center=True)
-    pk = frs[3]
-    side = max(pk.size)
-    sq = _I.new('RGBA', (side, side), (0, 0, 0, 0))
-    sq.paste(pk, ((side - pk.size[0]) // 2, (side - pk.size[1]) // 2))
-    put(f'ic2_{sid}', [sq.resize((64, 64), _I.LANCZOS)])
 # interface do inventário (botões, bordas de raridade, indicadores)
 import ui_cells as UIC
 for n, im in UIC.load_ui().items():
@@ -861,25 +760,30 @@ atlas8.save(os.path.join(ROOT, 'public', 'sprites', 'mythic.png'), optimize=True
 allmeta = json.load(open(os.path.join(ROOT, 'src', 'data', 'atlas.json')))
 allmeta.update(meta8)
 
-# ponto da cabeça (topo) de cada quadro dos personagens jogáveis: [.., hx, hy] relativo à âncora
-SHEETS = {None: 'atlas.png', 1: 'scenery.png', 2: 'powers.png', 3: 'bosses.png', 4: 'items.png', 5: 'mythic.png'}
-imgs = {k: _I.open(os.path.join(ROOT, 'public', 'sprites', v)).convert('RGBA') for k, v in SHEETS.items()}
-for n, d in allmeta.items():
-    if not (n.split('_')[0] in ('hero', 'archer', 'priest', 'assassin', 'monk', 'lancer', 'pw')):
-        continue
-    src = imgs[d.get('sheet')]
-    for f in d['frames']:
-        crop = src.crop((f[0], f[1], f[0] + f[2], f[1] + f[3]))
-        a = crop.split()[3]
-        bb = a.getbbox()
-        if not bb:
-            continue
-        top = bb[1]
-        xs = [xx for yy in range(top, min(top + 10, f[3])) for xx in range(f[2]) if a.getpixel((xx, yy)) > 0]
-        hx = sum(xs) / len(xs) if xs else f[2] / 2
-        # a cabeça fica perto do personagem (não de um efeito ao lado): limita a meia largura do corpo
-        if abs(hx - f[4]) > 30:
-            hx = f[4]
-        f[6:] = [round(hx - f[4], 1), top - f[5]]
 json.dump(allmeta, open(os.path.join(ROOT, 'src', 'data', 'atlas.json'), 'w'), separators=(',', ':'))
 print(f'míticos+equipamentos: {atlas8.size[0]}x{atlas8.size[1]}, {len(meta8)} peças')
+
+# ── compressão: cada sprite com a própria paleta (256 cores, sem pontilhado) e folhas em WebP sem perdas ──
+# (a paleta por peça mantém os cenários sem faixas; o WebP fica ~45% menor que o PNG)
+SHEET_FILES = {None: 'atlas', 1: 'scenery', 2: 'powers', 3: 'bosses', 4: 'items', 5: 'mythic'}
+total = 0
+for sid, fname in SHEET_FILES.items():
+    png = os.path.join(ROOT, 'public', 'sprites', fname + '.png')
+    sheet = _I.open(png).convert('RGBA')
+    for d in allmeta.values():
+        if d.get('sheet') != sid:
+            continue
+        for f in d['frames']:
+            box = (f[0], f[1], f[0] + f[2], f[1] + f[3])
+            piece = sheet.crop(box)
+            if len(piece.getcolors(1 << 16) or range(257)) <= 256:
+                continue
+            alpha = piece.getchannel('A')
+            q = piece.quantize(256, method=_I.Quantize.FASTOCTREE, dither=_I.Dither.NONE).convert('RGBA')
+            q.putalpha(alpha)
+            sheet.paste(q, box)
+    out = os.path.join(ROOT, 'public', 'sprites', fname + '.webp')
+    sheet.save(out, 'WEBP', lossless=True, method=6, quality=100)
+    os.remove(png)
+    total += os.path.getsize(out)
+print(f'folhas em WebP: {total // 1024} KB')

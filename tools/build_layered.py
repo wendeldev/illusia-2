@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gera as spritesheets em camadas ("layered sprites") de Guerreiro, Mago, Assassino e Arqueiro.
+Gera as spritesheets em camadas ("layered sprites") de Guerreiro, Mago e Assassino.
 
   python3 -I tools/build_layered.py        (depois de tools/build_sprites.py)
 
@@ -31,11 +31,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'spritesheets')
 CELL, AX, AY, COLS = 128, 64, 112, 8
 RARITIES = ['comum', 'incomum', 'raro', 'epico', 'lendario', 'mitico', 'divino', 'celestial']
-SETS = {'warrior': 'warrior', 'assassin': 'assassin', 'mage': 'mage', 'archer': 'archer'}
-WEAPONS = {'warrior': ['sword', 'axe', 'spear'], 'assassin': ['dagger'], 'mage': ['staff'], 'archer': ['bow']}
+SETS = {'warrior': 'warrior', 'assassin': 'assassin', 'mage': 'mage'}
+WEAPONS = {'warrior': ['sword', 'axe', 'spear'], 'assassin': ['dagger'], 'mage': ['staff']}
 NEAREST = Image.NEAREST
 
-# ── leitura do atlas já montado (public/sprites/mythic.png) ──
+# ── leitura do atlas já montado (public/sprites/mythic.webp) ──
 ATLAS = json.load(open(os.path.join(ROOT, 'src', 'data', 'atlas.json')))
 SHEETS = {}
 
@@ -44,7 +44,7 @@ def sprite(name, frame=0):
     d = ATLAS[name]
     sh = d.get('sheet', 0)
     if sh not in SHEETS:
-        SHEETS[sh] = Image.open(os.path.join(ROOT, 'public', 'sprites', {5: 'mythic.png'}[sh])).convert('RGBA')
+        SHEETS[sh] = Image.open(os.path.join(ROOT, 'public', 'sprites', {5: 'mythic.webp'}[sh])).convert('RGBA')
     f = d['frames'][frame]
     return SHEETS[sh].crop((f[0], f[1], f[0] + f[2], f[1] + f[3]))
 
@@ -107,7 +107,7 @@ def paste(canvas, img, x, y):
     canvas.alpha_composite(layer)
 
 
-WEAPON_H = {'dagger': 0.38, 'bow': 0.46}
+WEAPON_H = {'dagger': 0.38}
 
 
 class Body:
@@ -264,7 +264,7 @@ def build_class(cls):
 
 def overview(comps):
     """Prancha de conferência no formato da referência: classe × animações (2 quadros cada)."""
-    names = {'warrior': 'Guerreiro', 'mage': 'Mago', 'assassin': 'Assassino', 'archer': 'Arqueiro'}
+    names = {'warrior': 'Guerreiro', 'mage': 'Mago', 'assassin': 'Assassino'}
     label_w, cell = 150, 96
     W = label_w + sum((2 if n > 1 else 1) * cell for _, n in RIG.ANIMS)
     H = 30 + len(comps) * (cell + 10)
@@ -278,7 +278,7 @@ def overview(comps):
     for a, n in RIG.ANIMS:
         dr.text((x + 6, 8), f'{RIG.NAMES_PT[a]} ({n})', fill=(255, 220, 110), font=font)
         x += 2 * cell
-    for r, cls in enumerate(['warrior', 'mage', 'assassin', 'archer']):
+    for r, cls in enumerate(['warrior', 'mage', 'assassin']):
         y = 30 + r * (cell + 10)
         dr.rectangle((4, y, W - 4, y + cell), outline=(150, 110, 40))
         dr.text((12, y + cell // 2 - 8), names[cls], fill=(255, 255, 255), font=font)

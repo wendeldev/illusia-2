@@ -9,7 +9,6 @@ SKILLS = {
     'warrior': ['w_slash_h', 'w_slash_v', 'w_dash', 'w_whirl', 'w_shock', 'w_flame', 'w_quake', 'w_shield'],
     'mage': ['m_fireball', 'm_fireburst', 'm_icespear', 'm_icestorm', 'm_arcane', 'm_meteor', 'm_circle', 'm_heal'],
     'assassin': ['a_quick', 'a_blades', 'a_teleport', 'a_thrust', 'a_shadowburst', 'a_daggers', 'a_poison', 'a_clone'],
-    'archer': ['r_wind', 'r_triple', 'r_pierce', 'r_rain', 'r_explode', 'r_ice', 'r_poison', 'r_eagle'],
 }
 
 

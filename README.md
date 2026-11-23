@@ -22,7 +22,7 @@ Para depurar, abra com `?debug` e use `window.__game` no console.
 | Descer de uma plataforma | S + Espaço | direcional para baixo + ▲ |
 | Subir/descer escada | W/S ou ↑/↓ perto da escada | direcional para cima/baixo |
 | Atacar (combo de 3 golpes) | J | ⚔ |
-| Poderes 1, 2, 3 | K, L, I | botões coloridos |
+| Poderes 1 a 4 | K, L, I, O | botões coloridos |
 | Falar / entrar no portal | E (ou ↑ perto) | ✋ |
 | Menu (atributos e equipamentos) | M | ☰ |
 
@@ -35,30 +35,30 @@ O progresso é salvo automaticamente no navegador.
 
 ## Sprites (pixel art)
 
-As pranchas originais ficam em `assets-src/`. O script `tools/build_sprites.py` recorta cada desenho,
-remove o fundo, gera variações de cor e monta o atlas `public/sprites/atlas.png` + `src/data/atlas.json`.
-Para trocar ou acrescentar sprites: edite as listas `HERO`, `SINGLE` e `VARIANTS` no script e rode
-`python3 -I tools/build_sprites.py`. Qual sprite cada inimigo usa fica em `SPRITES` (`src/data/enemies.ts`).
+As pranchas originais ficam em `assets-src/`. O script `tools/build_sprites.py` recorta cada desenho, remove o
+fundo, gera variações de cor e monta as folhas `public/sprites/*.webp` + `src/data/atlas.json`. No fim, cada sprite
+ganha a própria paleta de 256 cores e as folhas são salvas em WebP sem perdas (cerca de 8 MB no total, contra
+19 MB em PNG). Para trocar ou acrescentar sprites: edite as listas `SINGLE` e `VARIANTS` no script e rode
+`python3 -I tools/build_sprites.py` (e depois `python3 -I tools/build_layered.py`). Qual sprite cada inimigo usa
+fica em `SPRITES` (`src/data/enemies.ts`).
 
 ## Classes
 
-5 classes jogáveis, escolhidas no primeiro jogo e trocáveis na vila (☰ → ⚔ Classe):
-Guerreiro (equilibrado), Arqueiro (flechas de longe), Maga (orbes, muito MP), Lutador (socos rápidos,
-muita vida) e Lanceiro (alcance longo). Cada uma tem atributos, ataque básico e 3 poderes próprios
-em `src/data/classes.ts`; as animações vêm de `assets-src/sheet-classes.png` (`CLASS_FRAMES` no script).
+3 classes jogáveis, escolhidas no primeiro jogo e trocáveis na vila (☰ → ⚔ Classe): Guerreiro (equilibrado),
+Maga (magias de longe, muito MP) e Assassino (rápido, crítico alto). Cada uma tem atributos, ataque básico e
+8 poderes em `src/data/classes.ts`. Saves de classes que saíram (Arqueiro, Lutador, Lanceiro) viram Guerreiro.
 
 ## Poderes
 
-Guerreiro, Maga e Assassino têm 8 poderes cada (prancha `assets-src/sheet-powers.png`, recortada por
-`tools/powers_cells.py`), com animação do personagem, efeito próprio e ícone. 4 vão nos botões; troque em
-☰ → ✦ Trocar poderes (alguns desbloqueiam com o nível). Teclado: K, L, I, O. Dados em `src/data/classes.ts`.
+Guerreiro, Maga e Assassino têm 8 poderes cada, com ícone (prancha `assets-src/sheet-powers.png`, recortada por
+`tools/powers_cells.py`) e efeito próprio. 4 vão nos botões; troque em ☰ → ✦ Trocar poderes (alguns
+desbloqueiam com o nível). Teclado: K, L, I, O. Dados em `src/data/classes.ts`.
 
 ### Efeitos dos poderes
 
-Pranchas `assets-src/fx-<classe>.png` (Guerreiro, Maga, Assassino e Arqueiro; 8 poderes × 6 quadros, recortadas
-por `tools/fx_cells.py`): cada poder mostra a sua animação (`fx2_<poder>`): cortes, investida, projéteis,
-explosões, chuvas, círculos, escudo, cura e clone. O Arqueiro ganhou 8 poderes: Flecha de Vento, Disparo Triplo,
-Flecha Perfurante, Chuva de Flechas, Flecha Explosiva, Flecha de Gelo, Flecha Venenosa e Águia Espectral.
+Pranchas `assets-src/fx-<classe>.png` (Guerreiro, Maga e Assassino; 8 poderes × 6 quadros, recortadas por
+`tools/fx_cells.py`): cada poder mostra a sua animação (`fx2_<poder>`): cortes, investida, projéteis,
+explosões, chuvas, círculos, escudo, cura e clone.
 
 ## Chefes
 
@@ -109,12 +109,12 @@ capa, calças, botas, armadura, braços, arma na mão, asas frontais e o halo fl
 quadril, mãos e pés de cada quadro é medida por `tools/anatomy.py` (`src/data/paperdoll.json`). Golpes e poderes
 movem a arma e o corpo. Itens antigos aparecem com a peça do set da classe na mesma raridade. Sets (armadura, braços, calças e capa): 3 peças = +6%, 4 peças = +15% (mais com raridade; 1,5× no set da própria
 classe). Arma preferida da classe: +25% no ataque da arma. A loja tem categorias (espadas, machados, lanças,
-adagas, arcos, cajados, halos, armaduras, braços, calças, capas, botas, asas, auras); Mítico e Divino
+adagas, cajados, halos, armaduras, braços, calças, capas, botas, asas, auras); Mítico e Divino
 custam gemas. Catálogo gerado em `src/data/gear.ts`.
 
-## Corpo do Guerreiro
+## Corpos das classes
 
-O Guerreiro (e Lutador e Lanceiro) usa o corpo base da prancha `assets-src/sheet-hero-white.png` e a Maga
+O Guerreiro usa o corpo base da prancha `assets-src/sheet-hero-white.png` e a Maga
 `assets-src/sheet-body-mage.png` (`tools/hero_white.py`; a fileira de correr da Maga vem espelhada). Com uma armadura equipada, a Maga aparece
 como na prancha da raridade dessa armadura (`assets-src/mage-sets/`: a Maga inteira vestida, com halo, asas e
 cajado desenhados), no lugar das peças encaixadas. O Assassino faz o mesmo com `assets-src/assassin-sets/` (8 pranchas
@@ -133,7 +133,7 @@ botões Equipar/Desequipar e Vender (metade do preço). Toque duplo num item tam
 
 ## Spritesheets em camadas (spritesheets/)
 
-`python3 -I tools/build_layered.py` gera, para Guerreiro, Mago, Assassino e Arqueiro, uma spritesheet PNG por camada:
+`python3 -I tools/build_layered.py` gera, para Guerreiro, Mago e Assassino, uma spritesheet PNG por camada:
 corpo, cabelo, rosto, halo, armadura, luvas, calças, botas, capa e arma (peças nas 8 raridades).
 - Quadros de **128×128**, pés sempre no ponto (64, 112), fundo transparente, sem suavização.
 - 8 colunas × 10 linhas, uma linha por animação: Idle (4), Andar (8), Correr (8), Pular (4), Cair (4),
@@ -193,7 +193,7 @@ src/
   data/        ← CONTEÚDO (editar aqui para criar fases, poderes, itens, NPCs)
     stages.ts      vila (NPCs, construções) + campanha
     campaign.ts    as 9 regiões e a geração das 90 fases
-    skills.ts      poderes (até 3; projétil, área ou golpe corpo a corpo)
+    classes.ts     classes e os 8 poderes de cada uma
     equipment.ts   armas, armaduras, elmos, acessórios
     enemies.ts     inimigos, chefes e itens que deixam cair
     npcs.ts        NPCs: diálogo, loja ou cura
