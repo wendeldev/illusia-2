@@ -28,19 +28,24 @@ export const DOLL_H = 56;
  */
 const HALO_W: Record<string, number> = { comum: 0.72, incomum: 0.95, raro: 1.05, epico: 1.05, lendario: 1.05, mitico: 1.05, divino: 1.12, celestial: 1.12 };
 const HALO_FPS = 5;
+/** Altura do centro do anel acima do topo do cabelo (fração da largura do halo). */
+const HALO_LIFT = 0.2;
 
-/** Caixa do halo no quadro do corpo (px do quadro) e o quadro de animação do halo. */
+/** Caixa do halo no quadro do corpo (px do quadro) e o quadro de animação do halo.
+ * O anel fica centrado no rosto e logo acima do cabelo, encostando nele (igual nas 3 classes); cada
+ * quadro do halo usa a própria proporção (os desenhos têm alturas diferentes). */
 export function haloBox(A: { head: number[]; oval?: number[] }, name: string, time: number): [number, number, number, number, number] {
   const rar = name.replace('halo_', '');
-  const f = frameRect(name, 0);
+  const hf = Math.floor(time * HALO_FPS) % Math.max(1, frameCount(name));
+  const f = frameRect(name, hf);
   const [hx0, hy0, hx1] = A.head;
   const w = (hx1 - hx0) * (HALO_W[rar] ?? 1.05);
   const h = f ? (w * f[1]) / f[0] : w * 0.6;
   // centrado no rosto (o cabelo comprido da Maga e o volume do Assassino deslocam a caixa da cabeça)
   const cx = A.oval ? A.oval[0] : (hx0 + hx1) / 2;
-  // a parte de baixo do desenho fica logo acima do topo do cabelo, balançando de leve
-  const bottom = hy0 - 1 + Math.sin(time * 2.4) * 1.2;
-  return [cx - w / 2, bottom - h, cx + w / 2, bottom, Math.floor(time * HALO_FPS) % 4];
+  // centro do desenho (o anel) um pouco acima do topo do cabelo, balançando de leve
+  const cy = hy0 - w * HALO_LIFT + Math.sin(time * 2.4) * 0.8;
+  return [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2, hf];
 }
 
 export interface DollLook {
@@ -154,7 +159,9 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   const ax = fr[2], ay = fr[3];
   // coordenadas da anatomia (canto do quadro) → relativas aos pés
   const X = (v: number) => v - ax, Y = (v: number) => v - ay;
-  const [hl, hr] = A.hands, span = hr - hl;
+  const [hl, hr] = A.hands;
+  // asas e aura com tamanho fixo (a largura entre as mãos muda a cada quadro da passada)
+  const span0 = frames[0].hands[1] - frames[0].hands[0];
   const [hx0, hy0, hx1] = A.hips;
   const cx = X((hx0 + hx1) / 2);
   const neck = Y(A.neck);
@@ -181,7 +188,7 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     ctx.globalCompositeOperation = 'lighter';
     const a = ctx.globalAlpha;
     ctx.globalAlpha = a * (0.7 + Math.sin(time * 5) * 0.15);
-    drawFit(ctx, L.aura, cx - span * 1.1 * pulse, Y(fy1) - span * 0.75 * pulse, cx + span * 1.1 * pulse, Y(fy1) + 3, 'contain', 'bottom');
+    drawFit(ctx, L.aura, cx - span0 * 1.1 * pulse, Y(fy1) - span0 * 0.75 * pulse, cx + span0 * 1.1 * pulse, Y(fy1) + 3, 'contain', 'bottom');
     ctx.globalAlpha = a;
     ctx.globalCompositeOperation = prev;
   }
@@ -200,10 +207,10 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   if (L.wings) {
     const flap = 0.8 + Math.abs(Math.sin(time * 3)) * 0.25;
     const wc = cx - 3;
-    if (L.wingsGlow) glow(ctx, wc, neck + 2, span * 1.2, '#ffffff', 0.18);
+    if (L.wingsGlow) glow(ctx, wc, neck + 2, span0 * 1.2, '#ffffff', 0.18);
     ctx.save();
     ctx.translate(wc, 0); ctx.scale(flap, 1); ctx.translate(-wc, 0);
-    drawFit(ctx, L.wings, wc - span * 1.1, neck - 12, wc + span * 1.1, neck + 16, 'contain', 'mid', 0, fl);
+    drawFit(ctx, L.wings, wc - span0 * 1.1, neck - 12, wc + span0 * 1.1, neck + 16, 'contain', 'mid', 0, fl);
     ctx.restore();
   }
   if (L.cape) {
@@ -211,14 +218,14 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     const c0 = cx - 3;
     ctx.save();
     ctx.translate(c0, neck); ctx.scale(sway, 1); ctx.translate(-c0, -neck);
-    drawFit(ctx, L.cape, c0 - span * 0.46, neck - 1, c0 + span * 0.46, Y(fy0) - 1, 'fill', 'top', 0, fl);
+    drawFit(ctx, L.cape, c0 - span0 * 0.46, neck - 1, c0 + span0 * 0.46, Y(fy0) - 1, 'fill', 'top', 0, fl);
     ctx.restore();
   }
   // corpo base; com capacete: cabelo cortado pela borda do capacete, rosto e pele, e o capacete por cima
   drawFit(ctx, L.body, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
   if (L.pants) drawFit(ctx, L.pants, X(hx0) - 3, Y(hy0) - 1, X(hx1) + 3, Y(fy0) + 1, 'fill', 'top', 0, fl);
   if (L.boots) drawFit(ctx, L.boots, X(fx0) - 1, Y(fy0) - 4, X(fx1) + 1, Y(fy1) + 1, 'fill', 'top', 0, fl);
-  if (L.armor) drawFit(ctx, L.armor, cx - span * 0.5, neck - 2, cx + span * 0.5, Y(hy0) + 3, 'fill', 'top', 0, fl);
+  if (L.armor) drawFit(ctx, L.armor, cx - span0 * 0.5, neck - 2, cx + span0 * 0.5, Y(hy0) + 3, 'fill', 'top', 0, fl);
   if (L.arms) drawFit(ctx, L.arms, X(hl) - 1, handY - 6, X(hr) + 1, handY + 2, 'fill', 'top', 0, fl);
   // halo flutuando acima da cabeça (brilho por cima, sem esconder o cabelo)
   if (L.helmet) {
@@ -245,7 +252,7 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     ctx.globalAlpha = a * 0.85;
     ctx.save();
     ctx.translate(cx, 0); ctx.scale(flap, 1); ctx.translate(-cx, 0);
-    drawFit(ctx, L.wingsFront, cx - 4 - span * 0.62, neck - 2, cx - 4 + span * 0.62, neck + 9, 'contain', 'mid', 0, fl);
+    drawFit(ctx, L.wingsFront, cx - 4 - span0 * 0.62, neck - 2, cx - 4 + span0 * 0.62, neck + 9, 'contain', 'mid', 0, fl);
     ctx.restore();
     ctx.globalAlpha = a;
   }

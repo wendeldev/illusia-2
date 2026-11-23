@@ -30,29 +30,6 @@ LOOKS = {'mage': {'comum': 0, 'incomum': 1, 'celestial': 2, 'lendario': 3, 'raro
          'assassin': {'incomum': 0, 'celestial': 1, 'lendario': 2, 'comum': 3, 'raro': 4, 'epico': 5, 'mitico': 6, 'divino': 7}}
 
 
-def _clean_light_bg(im):
-    """Fundo claro opaco (branco/rosado/azulado) ligado às bordas da célula → transparente; o contorno escuro do
-    personagem segura o preenchimento."""
-    from collections import deque
-    W, H = im.size
-    px = im.load()
-    def bg(c):
-        r, g, b, a = c
-        return a < 200 or (min(r, g, b) > 165 and max(r, g, b) - min(r, g, b) < 75)
-    seen = bytearray(W * H)
-    q = deque([(x, y) for x in range(W) for y in (0, H - 1)] + [(x, y) for y in range(H) for x in (0, W - 1)])
-    while q:
-        x, y = q.popleft()
-        if x < 0 or y < 0 or x >= W or y >= H or seen[y * W + x]:
-            continue
-        seen[y * W + x] = 1
-        if not bg(px[x, y]):
-            continue
-        px[x, y] = (0, 0, 0, 0)
-        q.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
-    return im
-
-
 def _cells(path, cls, light_bg=False):
     S = Image.open(path).convert('RGBA')
     cols, rows = 8, 4
@@ -63,7 +40,8 @@ def _cells(path, cls, light_bg=False):
         for c in range(cols):
             im = S.crop((round(c * cw), round(r * ch), round((c + 1) * cw), round((r + 1) * ch)))
             if light_bg:
-                im = _clean_light_bg(im)
+                # fundo desfocado: sai pelo degradê até o contorno (não come as asas e halos brancos)
+                im = CC.cut_bg(im)
             px = im.load()
             for y in range(im.size[1]):
                 for x in range(im.size[0]):

@@ -157,17 +157,16 @@ class Body:
         if layer in ('body', 'hair', 'face'):
             paste(cv, self.parts[fi][('body', 'hair', 'face').index(layer)], ox, oy)
         elif layer == 'halo':
-            # halo flutuando logo acima do topo da cabeça deste quadro (mesma regra do jogo)
+            # anel centrado no rosto, logo acima do cabelo (mesma regra do jogo: HALO_LIFT)
             name, frames = piece
-            w0, h0 = frames[0].size
+            img0 = frames[fr['_i'] % len(frames)]
             hx0, hy0, hx1, _ = self.anat[fi]['head']
             w = (hx1 - hx0) * HALO_W.get(name, 1.05)
-            h = w * h0 / w0
-            cx = ox + self.ovals[fi][0]   # centrado no rosto (igual ao jogo)
-            bob = round(math.sin(fr['_i'] * 1.4) * 1.2)
-            bottom = oy + hy0 - 1 + bob
-            img = frames[fr['_i'] % len(frames)].resize((max(1, round(w)), max(1, round(h))), NEAREST)
-            paste(cv, img, round(cx - w / 2), round(bottom - h))
+            h = w * img0.size[1] / img0.size[0]
+            cx = ox + self.ovals[fi][0]
+            cy = oy + hy0 - w * HALO_LIFT + math.sin(fr['_i'] * 1.4) * 0.8
+            img = img0.resize((max(1, round(w)), max(1, round(h))), NEAREST)
+            paste(cv, img, round(cx - w / 2), round(cy - h / 2))
         else:
             box, mode, align = self.boxes(fi)[layer]
             img, x, y = fit(piece, box, mode, align)
@@ -186,6 +185,7 @@ class Body:
 
 ORDER = ['cape', 'body', 'face', 'hair', 'pants', 'boots', 'armor', 'gloves', 'weapon', 'halo']
 # largura do halo em relação à largura da cabeça (o anel simples é estreito; com asas abre mais) — igual ao jogo
+HALO_LIFT = 0.2
 HALO_W = {'comum': 0.72, 'incomum': 0.95, 'raro': 1.05, 'epico': 1.05, 'lendario': 1.05, 'mitico': 1.05, 'divino': 1.12, 'celestial': 1.12}
 
 

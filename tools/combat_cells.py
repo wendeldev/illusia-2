@@ -45,7 +45,7 @@ def cut_bg(im):
     out = np.asarray(im.convert('RGBA')).copy()
     out[bg, 3] = 0
     # restos pequenos soltos (pontos de brilho do fundo)
-    res = Image.fromarray(out)
+    res = Image.fromarray(out).copy()
     return res
 
 
