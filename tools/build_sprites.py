@@ -803,11 +803,11 @@ with open(os.path.join(ROOT, 'src', 'data', 'newbody.json'), 'w') as f:
 for cls, frs in BODIES.items():
     if cls in NEW_BODY:
         my_items[f'pd_{cls}'] = (NEW_BODY[cls], 1.0)
-        # visual completo por raridade (Maga vestida): pd_<classe>_look_<raridade>, mesmos pés do corpo
-        for rar, fr in HWH.load_looks(cls).items():
-            my_items[f'pd_{cls}_look_{rar}'] = (fr, 1.0)
     else:
         put(f'pd_{cls}', frs)
+    # visual completo por raridade (classe vestida, 32 quadros): pd_<classe>_look_<raridade>
+    for rar, fr in HWH.load_looks(cls).items():
+        my_items[f'pd_{cls}_look_{rar}'] = (fr, 1.0)
     PD[cls] = [AN.anatomy(im) for im in frs]
     neck0 = PD[cls][0]['neck']
     for im, an in zip(frs, PD[cls]):

@@ -119,7 +119,7 @@ CLASSES = ['warrior', 'assassin', 'mage', 'archer']
 def full_rig():
     return {
         'anims': [[n, c] for n, c in ANIMS], 'fps': FPS, 'loop': sorted(LOOP),
-        'body': {c: body_rig(c) for c in CLASSES},
+        'body': {**{c: body_rig(c) for c in CLASSES}, 'look': new_body_rig()},
         'weapon': {s: weapon_rig(s) for s in ('slash', 'spear', 'bow', 'staff')},
         'styleOf': STYLE_OF,
     }

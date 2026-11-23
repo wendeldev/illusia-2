@@ -182,9 +182,10 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   if (pose.rot) ctx.rotate(pose.rot);
   if (pose.sy && pose.sy !== 1) ctx.scale(1, pose.sy);
   // visual completo (armadura, botas, halo, asas e cajado já desenhados): só ele, sem as peças por cima
-  const lr = L.look ? frameRect(L.look, fi) : null;
+  const lfi = Math.max(0, Math.floor(pose.frame));
+  const lr = L.look ? frameRect(L.look, lfi) : null;
   if (L.look && lr) {
-    drawFit(ctx, L.look, -lr[2], -lr[3], lr[0] - lr[2], lr[1] - lr[3], 'fill', 'top', fi, fl);
+    drawFit(ctx, L.look, -lr[2], -lr[3], lr[0] - lr[2], lr[1] - lr[3], 'fill', 'top', lfi, fl);
     ctx.restore();
     return;
   }
@@ -260,7 +261,9 @@ export function rigFps(anim: RigAnim): number { return R.fps[anim] ?? 10; }
 
 /** Pose do quadro `i` da animação (corpo pela classe, arma pelo estilo da arma equipada). */
 export function rigPose(L: DollLook, anim: RigAnim, i: number): DollPose {
-  const body = R.body[L.cls]?.[anim] ?? R.body[L.cls]?.idle ?? R.body.warrior.idle;
+  // visual completo (32 quadros das pranchas vestidas) usa o rig dos corpos novos
+  const B = L.look ? R.body.look : R.body[L.cls];
+  const body = B?.[anim] ?? B?.idle ?? R.body.warrior.idle;
   const n = body.length;
   const k = ((Math.floor(i) % n) + n) % n;
   const b = body[k];
