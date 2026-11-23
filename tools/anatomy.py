@@ -6,8 +6,7 @@ def anatomy(im):
     op = lambda x, y: px[x, y][3] > 40
     def shorts(c):
         r, g, b, a = c
-        # calção/saia: azul ou roxo (Guerreiro, Maga, Assassino) ou verde (Arqueiro)
-        return a > 40 and ((b > r + 15 and b > g + 5) or (g > r + 10 and g > b + 10))
+        return a > 40 and b > r + 15 and b > g + 5
     sx = [x for y in range(int(H * 0.5), H) for x in range(W) if shorts(px[x, y])]
     sy = [y for y in range(int(H * 0.5), H) for x in range(W) if shorts(px[x, y])]
     hips = (min(sx), min(sy), max(sx), max(sy))
