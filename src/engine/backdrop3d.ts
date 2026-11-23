@@ -6,6 +6,7 @@
 //   na cena 3D por cima do terreno, iluminada pelos poderes.
 // Os efeitos, textos e menus continuam no canvas 2D, por cima de tudo, com o fundo transparente.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { BackdropSpec } from '../game/art/scenery';
 import { PX_TILES, TILE_W } from '../game/art/ground';
 import type { SceneryTheme, TerrainSeg } from '../types';
@@ -18,7 +19,7 @@ const DIST = (360 / 2) / Math.tan((FOV / 2) * Math.PI / 180);
 /** Camada com paralaxe p (0..1, 1 = anda junto com o chão) fica em z = -DIST · (1/p − 1). */
 const depthOf = (p: number) => -DIST * (1 / p - 1);
 const CAM_REST = 160;
-const MAX_LIGHTS = 6;
+const MAX_LIGHTS = 3;
 
 export interface BackdropLight { x: number; y: number; color: string; power: number }
 
@@ -68,7 +69,8 @@ export class Backdrop3D {
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    // o fundo é pixel art ampliado: 1,5× basta e alivia a placa de vídeo do celular
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.scene.add(this.ambient);
     const glowTex = radialTexture();
@@ -110,7 +112,8 @@ export class Backdrop3D {
   }
 
   /** Placa com um quadro do atlas, canto de cima à esquerda em (x, y), com y para baixo como no 2D. */
-  private quad(name: string, x: number, y: number, w: number, h: number, opts: { flip?: boolean; opacity?: number; lit?: boolean; tint?: THREE.Color } = {}): THREE.Mesh | null {
+  /** Placa do fundo (sem iluminação: as luzes dos poderes só valem no primeiro plano; o brilho do fundo é aditivo). */
+  private quad(name: string, x: number, y: number, w: number, h: number, opts: { flip?: boolean; opacity?: number; tint?: THREE.Color } = {}): THREE.Mesh | null {
     const src = spriteSource(name);
     if (!src) return null;
     const geo = new THREE.PlaneGeometry(w, h);
@@ -120,7 +123,7 @@ export class Backdrop3D {
     const v0 = 1 - (src.y + src.h) / H, v1 = 1 - src.y / H;
     geo.setAttribute('uv', new THREE.Float32BufferAttribute([u0, v1, u1, v1, u0, v0, u1, v0], 2));
     const params = { map: this.texture(src.img), transparent: true, opacity: opts.opacity ?? 1, depthWrite: false, alphaTest: 0.02 };
-    const mat = opts.lit === false ? new THREE.MeshBasicMaterial(params) : new THREE.MeshLambertMaterial(params);
+    const mat = new THREE.MeshBasicMaterial(params);
     if (opts.tint) mat.color.copy(opts.tint);
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x + w / 2, -(y + h / 2), 0);
@@ -172,7 +175,7 @@ export class Backdrop3D {
       const s = spriteSource(sp.moon);
       if (s) {
         const h = sp.moon === 'sunset' ? 54 : 46, w = (s.w / s.h) * h;
-        const m = this.quad(sp.moon, VIEW_W * 0.78 - w / 2, sp.panoTop + 235 * 0.42 - h, w, h, { lit: false });
+        const m = this.quad(sp.moon, VIEW_W * 0.78 - w / 2, sp.panoTop + 235 * 0.42 - h, w, h, {});
         if (m) moon.add(m);
       }
     }
@@ -197,7 +200,7 @@ export class Backdrop3D {
       const p = 0.08, L = this.layer(p, -8, 1);
       const w = cl.w * 1.6, h = cl.h * 1.6;
       for (let k = -2; k * w < st.stageWidth * p + VIEW_W * 3 + st.time * 8 + 2000; k++) {
-        const m = this.quad('layer_clouds', k * w, sp.panoTop + 4, w + 1, h, { opacity: 0.9, lit: false });
+        const m = this.quad('layer_clouds', k * w, sp.panoTop + 4, w + 1, h, { opacity: 0.9 });
         if (m) L.add(m);
       }
     }
@@ -271,7 +274,7 @@ export class Backdrop3D {
   }
 
   /** Retângulo vertical (frente/lateral) ou horizontal (topo/fundo) com UV em unidades de bloco. */
-  private face(tex: THREE.Texture | null, pts: number[][], uv: number[][], shade: [number, number], opts: { cut?: boolean } = {}): THREE.Mesh {
+  private face(tex: THREE.Texture | null, pts: number[][], uv: number[][], shade: [number, number], opts: { cut?: boolean } = {}): { geo: THREE.BufferGeometry; tex: THREE.Texture | null; cut: boolean } {
     const geo = new THREE.BufferGeometry();
     // pts: 4 cantos (cima-esq, cima-dir, baixo-esq, baixo-dir) em coordenadas do mundo [x, y(para baixo), z]
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pts.flatMap(([x, y, z]) => [x, -y, z]), 3));
@@ -281,9 +284,7 @@ export class Backdrop3D {
     geo.setAttribute('color', new THREE.Float32BufferAttribute([a, a, a, a, a, a, b, b, b, b, b, b], 3));
     geo.setIndex([0, 2, 1, 1, 2, 3]);
     geo.computeVertexNormals();
-    const mat = new THREE.MeshLambertMaterial({ map: tex, vertexColors: true, color: tex ? 0xffffff : 0x1a1620, side: THREE.DoubleSide,
-      transparent: !!opts.cut, alphaTest: opts.cut ? 0.5 : 0 });
-    return new THREE.Mesh(geo, mat);
+    return { geo, tex, cut: !!opts.cut };
   }
 
   private buildTerrain(st: BackdropState): void {
@@ -295,7 +296,14 @@ export class Backdrop3D {
     const aspect = (n: string) => { const s2 = spriteSource(n); return s2 ? s2.h / s2.w : 1; };
     const topH = Math.round(TILE_W * aspect(tiles.top)), fillH = Math.round(TILE_W * aspect(tiles.fill));
     const U = (x: number) => x / TILE_W;
-    const add = (m: THREE.Mesh) => { m.renderOrder = 5; this.terrain.add(m); };
+    // as faces com a mesma textura viram uma peça só (menos chamadas de desenho)
+    const buckets = new Map<string, { tex: THREE.Texture | null; cut: boolean; geos: THREE.BufferGeometry[] }>();
+    const add = (f: { geo: THREE.BufferGeometry; tex: THREE.Texture | null; cut: boolean }) => {
+      const key = (f.tex?.uuid ?? 'none') + (f.cut ? ':cut' : '');
+      const b = buckets.get(key) ?? { tex: f.tex, cut: f.cut, geos: [] };
+      b.geos.push(f.geo);
+      buckets.set(key, b);
+    };
     const g = st.terrain.ground;
     g.forEach((sg, i) => {
       const { x0, x1, y } = sg;
@@ -334,6 +342,15 @@ export class Backdrop3D {
       }
       add(this.face(plat, [[x0, y - 10, 0.4], [x1, y - 10, 0.4], [x0, by, 0.4], [x1, by, 0.4]],
         [[0, 1], [(x1 - x0) / 52, 1], [0, 0], [(x1 - x0) / 52, 0]], [1, 0.9], { cut: true }));
+    }
+      for (const b of buckets.values()) {
+      const geo = mergeGeometries(b.geos);
+      b.geos.forEach((g2) => g2.dispose());
+      const mat = new THREE.MeshLambertMaterial({ map: b.tex, vertexColors: true, color: b.tex ? 0xffffff : 0x1a1620, side: THREE.DoubleSide,
+        transparent: b.cut, alphaTest: b.cut ? 0.5 : 0 });
+      const m = new THREE.Mesh(geo, mat);
+      m.renderOrder = 5;
+      this.terrain.add(m);
     }
   }
 
