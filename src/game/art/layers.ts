@@ -47,6 +47,8 @@ const WALK: Record<string, number[]> = { warrior: [1, 2, 3, 4], assassin: [1, 2,
 export interface DollLook {
   body: string; cls: string;
   /** halo (auréola) no espaço da cabeça */
+  /** visual completo desenhado na prancha (Maga vestida na raridade da armadura): substitui corpo e peças */
+  look?: string;
   helmet?: string; haloColor: string; armor?: string; arms?: string; pants?: string; cape?: string; boots?: string;
   wings?: string; wingsFront?: string; aura?: string; auraColor: string; wingsGlow: boolean;
   weapon: string; weaponKind: string; weaponColor: string; weaponRarity: number; weaponUp: number;
@@ -79,6 +81,14 @@ function piece(p: Progress, slot: Slot, setCls: string, part: string): string | 
   const name = `gs_${setCls}_${RARITY_KEYS[Math.min(7, e.rarity ?? 0)]}_${part}`;
   return hasSprite(name) ? name : undefined;
 }
+/** Visual completo da classe na raridade da armadura equipada (pranchas da Maga vestida), se existir. */
+function lookOf(p: Progress, cls: string): string | undefined {
+  const id = p.equipped.armor;
+  if (!id) return undefined;
+  const name = `pd_${cls}_look_${RARITY_KEYS[Math.min(7, getItem(id).rarity ?? 0)]}`;
+  return hasSprite(name) ? name : undefined;
+}
+
 /** Halo do espaço da cabeça: halo_<raridade> (capacetes antigos viram o halo da mesma raridade). */
 function halo(p: Progress): string | undefined {
   const id = p.equipped.helmet;
@@ -109,6 +119,7 @@ export function dollLook(p: Progress): DollLook {
   const weapon = we?.icon?.startsWith('gw_') && hasSprite(we.icon) ? we.icon : `gw_${kind}_${RARITY_KEYS[Math.min(7, wr)]}`;
   return {
     body: `pd_${cls}`, cls,
+    look: lookOf(p, cls),
     helmet: halo(p), haloColor: RARITY_COLORS[Math.max(0, rarityOf(p, 'helmet'))], armor: piece(p, 'armor', cls, 'armor'), arms: piece(p, 'gloves', cls, 'arms'),
     pants: piece(p, 'pants', cls, 'pants'), cape: piece(p, 'cape', cls, 'cape'), boots: generic(p, 'boots', 'gb'),
     wings: generic(p, 'wings', 'gwb'), wingsFront: generic(p, 'wingsFront', 'gwf'), aura: generic(p, 'aura', 'gau'),
@@ -170,6 +181,13 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   }
   if (pose.rot) ctx.rotate(pose.rot);
   if (pose.sy && pose.sy !== 1) ctx.scale(1, pose.sy);
+  // visual completo (armadura, botas, halo, asas e cajado já desenhados): só ele, sem as peças por cima
+  const lr = L.look ? frameRect(L.look, fi) : null;
+  if (L.look && lr) {
+    drawFit(ctx, L.look, -lr[2], -lr[3], lr[0] - lr[2], lr[1] - lr[3], 'fill', 'top', fi, fl);
+    ctx.restore();
+    return;
+  }
   // asas traseiras (batendo) e capa (balançando)
   if (L.wings) {
     const flap = 0.8 + Math.abs(Math.sin(time * 3)) * 0.25;

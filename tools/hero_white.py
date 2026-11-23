@@ -23,8 +23,35 @@ def available():
     return [c for c, f in FILES.items() if os.path.exists(os.path.join(ROOT, 'assets-src', f))]
 
 
-def load(cls='warrior'):
-    S = Image.open(os.path.join(ROOT, 'assets-src', FILES[cls])).convert('RGBA')
+# Maga vestida em cada raridade (prancha inteira com armadura, botas, halo, asas e cajado): assets-src/mage-sets/<n>.png
+LOOKS = {'mage': {'comum': 0, 'incomum': 1, 'celestial': 2, 'lendario': 3, 'raro': 4, 'divino': 5, 'mitico': 6, 'epico': 7}}
+
+
+def _clean_light_bg(im):
+    """Fundo claro opaco (branco/rosado/azulado) ligado às bordas da célula → transparente; o contorno escuro do
+    personagem segura o preenchimento."""
+    from collections import deque
+    W, H = im.size
+    px = im.load()
+    def bg(c):
+        r, g, b, a = c
+        return a < 200 or (min(r, g, b) > 165 and max(r, g, b) - min(r, g, b) < 75)
+    seen = bytearray(W * H)
+    q = deque([(x, y) for x in range(W) for y in (0, H - 1)] + [(x, y) for y in range(H) for x in (0, W - 1)])
+    while q:
+        x, y = q.popleft()
+        if x < 0 or y < 0 or x >= W or y >= H or seen[y * W + x]:
+            continue
+        seen[y * W + x] = 1
+        if not bg(px[x, y]):
+            continue
+        px[x, y] = (0, 0, 0, 0)
+        q.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+    return im
+
+
+def _cells(path, cls, light_bg=False):
+    S = Image.open(path).convert('RGBA')
     cols, rows = 8, 4
     cw, ch = S.size[0] / cols, S.size[1] / rows
     cells = []
@@ -32,6 +59,8 @@ def load(cls='warrior'):
         row = []
         for c in range(cols):
             im = S.crop((round(c * cw), round(r * ch), round((c + 1) * cw), round((r + 1) * ch)))
+            if light_bg:
+                im = _clean_light_bg(im)
             px = im.load()
             for y in range(im.size[1]):
                 for x in range(im.size[0]):
@@ -41,9 +70,14 @@ def load(cls='warrior'):
                 im = im.transpose(Image.FLIP_LEFT_RIGHT)
             row.append(im)
         cells.append(row)
+    return cells
+
+
+def _anchors(cells, cls):
+    """Escala e, para cada célula, o ponto dos pés (x, y) em px da célula."""
     ref = cells[0][0].getchannel('A').getbbox()
     k = TARGET_H[cls] / (ref[3] - ref[1])
-    frames = []   # (imagem, ax, ay) com âncora nos pés (chão da fileira) e no centro da célula
+    out = []
     for r, row in enumerate(cells):
         ground = max(im.getchannel('A').getbbox()[3] for im in (row if ROWS[r] != 'jump' else [row[0], row[7]]))
         fcx = None
@@ -59,9 +93,34 @@ def load(cls='warrior'):
         for c, im in enumerate(row):
             bb = im.getchannel('A').getbbox()
             g = bb[3] if ROWS[r] == 'jump' and 2 <= c <= 5 else ground   # no ar: pés = posição do corpo
-            crop = im.crop(bb)
-            sm = crop.resize((max(1, round(crop.size[0] * k)), max(1, round(crop.size[1] * k))), Image.LANCZOS)
-            ax = ((fcx if fcx is not None else im.size[0] / 2) - bb[0]) * k
-            ay = (g - bb[1]) * k
-            frames.append((sm, round(ax), round(ay)))
+            out.append(((fcx if fcx is not None else im.size[0] / 2), g))
+    return k, out
+
+
+def _frames(cells, k, anchors):
+    frames = []   # (imagem, ax, ay) com âncora nos pés
+    for i, im in enumerate(c for row in cells for c in row):
+        bb = im.getchannel('A').getbbox()
+        crop = im.crop(bb)
+        sm = crop.resize((max(1, round(crop.size[0] * k)), max(1, round(crop.size[1] * k))), Image.LANCZOS)
+        fx, gy = anchors[i]
+        frames.append((sm, round((fx - bb[0]) * k), round((gy - bb[1]) * k)))
     return frames
+
+
+def load(cls='warrior'):
+    cells = _cells(os.path.join(ROOT, 'assets-src', FILES[cls]), cls)
+    k, anchors = _anchors(cells, cls)
+    return _frames(cells, k, anchors)
+
+
+def load_looks(cls='mage'):
+    """Visual completo por raridade, com a mesma escala e os mesmos pés do corpo sem armadura."""
+    base = _cells(os.path.join(ROOT, 'assets-src', FILES[cls]), cls)
+    k, anchors = _anchors(base, cls)
+    out = {}
+    for rar, n in LOOKS.get(cls, {}).items():
+        path = os.path.join(ROOT, 'assets-src', 'mage-sets', f'{n}.png')
+        if os.path.exists(path):
+            out[rar] = _frames(_cells(path, cls, light_bg=True), k, anchors)
+    return out
