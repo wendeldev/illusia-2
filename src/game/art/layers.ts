@@ -28,6 +28,8 @@ export const DOLL_H = 56;
  */
 const HALO_W: Record<string, number> = { comum: 0.72, incomum: 0.95, raro: 1.05, epico: 1.05, lendario: 1.05, mitico: 1.05, divino: 1.12, celestial: 1.12 };
 const HALO_FPS = 5;
+/** Visuais vestidos desenhados sem asas no movimento (as pranchas de combate têm asas). */
+const LOOK_NO_WINGS = new Set(['pd_warrior_look_comum', 'pd_warrior_look_incomum', 'pd_warrior_look_raro']);
 /** Altura do centro do anel acima do topo do cabelo (fração da largura do halo). */
 const HALO_LIFT = 0.2;
 /** Elevação extra por classe (cabelo volumoso da Maga e do Assassino). */
@@ -201,6 +203,15 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   const lfi = Math.max(0, Math.floor(full === L.combat ? pose.cframe! : pose.frame));
   const lr = full ? frameRect(full, lfi) : null;
   if (full && lr) {
+    // visual de movimento desenhado sem asas, mas com asas no combate: as asas brancas vão atrás
+    if (full === L.look && lfi < 32 && LOOK_NO_WINGS.has(full)) {
+      const flap = 0.85 + Math.abs(Math.sin(time * 3)) * 0.2;
+      const wc = cx - 6;
+      ctx.save();
+      ctx.translate(wc, 0); ctx.scale(flap, 1); ctx.translate(-wc, 0);
+      drawFit(ctx, 'gwb_comum', wc - span0 * 0.9, neck - 6, wc + span0 * 0.5, neck + 16, 'contain', 'mid', 0, fl);
+      ctx.restore();
+    }
     drawFit(ctx, full, -lr[2], -lr[3], lr[0] - lr[2], lr[1] - lr[3], 'fill', 'top', lfi, fl);
     ctx.restore();
     return;
