@@ -28,8 +28,6 @@ export const DOLL_H = 56;
  */
 const HALO_W: Record<string, number> = { comum: 0.72, incomum: 0.95, raro: 1.05, epico: 1.05, lendario: 1.05, mitico: 1.05, divino: 1.12, celestial: 1.12 };
 const HALO_FPS = 5;
-/** Visuais vestidos desenhados sem asas no movimento (as pranchas de combate têm asas). */
-const LOOK_NO_WINGS = new Set(['pd_warrior_look_comum', 'pd_warrior_look_incomum', 'pd_warrior_look_raro']);
 /** Altura do centro do anel acima do topo do cabelo (fração da largura do halo). */
 const HALO_LIFT = 0.2;
 /** Elevação extra por classe (cabelo volumoso da Maga e do Assassino). */
@@ -55,10 +53,6 @@ export function haloBox(A: { head: number[]; oval?: number[] }, name: string, ti
 export interface DollLook {
   body: string; cls: string;
   /** halo (auréola) no espaço da cabeça */
-  /** visual completo desenhado na prancha (Maga vestida na raridade da armadura): substitui corpo e peças */
-  look?: string;
-  /** ataque, dano e morte desenhados na raridade da armadura (Guerreiro, que não tem visual vestido) */
-  combat?: string;
   helmet?: string; haloColor: string; armor?: string; arms?: string; pants?: string; cape?: string; boots?: string;
   wings?: string; wingsFront?: string; aura?: string; auraColor: string; wingsGlow: boolean;
   weapon: string; weaponKind: string; weaponColor: string; weaponRarity: number; weaponUp: number;
@@ -77,8 +71,6 @@ export interface DollPose {
   alpha?: number; flash?: boolean;
   /** brilho na ponta da arma (poderes) */
   charge?: number;
-  /** quadro da prancha de combate (`DollLook.combat`) */
-  cframe?: number;
 }
 
 const rarityOf = (p: Progress, slot: Slot) => { const id = p.equipped[slot]; return id ? getItem(id).rarity ?? 0 : -1; };
@@ -93,22 +85,6 @@ function piece(p: Progress, slot: Slot, setCls: string, part: string): string | 
   const name = `gs_${setCls}_${RARITY_KEYS[Math.min(7, e.rarity ?? 0)]}_${part}`;
   return hasSprite(name) ? name : undefined;
 }
-/** Visual completo da classe na raridade da armadura equipada (pranchas da Maga vestida), se existir. */
-function lookOf(p: Progress, cls: string): string | undefined {
-  const id = p.equipped.armor;
-  if (!id) return undefined;
-  const name = `pd_${cls}_look_${RARITY_KEYS[Math.min(7, getItem(id).rarity ?? 0)]}`;
-  return hasSprite(name) ? name : undefined;
-}
-
-/** Ataque, dano e morte desenhados na raridade da armadura equipada (pd_<classe>_cb_<raridade>). */
-function combatOf(p: Progress, cls: string): string | undefined {
-  const id = p.equipped.armor;
-  if (!id) return undefined;
-  const name = `pd_${cls}_cb_${RARITY_KEYS[Math.min(7, getItem(id).rarity ?? 0)]}`;
-  return hasSprite(name) ? name : undefined;
-}
-
 /** Halo do espaço da cabeça: halo_<raridade> (capacetes antigos viram o halo da mesma raridade). */
 function halo(p: Progress): string | undefined {
   const id = p.equipped.helmet;
@@ -139,8 +115,6 @@ export function dollLook(p: Progress): DollLook {
   const weapon = we?.icon?.startsWith('gw_') && hasSprite(we.icon) ? we.icon : `gw_${kind}_${RARITY_KEYS[Math.min(7, wr)]}`;
   return {
     body: `pd_${cls}`, cls,
-    look: lookOf(p, cls),
-    combat: combatOf(p, cls),
     helmet: halo(p), haloColor: RARITY_COLORS[Math.max(0, rarityOf(p, 'helmet'))], armor: piece(p, 'armor', cls, 'armor'), arms: piece(p, 'gloves', cls, 'arms'),
     pants: piece(p, 'pants', cls, 'pants'), cape: piece(p, 'cape', cls, 'cape'), boots: generic(p, 'boots', 'gb'),
     wings: generic(p, 'wings', 'gwb'), wingsFront: generic(p, 'wingsFront', 'gwf'), aura: generic(p, 'aura', 'gau'),
@@ -198,24 +172,6 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   }
   if (pose.rot) ctx.rotate(pose.rot);
   if (pose.sy && pose.sy !== 1) ctx.scale(1, pose.sy);
-  // visual completo (armadura, botas, halo, asas e cajado já desenhados): só ele, sem as peças por cima
-  const full = L.combat && pose.cframe !== undefined ? L.combat : L.look;
-  const lfi = Math.max(0, Math.floor(full === L.combat ? pose.cframe! : pose.frame));
-  const lr = full ? frameRect(full, lfi) : null;
-  if (full && lr) {
-    // visual de movimento desenhado sem asas, mas com asas no combate: as asas brancas vão atrás
-    if (full === L.look && lfi < 32 && LOOK_NO_WINGS.has(full)) {
-      const flap = 0.85 + Math.abs(Math.sin(time * 3)) * 0.2;
-      const wc = cx - 6;
-      ctx.save();
-      ctx.translate(wc, 0); ctx.scale(flap, 1); ctx.translate(-wc, 0);
-      drawFit(ctx, 'gwb_comum', wc - span0 * 0.9, neck - 6, wc + span0 * 0.5, neck + 16, 'contain', 'mid', 0, fl);
-      ctx.restore();
-    }
-    drawFit(ctx, full, -lr[2], -lr[3], lr[0] - lr[2], lr[1] - lr[3], 'fill', 'top', lfi, fl);
-    ctx.restore();
-    return;
-  }
   // asas traseiras (batendo) e capa (balançando)
   if (L.wings) {
     const flap = 0.8 + Math.abs(Math.sin(time * 3)) * 0.25;
@@ -280,7 +236,6 @@ const R = RIG as unknown as {
   body: Record<string, Record<string, RigBody[]>>; weapon: Record<string, Record<string, RigWeapon[]>>; styleOf: Record<string, string>;
 };
 export type RigAnim = 'idle' | 'walk' | 'run' | 'jump' | 'fall' | 'land' | 'atk1' | 'atk2' | 'atk3' | 'hurt' | 'death';
-const COMBAT_ANIMS = new Set<string>(['atk1', 'atk2', 'atk3', 'hurt', 'death']);
 const RIG_COUNT: Record<string, number> = Object.fromEntries(R.anims);
 
 /** Quantos quadros a animação tem e a velocidade (quadros por segundo). */
@@ -289,9 +244,7 @@ export function rigFps(anim: RigAnim): number { return R.fps[anim] ?? 10; }
 
 /** Pose do quadro `i` da animação (corpo pela classe, arma pelo estilo da arma equipada). */
 export function rigPose(L: DollLook, anim: RigAnim, i: number): DollPose {
-  // visual completo (32 quadros das pranchas vestidas) usa o rig dos corpos novos; com as pranchas de
-  // combate (56 quadros), ataque, dano e morte vêm dos próprios desenhos
-  const B = L.look ? (frameCount(L.look) >= 56 ? R.body.lookc : R.body.look) : R.body[L.cls];
+  const B = R.body[L.cls];
   const body = B?.[anim] ?? B?.idle ?? R.body.warrior.idle;
   const n = body.length;
   const k = ((Math.floor(i) % n) + n) % n;
@@ -299,14 +252,7 @@ export function rigPose(L: DollLook, anim: RigAnim, i: number): DollPose {
   const style = R.styleOf[L.weaponKind] ?? 'slash';
   const ws = R.weapon[style] ?? R.weapon.slash;
   const w = ws[anim]?.[k] ?? ws.idle?.[k % 4] ?? { w: 0, t: 0 };
-  const pose: DollPose = { frame: b.f, dx: b.dx, dy: b.dy, sy: b.sy, rot: (b.rot * Math.PI) / 180, weapon: (w.w * Math.PI) / 180, thrust: w.t };
-  // prancha de combate desenhada: mesmos quadros do visual vestido (32-55 → 0-23), sem o movimento do rig
-  const C = L.combat && !L.look && COMBAT_ANIMS.has(anim) ? R.body.lookc[anim] : undefined;
-  if (C) {
-    const c = C[((Math.floor(i) % C.length) + C.length) % C.length];
-    return { frame: 0, cframe: c.f - 32 };
-  }
-  return pose;
+  return { frame: b.f, dx: b.dx, dy: b.dy, sy: b.sy, rot: (b.rot * Math.PI) / 180, weapon: (w.w * Math.PI) / 180, thrust: w.t };
 }
 
 /** Personagem parado com tudo o que está equipado (telas de equipamento e de eventos). */

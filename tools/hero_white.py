@@ -26,12 +26,6 @@ def available():
     return [c for c, f in FILES.items() if os.path.exists(os.path.join(ROOT, 'assets-src', f))]
 
 
-# Maga vestida em cada raridade (prancha inteira com armadura, botas, halo, asas e cajado): assets-src/mage-sets/<n>.png
-LOOKS = {'warrior': {'mitico': 0, 'celestial': 1, 'epico': 2, 'incomum': 3, 'divino': 4, 'comum': 5, 'raro': 6, 'lendario': 7},
-         'mage': {'comum': 0, 'incomum': 1, 'celestial': 2, 'lendario': 3, 'raro': 4, 'divino': 5, 'mitico': 6, 'epico': 7},
-         'assassin': {'incomum': 0, 'celestial': 1, 'lendario': 2, 'comum': 3, 'raro': 4, 'epico': 5, 'mitico': 6, 'divino': 7}}
-
-
 def _cells(path, cls, light_bg=False):
     S = Image.open(path).convert('RGBA')
     cols, rows = 8, 4
@@ -99,25 +93,3 @@ def load(cls='warrior'):
     cells = _cells(os.path.join(ROOT, 'assets-src', FILES[cls]), cls)
     k, anchors = _anchors(cells, cls)
     return _frames(cells, k, anchors)
-
-
-def load_looks(cls='mage'):
-    """Visual completo por raridade, com a mesma escala e os mesmos pés do corpo sem armadura."""
-    looks = LOOKS.get(cls, {})
-    sets = lambda n: os.path.join(ROOT, 'assets-src', f'{cls}-sets', f'{n}.png')
-    bare = os.path.join(ROOT, 'assets-src', FILES[cls])
-    if not looks:
-        return {}
-    # escala e pés: do corpo sem armadura; sem ele, do visual Comum
-    base = _cells(bare, cls) if os.path.exists(bare) else _cells(sets(looks['comum']), cls, light_bg=True)
-    k, anchors = _anchors(base, cls)
-    out = {}
-    for rar, n in looks.items():
-        path = sets(n)
-        if os.path.exists(path):
-            lc = _cells(path, cls, light_bg=True)
-            out[rar] = _frames(lc, k, anchors)
-            # ataque, dano e morte desenhados (assets-src/<classe>-combat/<raridade>.png): quadros 32-55
-            if os.path.exists(CC.path(cls, rar)):
-                out[rar] += CC.frames(cls, rar, lc[0][0], k, anchors[0])
-    return out

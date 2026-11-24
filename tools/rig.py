@@ -43,22 +43,6 @@ def new_body_rig():
     }
 
 
-def look_combat_rig():
-    """Visual vestido com as pranchas de combate (quadros 32-55): 32-39 ataque (32 parado, 33 agacha,
-    34 prepara, 35 ergue/carrega, 36 golpe/disparo, 37 continuação, 38 volta, 39 parado),
-    40-47 dano (41 susto, 42 impacto, 43 recuo, 44 recupera) e 48-55 morte."""
-    fr = lambda f: {'f': f, 'dx': 0, 'dy': 0, 'sy': 1.0, 'rot': 0}
-    r = new_body_rig()
-    r.update({
-        'atk1': [fr(f) for f in (33, 34, 36, 36, 37, 38)],
-        'atk2': [fr(f) for f in (34, 35, 36, 37, 37, 38)],
-        'atk3': [fr(f) for f in (33, 34, 35, 35, 36, 36, 37, 38)],
-        'hurt': [fr(f) for f in (41, 42, 43, 44)],
-        'death': [fr(48 + i) for i in range(8)],
-    })
-    return r
-
-
 def body_rig(cls):
     if cls in NEW_BODY:
         return new_body_rig()
@@ -128,7 +112,7 @@ CLASSES = ['warrior', 'assassin', 'mage']
 def full_rig():
     return {
         'anims': [[n, c] for n, c in ANIMS], 'fps': FPS, 'loop': sorted(LOOP),
-        'body': {**{c: body_rig(c) for c in CLASSES}, 'look': new_body_rig(), 'lookc': look_combat_rig()},
+        'body': {c: body_rig(c) for c in CLASSES},
         'weapon': {s: weapon_rig(s) for s in ('slash', 'spear', 'staff')},
         'styleOf': STYLE_OF,
     }

@@ -130,19 +130,14 @@ custam gemas. Catálogo gerado em `src/data/gear.ts`.
 
 ## Corpos das classes
 
-O Guerreiro usa o corpo base da prancha `assets-src/sheet-hero-white.png` e a Maga
-`assets-src/sheet-body-mage.png` (`tools/hero_white.py`; a fileira de correr da Maga vem espelhada). Com uma armadura equipada, a Maga aparece
-como na prancha da raridade dessa armadura (`assets-src/mage-sets/`: a Maga inteira vestida, com halo, asas e
-cajado desenhados), no lugar das peças encaixadas. O Assassino faz o mesmo com `assets-src/assassin-sets/` (8 pranchas
-vestidas, 32 quadros); sem armadura usa o corpo `assets-src/sheet-body-assassin.png` com as peças por cima: 8 quadros de parado, andar, correr e pular (com a retomada no pouso). As peças
-equipadas continuam vestidas por cima em cada quadro (anatomia em `src/data/paperdoll.json`). Prévia com as
-8 raridades: `spritesheets/warrior_dress.png`.
-
-Ataque, dano e morte desenhados: `assets-src/<classe>-combat/<raridade>.png` (3×8: ataque, dano, morte), recortados por
-`tools/combat_cells.py` (o fundo desfocado sai pelo degradê até o contorno) e somados ao visual da raridade (quadros 32-55,
-rig `lookc` em `tools/rig.py`). Raridades sem prancha de combate usam o movimento antigo. O Guerreiro também tem visual vestido por
-raridade (`assets-src/warrior-sets/`, 4×8, pranchas transparentes recortadas pelo alfa). A escala do combate é medida pelo
-corpo sem o halo, em tamanho original.
+**Regra: o personagem sempre veste o que está equipado.** Cada classe tem só um corpo base sem equipamento
+(Guerreiro `assets-src/sheet-hero-white.png`, Maga `sheet-body-mage.png`, Assassino `sheet-body-assassin.png`; 4×8: parado,
+andar, correr e pular, recortados por `tools/hero_white.py`), e todas as peças equipadas (halo, armadura, luvas, calças,
+botas, capa, asas, aura e arma — da loja, de chefes, de inimigos ou de eventos) são desenhadas por cima, em camadas, em
+todos os quadros (anatomia em `src/data/paperdoll.json`). Ataque, dano e morte usam o rig de `tools/rig.py` sobre o mesmo
+corpo. Pranchas com o personagem já vestido (armadura, halo, asas ou arma desenhados) **não** entram no jogo como visual:
+ficam só como referência em `assets-src/*-sets/` e `assets-src/*-combat/`. Uma prancha nova de personagem ou skin deve ser
+o corpo sem equipamento.
 
 ## Inventário
 
