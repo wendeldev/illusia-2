@@ -149,16 +149,6 @@ raridades): personagem 56 px de altura; espada, machado, lança e cajado 42 px d
 48×26 e frontais 30×11; aura 52×20; halo cabe numa caixa de 34×24, logo acima do cabelo. Asas, aura e capa só aparecem
 quando o item foi ganho e equipado (o personagem novo começa só com a espada de treino).
 
-## Personagem 3D
-
-No modo 3D o jogador é um boneco 3D feito em Three.js (`src/engine/hero3d.ts`): estilo chibi com contorno e luz de
-desenho, 56 px de altura (igual ao 2D), cabelo e rosto de cada classe (Guerreiro ruivo espetado, Maga loira de cabelo
-comprido, Assassino prateado com máscara). Cada equipamento equipado vira uma peça 3D do mesmo tamanho do corpo, na
-cor da raridade: halo de luz (com asinhas a partir do Raro), armadura com ombreiras, braçadeiras, calças, botas, capa,
-asas batendo, asas frontais, aura no chão (caveira e chifres atrás do corpo) e a arma da classe (espada, cajado ou
-adaga; as do passe com brilho neon). Animações por articulação: parado, andar, correr, pular, cair, pousar, os 3 golpes,
-poderes, dano e morte. As telas (inventário, escolha de classe, eventos) mostram o mesmo boneco (`HeroPortrait`).
-
 ## Passe de Batalha
 
 Botão **Passe** (abaixo de Eventos) ou tecla **P**. Recompensas por nível do personagem (`src/data/pass.ts`), com os
