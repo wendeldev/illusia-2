@@ -226,7 +226,12 @@ export interface LandmarkDef {
 export interface TerrainSeg {
   x0: number;
   x1: number;
+  /** altura do topo em x0 */
   y: number;
+  /** rampa: altura do topo em x1 (sem isso, plano) */
+  y1?: number;
+  /** visual da plataforma: ilha de areia */
+  kind?: 'sand';
 }
 
 export interface TerrainDef {
@@ -236,6 +241,14 @@ export interface TerrainDef {
   platforms: TerrainSeg[];
   /** escadas: x e topo/base (y) */
   ladders?: { x: number; top: number; bottom: number }[];
+  /** água rasa (lagos no chão): superfície em y */
+  water?: { x0: number; x1: number; y: number }[];
+  /** enfeites (flores, plantas, pedras) com os pés em (x, y) e altura h */
+  decor?: { x: number; y: number; name: string; h: number; flip?: boolean }[];
+  /** baús de tesouro (abrem ao encostar) */
+  chests?: { x: number; y: number; tier: number }[];
+  /** cipós e moitas pendurados no alto da tela */
+  canopy?: boolean;
 }
 
 export interface StageDef {

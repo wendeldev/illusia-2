@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { BackdropSpec } from '../game/art/scenery';
-import { PX_TILES, TILE_W } from '../game/art/ground';
+import { platTile, PX_TILES, TILE_W } from '../game/art/ground';
 import type { SceneryTheme, TerrainSeg } from '../types';
 import { spriteSource } from './sprites';
 import { VIEW_H, VIEW_W } from './view';
@@ -380,18 +380,23 @@ export class Backdrop3D {
       }
     });
     for (const p of st.terrain.platforms) {
-      const { x0, x1, y } = p;
-      const th = Math.round(52 * aspect(tiles.plat));
-      const by = y - 10 + th;
-      add(this.face(platSurf, [[x0, y, -PLAT_D], [x1, y, -PLAT_D], [x0, y, 0], [x1, y, 0]],
+      const { x0, x1 } = p;
+      // rampas: cada ponta com a sua altura; ilhas de areia com o bloco de areia
+      const ya = p.y, yb = p.y1 ?? p.y;
+      const name = platTile(p, st.theme);
+      const pl = name === tiles.plat ? plat : this.tile(name, 'side');
+      const ps = name === tiles.plat ? platSurf : this.tile(name, 'top');
+      const th = Math.round(52 * aspect(name));
+      const ba = ya - 10 + th, bb = yb - 10 + th;
+      add(this.face(ps, [[x0, ya, -PLAT_D], [x1, yb, -PLAT_D], [x0, ya, 0], [x1, yb, 0]],
         [[U(x0), 0], [U(x1), 0], [U(x0), PLAT_D / TILE_W], [U(x1), PLAT_D / TILE_W]], [0.72, 1]));
-      add(this.face(null, [[x0, by - 2, 0], [x1, by - 2, 0], [x0, by - 2, -PLAT_D], [x1, by - 2, -PLAT_D]],
+      add(this.face(null, [[x0, ba - 2, 0], [x1, bb - 2, 0], [x0, ba - 2, -PLAT_D], [x1, bb - 2, -PLAT_D]],
         [[0, 0], [1, 0], [0, 1], [1, 1]], [0.5, 0.3]));
-      for (const x of [x0, x1]) {
-        add(this.face(plat, [[x, y - 10, 0], [x, y - 10, -PLAT_D], [x, by, 0], [x, by, -PLAT_D]],
+      for (const [x, y, by] of [[x0, ya, ba], [x1, yb, bb]]) {
+        add(this.face(pl, [[x, y - 10, 0], [x, y - 10, -PLAT_D], [x, by, 0], [x, by, -PLAT_D]],
           [[0, 1], [PLAT_D / 52, 1], [0, 0], [PLAT_D / 52, 0]], [0.6, 0.6], { cut: true }));
       }
-      add(this.face(plat, [[x0, y - 10, 0.4], [x1, y - 10, 0.4], [x0, by, 0.4], [x1, by, 0.4]],
+      add(this.face(pl, [[x0, ya - 10, 0.4], [x1, yb - 10, 0.4], [x0, ba, 0.4], [x1, bb, 0.4]],
         [[0, 1], [(x1 - x0) / 52, 1], [0, 0], [(x1 - x0) / 52, 0]], [1, 0.9], { cut: true }));
     }
       for (const b of buckets.values()) {

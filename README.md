@@ -149,6 +149,14 @@ raridades): personagem 56 px de altura; espada, machado, lança e cajado 42 px d
 48×26 e frontais 30×11; aura 52×20; halo cabe numa caixa de 34×24, logo acima do cabelo. Asas, aura e capa só aparecem
 quando o item foi ganho e equipado (o personagem novo começa só com a espada de treino).
 
+## Fases de selva (Bosque Sussurrante)
+
+As 10 fases do Bosque Sussurrante usam `generateJungle` (`src/game/terrain.ts`): lagos rasos no chão, morros com
+rampas (anda-se subindo e descendo; `TerrainSeg.y1`), blocos altos de pedra com escada, ilhas flutuantes em 2–3 andares
+(algumas de areia com pedras, `kind: 'sand'`), um deque alto com rampa de descida, flores/plantas/pedras espalhadas,
+baús de tesouro no alto (abrem ao encostar e soltam itens como um baú da bolsa) e cipós com moitas penduradas no alto
+da tela (`src/game/art/jungle.ts`). Tudo com a arte que o jogo já tinha, nos modos 2D e 3D.
+
 ## Passe de Batalha
 
 Botão **Passe** (abaixo de Eventos) ou tecla **P**. Recompensas por nível do personagem (`src/data/pass.ts`), com os

@@ -60,22 +60,31 @@ function pxGround(ctx: Ctx, s: TerrainSeg, prev: TerrainSeg | undefined, next: T
   }
 }
 
+/** Bloco da plataforma: ilhas de areia usam o bloco de areia. */
+export const platTile = (p: TerrainSeg, theme: SceneryTheme) => (p.kind === 'sand' ? 'b_sand' : PX_TILES[theme].plat);
+
 function pxPlatform(ctx: Ctx, p: TerrainSeg, theme: SceneryTheme, camX: number, camY: number): void {
-  const name = PX_TILES[theme].plat;
+  const name = platTile(p, theme);
   const x = p.x0 - camX, w = p.x1 - p.x0, y = p.y - camY;
+  const slope = p.y1 !== undefined ? (p.y1 - p.y) / w : 0;
   const tw = 52, th = Math.round(tw * tileAspect(name));
-  ctx.fillStyle = 'rgba(0,0,0,0.1)';
-  ctx.beginPath();
-  ctx.ellipse(x + w / 2, y + th + 26, w * 0.4, 6, 0, 0, Math.PI * 2);
-  ctx.fill();
   ctx.save();
+  // rampa: os blocos inclinam junto com o topo
+  ctx.translate(x, y);
+  if (slope) ctx.transform(1, slope, 0, 1, 0, 0);
+  if (!slope) {
+    ctx.fillStyle = 'rgba(0,0,0,0.1)';
+    ctx.beginPath();
+    ctx.ellipse(w / 2, th + 26, w * 0.4, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.beginPath();
-  ctx.rect(x - 2, y - 14, w + 4, th + 20);
+  ctx.rect(-2, -14, w + 4, th + 20);
   ctx.clip();
   ctx.imageSmoothingEnabled = false;
   const n = Math.max(1, Math.round(w / tw));
   const step = w / n;
-  for (let k = 0; k < n; k++) drawTile(ctx, name, Math.round(x + k * step), Math.round(y - 10), Math.ceil(step) + 1, th);
+  for (let k = 0; k < n; k++) drawTile(ctx, name, Math.round(k * step), -10, Math.ceil(step) + 1, th);
   ctx.restore();
 }
 

@@ -11,6 +11,8 @@ import { drawMonster } from './art/monsters';
 import { glow } from './art/scene3d';
 import { dollLook, drawDoll, rigFps, rigFrames, rigPose, type DollPose, type RigAnim } from './art/layers';
 import { drawTerrain } from './art/ground';
+import { drawCanopy, drawChests, drawDecor, drawWater } from './art/jungle';
+import { rollChest } from './loot';
 import { drawSprite, drawSpriteH, frameCount, hasSprite, spriteHeight, spritesReady } from '../engine/sprites';
 import { Scenery } from './art/scenery';
 import type { BackdropState } from '../engine/backdrop3d';
@@ -308,6 +310,8 @@ export class World {
   stats: Stats;
   scenery: Scenery;
   terrain: Terrain;
+  /** baús abertos (índice → tempo desde que abriu) */
+  private chestsOpened = new Map<number, number>();
   camY = 0;
   private prevUp = false;
   npcs: { def: NpcDef; x: number; y: number; look: HumanLook; seed: number }[];
@@ -474,6 +478,7 @@ export class World {
     this.streakT -= dt;
     if (this.streakT <= 0) this.streak = 0;
     this.updatePickups(dt);
+    this.updateChests(dt);
     for (const id in p.cooldowns) p.cooldowns[id] = Math.max(0, p.cooldowns[id] - dt);
     p.flash = Math.max(0, p.flash - dt);
     p.invuln = Math.max(0, p.invuln - dt);
@@ -1026,6 +1031,20 @@ export class World {
       : drop.kind === 'gems' ? 'it_' + drop.icon
       : drop.kind === 'gear' ? (getItem(drop.id).icon ?? 'icon_' + drop.id) : 'it_' + drop.id;
     this.pickups.push({ drop, icon, x, y, vx: (Math.random() - 0.5) * 160, vy: -220 - Math.random() * 120, t: 0, landed: false });
+  }
+
+  /** Baús de tesouro: abrem ao encostar e soltam o conteúdo (como um baú da bolsa). */
+  private updateChests(dt: number): void {
+    const p = this.player;
+    for (const [i, o] of this.chestsOpened) if (o <= 1.2) this.chestsOpened.set(i, o + dt * 1.5);
+    if (p.dead) return;
+    this.terrain.chests.forEach((c, i) => {
+      if (this.chestsOpened.has(i) || Math.abs(p.x - c.x) > 18 || Math.abs(p.y - c.y) > 24) return;
+      this.chestsOpened.set(i, 0);
+      for (const d of rollChest(c.tier, this.stage.level ?? this.progress.level, this.progress.classId)) this.spawnPickup(d, c.x, c.y - 16);
+      this.hooks.toast('Baú aberto!');
+      this.sound('coin');
+    });
   }
 
   private updatePickups(dt: number): void {
@@ -1598,6 +1617,8 @@ export class World {
     a.save();
     a.translate(-camX, -camY);
     for (const portal of s.portals) this.drawPortal(a, portal);
+    drawDecor(a, this.terrain, camX, this.time);
+    drawChests(a, this.terrain, this.chestsOpened, camX, this.time);
     for (const e of this.enemies) if (!e.dead && (e.state === 'ability' || e.state === 'charging')) this.drawTelegraph(a, e);
     // objetos do cenário, NPCs, inimigos e por último o jogador
     a.save();
@@ -1607,6 +1628,7 @@ export class World {
     for (const n of this.npcs) this.drawNpc(a, n);
     for (const e of this.enemies) this.drawEnemy(a, e);
     this.drawPlayer(a);
+    drawWater(a, this.terrain, camX, WORLD_H + 80, this.time);
     a.restore();
 
     ctx.save();
@@ -1684,6 +1706,7 @@ export class World {
     }
     ctx.restore();
 
+    if (this.terrain.canopy) drawCanopy(ctx, camX, this.time, s.width);
     // primeiro plano, luz e atmosfera (por cima dos personagens, por baixo dos textos)
     this.scenery.drawForeground(ctx, camX, this.time, { x: this.player.x - camX, y: this.player.y - camY });
 

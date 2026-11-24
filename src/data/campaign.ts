@@ -1,7 +1,7 @@
 // Campanha: 9 regiões × 10 fases, geradas a partir de regras simples.
 // Para mudar a campanha, edite REGIONS (nomes, cenário, inimigos e chefes)
 // ou as regras em makeStage().
-import { generateTerrain } from '../game/terrain';
+import { generateJungle, generateTerrain } from '../game/terrain';
 import type { Mood, SceneryTheme, StageDef, WaveDef } from '../types';
 
 export interface RegionDef {
@@ -93,7 +93,9 @@ function makeStage(r: number, s: number): StageDef {
     name: `${region.name} ${r + 1}-${s}`,
     width, depth,
     theme: region.theme,
-    terrain: generateTerrain(n, width, region.theme === 'sky' || region.theme === 'snow' ? 1.3 : 1),
+    // Bosque Sussurrante: selva com rampas, lagos, blocos de pedra, ilhas e baús
+    terrain: region.theme === 'forest' ? generateJungle(n, width, s >= 5 ? 2 : 1)
+      : generateTerrain(n, width, region.theme === 'sky' || region.theme === 'snow' ? 1.3 : 1),
     mood: moodFor(region.theme, s),
     // nível dos monstros: fases 1–5 = níveis 1–5; depois começa no 8 e sobe 1 por fase
     level: monsterLevel(n),
