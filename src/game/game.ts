@@ -13,6 +13,9 @@ import { Music } from '../engine/music';
 import { QuestBook, rewardText } from './quests';
 import { starBits, type StageResult } from './stars';
 import { fitWeapon, loadProgress, saveProgress, type Progress } from './progress';
+import { PASS } from '../data/pass';
+import { CLASS_WEAPON } from '../data/gear';
+import { rollGear } from './loot';
 import { Ui, type GameApi } from './ui';
 import { World, type WorldHooks } from './world';
 
@@ -483,6 +486,44 @@ export class Game implements GameApi {
     this.world.refreshStats();
     this.sfx.play('ui');
     saveProgress(this.progress);
+  }
+
+  /** Estado de uma recompensa do passe: resgatada, disponível, falta nível ou faltam gemas. */
+  passState(id: string): 'claimed' | 'ready' | 'level' | 'gems' {
+    const p = this.progress, r = PASS.find((x) => x.id === id);
+    if (!r || (p.passClaimed ?? []).includes(id)) return 'claimed';
+    if (p.level < r.level) return 'level';
+    if (r.gems && p.gems < r.gems) return 'gems';
+    return 'ready';
+  }
+
+  /** Resgata uma recompensa do passe (grátis: só o nível; pago: nível e gemas). */
+  claimPass(id: string): void {
+    const p = this.progress, r = PASS.find((x) => x.id === id);
+    if (!r) return;
+    const st = this.passState(id);
+    if (st === 'claimed') return;
+    if (st === 'level') { this.ui.toast(`Chegue ao nível ${r.level} para resgatar`); this.sfx.play('nomp'); return; }
+    if (st === 'gems') { this.ui.toast(`Faltam gemas (${r.gems})`); this.sfx.play('nomp'); return; }
+    if (r.gems) p.gems -= r.gems;
+    p.passClaimed = [...(p.passClaimed ?? []), id];
+    const cls = p.classId ?? 'warrior';
+    const got: { icon: string; label: string }[] = [];
+    for (const g of r.give) {
+      if (g.kind === 'bag') got.push(this.applyDrop({ kind: 'bag', id: g.id, n: g.n }, false));
+      else if (g.kind === 'exp') { this.world.gainExp(g.n, false); got.push({ icon: r.icon, label: `${g.n} XP` }); }
+      else if (g.kind === 'gear') got.push(this.applyDrop({ kind: 'gear', id: g.id }, false));
+      else if (g.kind === 'classWeapon') got.push(this.applyDrop({ kind: 'gear', id: `wp_${CLASS_WEAPON[cls] ?? 'sword'}_${g.style}` }, false));
+      else if (g.kind === 'classPiece') got.push(this.applyDrop({ kind: 'gear', id: `ar_${SET_OF[cls] ?? 'warrior'}_${g.part}_${g.skin}` }, false));
+      else if (g.kind === 'randomGear') {
+        const gid = rollGear(Math.max(p.level, 12), 2, 0, cls);
+        if (gid) got.push(this.applyDrop({ kind: 'gear', id: gid }, false));
+      }
+    }
+    this.world.refreshStats();
+    this.sfx.play('levelup');
+    saveProgress(p);
+    this.ui.showReward(`Passe de batalha: ${r.name}`, got, true);
   }
 
   heal(): void {

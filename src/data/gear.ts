@@ -92,6 +92,50 @@ for (let r = 0; r < 8; r++) {
     });
   }
 }
+// ── passe de batalha: peças próprias (não vendem na loja; vêm só do passe) ──
+/** Armas neon do passe: cada classe recebe a sua arma (espada, cajado ou adaga) nesse visual. */
+export const PASS_WEAPON_STYLES: Record<string, { name: string; rarity: number; mul: number }> = {
+  white: { name: 'de Luz Branca', rarity: 5, mul: 1 },
+  black: { name: 'Neon Negro', rarity: 5, mul: 1 },
+  violet: { name: 'Neon Violeta', rarity: 5, mul: 1.12 },
+  green: { name: 'Neon Verde', rarity: 5, mul: 1.1 },
+  emerald: { name: 'Neon Esmeralda', rarity: 6, mul: 1.05 },
+};
+const pass = (e: Omit<EquipmentDef, 'price' | 'dropOnly'>) => out.push({ ...e, price: 0, dropOnly: true, passOnly: true });
+for (const [kind, w] of Object.entries(WEAPON_KINDS)) {
+  for (const [st, ps] of Object.entries(PASS_WEAPON_STYLES)) {
+    const m = MULT[ps.rarity] * ps.mul;
+    pass({
+      id: `wp_${kind}_${st}`, name: `${w.name} ${ps.name}`, slot: 'weapon', rarity: ps.rarity, weaponKind: kind, category: kind,
+      atk: round(w.atk * m), crit: w.crit ? round(w.crit * Math.sqrt(m) * 100) / 100 : undefined, mp: w.mp ? Math.round(w.mp * m) : undefined,
+      icon: `gw_${kind}_${st}`, description: `${w.name} do passe de batalha, com brilho ${ps.name.toLowerCase()}.`,
+    });
+  }
+}
+/** Peças do passe: fogo (grátis) e vaca (com gemas), para cada classe. */
+for (const [skin, sname, r] of [['fire', 'de Fogo', 4], ['cow', 'de Vaca', 5]] as const) {
+  const m = MULT[r];
+  for (const cls of Object.keys(SET_NAMES)) {
+    const f = FLAVOR[cls];
+    pass({
+      id: `ar_${cls}_armor_${skin}`, name: skin === 'cow' ? `Macacão de Vaca (${SET_NAMES[cls]})` : `Armadura de Fogo (${SET_NAMES[cls]})`,
+      slot: 'armor', rarity: r, setClass: cls, category: 'armor', def: round(4 * m), hp: Math.round(35 * m * f.hp),
+      icon: `gs_${cls}_${skin}_armor`, description: `Armadura ${sname} do passe de batalha.`,
+    });
+    pass({
+      id: `ar_${cls}_arms_${skin}`, name: `Luvas ${sname} (${SET_NAMES[cls]})`, slot: 'gloves', rarity: r, setClass: cls, category: 'arms',
+      atk: round(2 * m * f.atk), def: round(1 * m), icon: `gs_${cls}_${skin}_arms`, description: `Luvas ${sname} do passe de batalha.`,
+    });
+  }
+  pass({ id: `bt_${skin}`, name: `Botas ${sname}`, slot: 'boots', rarity: r, category: 'bt', def: round(1 * m), hp: Math.round(12 * m), icon: `gb_${skin}`, description: `Botas ${sname} do passe de batalha.` });
+}
+pass({ id: 'wb_bluefire', name: 'Asas de Fogo Azul', slot: 'wings', rarity: 4, category: 'wb', atk: round(3 * MULT[4]), hp: Math.round(20 * MULT[4]), icon: 'gwb_bluefire', description: 'Asas em chamas azuis (passe de batalha).' });
+pass({ id: 'wb_blackbig', name: 'Asas Pretas Grandes', slot: 'wings', rarity: 5, category: 'wb', atk: round(3 * MULT[5]), hp: Math.round(20 * MULT[5]), icon: 'gwb_blackbig', description: 'Grandes asas negras (passe de batalha).' });
+pass({ id: 'au_skull', name: 'Aura de Caveira', slot: 'aura', rarity: 4, category: 'au', atk: round(2 * MULT[4]), crit: 0.02, icon: 'gau_skull', description: 'Uma caveira de fogo arde atrás de você (passe de batalha).' });
+pass({ id: 'au_horns', name: 'Aura de Chifres', slot: 'aura', rarity: 5, category: 'au', atk: round(2 * MULT[5]), crit: 0.02, icon: 'gau_horns', description: 'Chifres de energia ao seu redor (passe de batalha).' });
+pass({ id: 'acc_amulet_pass', name: 'Amuleto Guardião', slot: 'accessory', rarity: 2, def: 12, icon: 'ps_amulet', description: 'Amuleto raro: +12 de defesa (passe de batalha).' });
+pass({ id: 'acc_ring_pass', name: 'Anel Rubro', slot: 'accessory', rarity: 2, atk: 10, icon: 'ps_ring', description: 'Anel raro: +10 de ataque (passe de batalha).' });
+
 export const GEAR: EquipmentDef[] = out;
 
 /** Recompensa de uma classe numa raridade: set (4 peças) + halo + arma preferida. */

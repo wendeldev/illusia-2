@@ -149,6 +149,19 @@ raridades): personagem 56 px de altura; espada, machado, lança e cajado 42 px d
 48×26 e frontais 30×11; aura 52×20; halo cabe numa caixa de 34×24, logo acima do cabelo. Asas, aura e capa só aparecem
 quando o item foi ganho e equipado (o personagem novo começa só com a espada de treino).
 
+## Passe de Batalha
+
+Botão **Passe** (abaixo de Eventos) ou tecla **P**. Recompensas por nível do personagem (`src/data/pass.ts`), com os
+ícones da prancha `assets-src/sheet-pass.png` (`tools/pass_cells.py`):
+- **Grátis:** resgata quando o personagem chega no nível (consumíveis NV2–6, 500 XP NV3–10, materiais raros NV7, item
+  raro NV8, tíquetes NV12–13, anel +10 ataque NV14, amuleto +12 defesa NV15, aura de caveira NV25, asas de fogo azul e
+  botas/luvas de fogo NV26, armadura de fogo NV27, armas de luz branca e neon negra NV40, arma neon violeta NV45).
+- **Com gemas:** exige o nível e custa gemas por recompensa (500 XP NV3–10, tíquetes NV12–13, aura de chifre NV25, asas
+  pretas grandes e botas/luvas de vaca NV26, macacão de vaca NV27, arma neon verde NV40, arma neon esmeralda NV45).
+- Armas e peças são da classe do jogador (espada, cajado ou adaga; armadura e luvas do set da classe). As peças vestíveis
+  são feitas das peças do jogo (`tools/pass_skins.py`), então encaixam no corpo como as outras. Itens do passe não
+  aparecem na loja nem nos drops (`passOnly`). Resgatados ficam em `progress.passClaimed`.
+
 ## Inventário
 
 Bolsa (🎒 ou G) no visual da prancha `assets-src/sheet-inventory.png` (recortada por `tools/ui_cells.py`):

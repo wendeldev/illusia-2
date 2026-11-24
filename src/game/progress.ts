@@ -39,6 +39,8 @@ export interface Progress {
   eventsCleared?: Record<string, number>;
   /** equipamentos já vistos no inventário (os outros aparecem com o selo "N" de novo) */
   seen?: string[];
+  /** recompensas do passe de batalha já resgatadas */
+  passClaimed?: string[];
 }
 
 export interface QuestState {
@@ -87,6 +89,7 @@ export function loadProgress(): Progress {
     p.owned = p.owned.filter(hasItem);
     // saves de antes do selo "novo": tudo o que já tinha conta como visto
     p.seen = Array.isArray(p.seen) ? p.seen : [...p.owned];
+    p.passClaimed = Array.isArray(p.passClaimed) ? p.passClaimed : [];
     p.bag = { ...(p.bag ?? {}) };
     p.upgrades = { ...(p.upgrades ?? {}) };
     p.cards = Array.isArray(p.cards) ? [p.cards[0] ?? null, p.cards[1] ?? null] : [null, null];

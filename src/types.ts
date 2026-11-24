@@ -72,6 +72,8 @@ export interface EquipmentDef extends StatBonus {
   setClass?: string;
   /** categoria na loja */
   category?: string;
+  /** só vem do passe de batalha (fora da loja e dos drops) */
+  passOnly?: boolean;
 }
 
 export type SkillKind =

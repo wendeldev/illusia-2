@@ -23,6 +23,10 @@ export const DOLL_H = 56;
 const HALO_FPS = 5;
 /** Caixa de todos os halos (px da tela) e o espaço entre o halo e o topo do cabelo. */
 const HALO_BOX = { w: 34, h: 24, gap: -0.5 };
+/** Auras em formato (passe): tamanho na tela (px) e altura do centro (fração do corpo, a partir do topo). */
+const AURA_SHAPED: Record<string, { size: number; y: number }> = { gau_skull: { size: 72, y: 0.22 }, gau_horns: { size: 58, y: 0.2 } };
+/** Asas maiores que o padrão (as "Asas Pretas Grandes" do passe). */
+const WINGS_SCALE: Record<string, number> = { gwb_blackbig: 1.3 };
 /** Tamanhos padrão na tela (px), iguais para todas as classes e raridades. */
 const SIZE = {
   /** comprimento da arma (diagonal do desenho): espada, machado, lança e cajado; adaga */
@@ -166,7 +170,14 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     ctx.globalCompositeOperation = 'lighter';
     const a = ctx.globalAlpha;
     ctx.globalAlpha = a * (0.7 + Math.sin(time * 5) * 0.15);
-    drawFit(ctx, L.aura, cx - SIZE.auraW / 2 * g * pulse, Y(fy1) - SIZE.auraH * g * pulse, cx + SIZE.auraW / 2 * g * pulse, Y(fy1) + 3, 'contain', 'bottom');
+    const shaped = AURA_SHAPED[L.aura];
+    if (shaped) {
+      // aura em formato (caveira, chifres): desenho atrás do corpo, na altura do peito/cabeça
+      const sz = shaped.size * g * pulse, ay0 = Y(A.H * shaped.y);
+      drawFit(ctx, L.aura, cx - sz / 2, ay0 - sz / 2, cx + sz / 2, ay0 + sz / 2, 'contain', 'mid');
+    } else {
+      drawFit(ctx, L.aura, cx - SIZE.auraW / 2 * g * pulse, Y(fy1) - SIZE.auraH * g * pulse, cx + SIZE.auraW / 2 * g * pulse, Y(fy1) + 3, 'contain', 'bottom');
+    }
     ctx.globalAlpha = a;
     ctx.globalCompositeOperation = prev;
   }
@@ -179,7 +190,8 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     if (L.wingsGlow) glow(ctx, wc, neck + 2, SIZE.wingsW * 0.6 * g, '#ffffff', 0.18);
     ctx.save();
     ctx.translate(wc, 0); ctx.scale(flap, 1); ctx.translate(-wc, 0);
-    drawFit(ctx, L.wings, wc - SIZE.wingsW / 2 * g, neck + 2 - SIZE.wingsH / 2 * g, wc + SIZE.wingsW / 2 * g, neck + 2 + SIZE.wingsH / 2 * g, 'contain', 'mid', 0, fl);
+    const wk = WINGS_SCALE[L.wings] ?? 1;
+    drawFit(ctx, L.wings, wc - SIZE.wingsW / 2 * g * wk, neck + 2 - SIZE.wingsH / 2 * g * wk, wc + SIZE.wingsW / 2 * g * wk, neck + 2 + SIZE.wingsH / 2 * g * wk, 'contain', 'mid', 0, fl);
     ctx.restore();
   }
   if (L.cape) {

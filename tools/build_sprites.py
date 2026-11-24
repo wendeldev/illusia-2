@@ -739,6 +739,30 @@ for n, im in UIC.load_ui().items():
 put('it_tk_legend', [recolor(I_DATA['tickets'][3], 1.12, 1.3, 1.15)])
 put('it_tk_myth', [recolor(I_DATA['tickets'][3], 1.0, 1.4, 1.0)])
 
+# passe de batalha: ícones (ps_<nome>) e peças vestíveis feitas das peças do jogo
+import pass_cells as PSC
+import pass_skins as PSK
+_img = lambda n: my_items[n][0][0][0]
+for n, im in PSC.load().items():
+    im = im.copy(); im.thumbnail((96, 96), _I.LANCZOS)
+    put(f'ps_{n}', [im])
+for cls in ('warrior', 'assassin', 'mage'):
+    for part in ('armor', 'arms'):
+        base = _img(f'gs_{cls}_epico_{part}')
+        put(f'gs_{cls}_fire_{part}', [PSK.fire(base)])
+        put(f'gs_{cls}_cow_{part}', [PSK.cow(base, seed=len(cls) + len(part))])
+put('gb_fire', [PSK.fire(_img('gb_comum'))])
+put('gb_cow', [PSK.cow(_img('gb_comum'), seed=5, pink_feet=True)])
+put('gwb_bluefire', [PSK.blue_fire_wings(_img('gwb_comum'))])
+put('gwb_blackbig', [PSK.dark_wings(_img('gwb_comum'))])
+for n in ('skull', 'horns'):
+    im = PSC.cut(PSC.ICONS_IMG()[n], dark=75)
+    im.thumbnail((110, 110), _I.LANCZOS)
+    put(f'gau_{n}', [im])
+for kind in ('sword', 'dagger', 'staff'):
+    for st in PSK.NEON:
+        put(f'gw_{kind}_{st}', [PSK.neon(_img(f'gw_{kind}_mitico'), st)])
+
 items8 = [(n, i, im, ax, ay) for n, (lst, _) in my_items.items() for i, (im, ax, ay) in enumerate(lst)]
 items8.sort(key=lambda t: -t[2].size[1])
 x = y = row_h = 0

@@ -4,6 +4,7 @@ import type { Music } from '../engine/music';
 import { drawFit, drawSprite, drawSpriteH, drawSub, frameSize, hasSprite, spritesReady, tileAspect } from '../engine/sprites';
 import { glow } from './art/scene3d';
 import { drawDollIdle } from './art/layers';
+import { PASS } from '../data/pass';
 import { CLASS_WEAPON, RARITY_COLORS, RARITY_NAMES, SET_NAMES, SET_OF, SHOP_CATEGORIES, STARTER_WEAPON, STARTER_WEAPONS, WEAPON_KINDS, setFor, usableBy } from '../data/gear';
 import { gearScore } from './loot';
 import { DIFFICULTIES, EVENT_PHASES, MYTHIC_BOSSES, rewardRarity, TICKET_OF, type MythicBoss } from '../data/mythic';
@@ -44,6 +45,8 @@ export interface GameApi {
   upgrade(itemId: string): void;
   startArena(tier: number): void;
   startEvent(bossKey: string, diff: number): void;
+  passState(id: string): 'claimed' | 'ready' | 'level' | 'gems';
+  claimPass(id: string): void;
   unequip(slot: Slot): void;
   sell(itemId: string): void;
   sellValue(itemId: string): { gold: number; gems: number };
@@ -59,7 +62,8 @@ type Modal =
   | { kind: 'result'; r: StageResult; t: number; shown: number }
   | { kind: 'shop'; npc: NpcDef; sel: number; scroll: number; tab: number; cat: number; allSets?: boolean }
   | { kind: 'bag'; tab: number; sel: string | null; filter: number; page: number; sort: number }
-  | { kind: 'reward'; title: string; items: { icon: string; label: string }[]; t: number }
+  | { kind: 'reward'; title: string; items: { icon: string; label: string }[]; t: number; back?: Modal }
+  | { kind: 'pass'; scroll: [number, number] }
   | { kind: 'arena' }
   | { kind: 'events'; sel: number; diff: number }
   | { kind: 'menu'; sel: number; scroll: number }
@@ -223,8 +227,8 @@ export class Ui {
     this.modal = { kind: 'result', r, t: 0, shown: 0 };
   }
 
-  showReward(title: string, items: { icon: string; label: string }[]): void {
-    this.modal = { kind: 'reward', title, items, t: 0 };
+  showReward(title: string, items: { icon: string; label: string }[], backToPrev = false): void {
+    this.modal = { kind: 'reward', title, items, t: 0, back: backToPrev && this.modal ? this.modal : undefined };
   }
 
   openBag(tab = 0): void {
@@ -234,6 +238,11 @@ export class Ui {
 
   openEvents(): void {
     this.modal = { kind: 'events', sel: 0, diff: 0 };
+    this.game.sfx.play('ui');
+  }
+
+  openPass(): void {
+    this.modal = { kind: 'pass', scroll: [0, 0] };
     this.game.sfx.play('ui');
   }
 
@@ -259,6 +268,7 @@ export class Ui {
     if (!this.modal && input.consume('menu')) this.openMenu();
     if (!this.modal && input.consume('bag')) this.openBag();
     if (!this.modal && input.consume('events')) this.openEvents();
+    if (!this.modal && input.consume('pass')) this.openPass();
     input.buttonsEnabled = !this.modal;
     const m = this.modal;
     if (!m) return false;
@@ -315,9 +325,14 @@ export class Ui {
         if (right) m.tab = (m.tab + 1) % 5;
         if (back) this.close();
         break;
+      case 'pass':
+        if (up) m.scroll = [Math.max(0, m.scroll[0] - 1), Math.max(0, m.scroll[1] - 1)];
+        if (down) m.scroll = [m.scroll[0] + 1, m.scroll[1] + 1];
+        if (back) this.close();
+        break;
       case 'reward':
         m.t += dt;
-        if ((confirm || back) && m.t > 0.4) this.close();
+        if ((confirm || back) && m.t > 0.4) this.modal = m.back ?? null;
         break;
       case 'events':
         if (up) m.sel = (m.sel + MYTHIC_BOSSES.length - 1) % MYTHIC_BOSSES.length;
@@ -399,6 +414,7 @@ export class Ui {
       case 'skills': return this.drawSkills(ctx, m);
       case 'bag': return this.drawBag(ctx, m);
       case 'reward': return this.drawReward(ctx, m);
+      case 'pass': return this.drawPass(ctx, m);
       case 'arena': return this.drawArena(ctx);
       case 'events': return this.drawEvents(ctx, m);
       case 'result': return this.drawResult(ctx, m);
@@ -452,6 +468,21 @@ export class Ui {
       ctx.stroke();
       text(ctx, 'Eventos', ex, ey + 24, { size: 8, align: 'center', color: '#ffd36b' });
       this.regions.push({ x: ex - 20, y: ey - 20, w: 40, h: 50, fn: () => this.openEvents() });
+      // botão do Passe de Batalha (brilha quando há recompensa para resgatar)
+      const px = ex, py = ey + 56;
+      const ready = PASS.some((r) => this.game.passState(r.id) === 'ready');
+      if (ready) glow(ctx, px, py, 24, '#ffd36b', pulse * 0.6);
+      ctx.globalAlpha = 0.7;
+      circle(ctx, px, py, 16, '#1a2040');
+      ctx.globalAlpha = 1;
+      this.icon(ctx, 'ps_tickets', px, py, 24);
+      ctx.strokeStyle = '#ffd36b';
+      ctx.beginPath();
+      ctx.arc(px, py, 16, 0, Math.PI * 2);
+      ctx.stroke();
+      if (ready) { circle(ctx, px + 12, py - 12, 5, '#e0524f'); text(ctx, '!', px + 12, py - 12, { size: 8, align: 'center', outline: false }); }
+      text(ctx, 'Passe', px, py + 24, { size: 8, align: 'center', color: '#ffd36b' });
+      this.regions.push({ x: px - 20, y: py - 20, w: 40, h: 50, fn: () => this.openPass() });
     }
     const run = this.game.eventRun;
     if (run && world.stage.id.startsWith('ev_')) {
@@ -502,7 +533,7 @@ export class Ui {
     const input = this.input;
     const { world, progress } = this.game;
     if (!input.touchMode) {
-      text(ctx, 'Andar: A/D · Pular: Espaço · Escada: W/S · Atacar: J · Poderes: K L I O · Falar: E · Menu: M · Bolsa: G · Eventos: N', VIEW_W / 2, VIEW_H - 10,
+      text(ctx, 'Andar: A/D · Pular: Espaço · Escada: W/S · Atacar: J · Poderes: K L I O · Falar: E · Menu: M · Bolsa: G · Eventos: N · Passe: P', VIEW_W / 2, VIEW_H - 10,
         { size: 10, align: 'center', color: 'rgba(255,255,255,0.85)' });
       return;
     }
@@ -1140,7 +1171,7 @@ export class Ui {
   private drawReward(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'reward' }>): void {
     const w = 440, h = 60 + Math.ceil(m.items.length / 2) * 34 + 30, x = (VIEW_W - w) / 2, y = Math.max(8, (VIEW_H - h) / 2);
     this.panel(ctx, x, y, w, h, m.title, false);
-    this.regions.push({ x: 0, y: 0, w: VIEW_W, h: VIEW_H, fn: () => { if (m.t > 0.4) this.close(); } });
+    this.regions.push({ x: 0, y: 0, w: VIEW_W, h: VIEW_H, fn: () => { if (m.t > 0.4) this.modal = m.back ?? null; } });
     m.items.forEach((it, i) => {
       const appear = m.t - i * 0.08;
       if (appear < 0) return;
@@ -1154,6 +1185,52 @@ export class Ui {
   }
 
   /** Eventos: escolher o chefe Lendário/Mítico, a dificuldade e ver a recompensa. */
+  /** Passe de batalha: grátis (azul) à esquerda e com gemas (dourado) à direita, por nível. */
+  private drawPass(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'pass' }>): void {
+    const { progress } = this.game;
+    const x = 12, y = 8, w = VIEW_W - 24, h = VIEW_H - 16;
+    this.panel(ctx, x, y, w, h, '⚔ Passe de Batalha');
+    text(ctx, `Nível ${progress.level}`, x + w - 150, y + 16, { size: 10, align: 'right', color: '#ffe9a8' });
+    this.icon(ctx, 'it_gem_blue', x + w - 128, y + 16, 12);
+    text(ctx, `${progress.gems}`, x + w - 118, y + 16, { size: 10, color: '#9fd3ff' });
+    const colW = (w - 30) / 2, top = y + 34, rowH = 30, rows = Math.floor((h - 50) / rowH);
+    (['free', 'paid'] as const).forEach((track, ci) => {
+      const list = PASS.filter((r) => r.track === track);
+      const cx = x + 8 + ci * (colW + 14);
+      const paid = track === 'paid';
+      const main = paid ? '#ffc94a' : '#5fb4ff';
+      ctx.fillStyle = paid ? 'rgba(60,40,10,0.55)' : 'rgba(10,30,70,0.55)';
+      ctx.fillRect(cx, top - 4, colW, h - 36);
+      ctx.strokeStyle = main; ctx.lineWidth = 1.5; ctx.strokeRect(cx + 0.5, top - 3.5, colW - 1, h - 37);
+      text(ctx, paid ? 'PASSE COM GEMAS' : 'PASSE GRÁTIS', cx + colW / 2, top + 7, { size: 11, align: 'center', color: main });
+      const ly = top + 18, vis = rows - 1;
+      m.scroll[ci] = Math.max(0, Math.min(Math.max(0, list.length - vis), m.scroll[ci]));
+      const sm = { sel: 0, scroll: m.scroll[ci] };
+      this.scrollList(ctx, sm, list.length, vis, cx + colW - 22, ly, vis * rowH);
+      m.scroll[ci] = sm.scroll;
+      list.slice(m.scroll[ci], m.scroll[ci] + vis).forEach((r, k) => {
+        const ry = ly + k * rowH, rw = colW - 30;
+        const st = this.game.passState(r.id);
+        ctx.fillStyle = st === 'ready' ? (paid ? '#3e3216' : '#1c3050') : '#1b2134';
+        ctx.fillRect(cx + 4, ry, rw, rowH - 3);
+        if (st === 'ready') { ctx.strokeStyle = main; ctx.lineWidth = 1; ctx.strokeRect(cx + 4.5, ry + 0.5, rw - 1, rowH - 4); }
+        this.icon(ctx, r.icon, cx + 20, ry + (rowH - 3) / 2, 24, st === 'level' ? 0.45 : 1);
+        text(ctx, r.name, cx + 38, ry + 9, { size: 9, outline: false, color: st === 'level' ? '#8a93a8' : '#ffffff' });
+        text(ctx, `NV ${r.level}`, cx + 38, ry + 20, { size: 8, outline: false, color: progress.level >= r.level ? '#8fe07a' : '#ff9a7a' });
+        // botão
+        const bw = 70, bx = cx + 4 + rw - bw - 4, by = ry + 4, bh = rowH - 11;
+        let label = '', col = '#555c70', fg = '#cfd6e6';
+        if (st === 'claimed') { label = '✓ Resgatado'; col = '#24402a'; fg = '#8fe07a'; }
+        else if (st === 'level') { label = `🔒 NV ${r.level}`; col = '#2a2f40'; fg = '#8a93a8'; }
+        else if (st === 'gems') { label = `${r.gems} 💎`; col = '#402424'; fg = '#ff8a8a'; }
+        else { label = r.gems ? `${r.gems} 💎` : 'Resgatar'; col = paid ? '#a07818' : '#2f7a3f'; fg = '#ffffff'; }
+        ctx.fillStyle = col; ctx.fillRect(bx, by, bw, bh);
+        text(ctx, label, bx + bw / 2, by + bh / 2, { size: 8, align: 'center', outline: false, color: fg });
+        if (st !== 'claimed') this.regions.push({ x: bx - 4, y: ry, w: bw + 8, h: rowH - 3, fn: () => this.game.claimPass(r.id) });
+      });
+    });
+  }
+
   private drawEvents(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'events' }>): void {
     const { progress } = this.game;
     const x = 12, y = 8, w = VIEW_W - 24, h = VIEW_H - 16;
