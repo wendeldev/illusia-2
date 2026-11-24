@@ -2,7 +2,7 @@ import { ENEMIES, getClass, getEnemy, getItem, getStage, START_STAGE, type Quest
 import { bagItem, keyFor } from '../data/items';
 import { generateTerrain } from './terrain';
 import { DIFFICULTIES, EVENT_PHASES, EVENT_TIME, MYTHIC_BOSSES, TICKET_OF, bossId, minionId, rewardRarity, type MythicBoss } from '../data/mythic';
-import { RARITY_NAMES, SET_NAMES, SET_OF, setFor } from '../data/gear';
+import { RARITY_NAMES, SET_NAMES, SET_OF, STARTER_WEAPONS, WEAPON_KINDS, setFor, usableBy, weaponKindOf } from '../data/gear';
 import { autoEquip, gearScore, rollChest, type Drop } from './loot';
 import type { SceneryTheme, Slot, StageDef } from '../types';
 import { TRACKS } from '../data/music';
@@ -12,7 +12,7 @@ import { WORLD_ZOOM, worldView } from '../engine/view';
 import { Music } from '../engine/music';
 import { QuestBook, rewardText } from './quests';
 import { starBits, type StageResult } from './stars';
-import { loadProgress, saveProgress, type Progress } from './progress';
+import { fitWeapon, loadProgress, saveProgress, type Progress } from './progress';
 import { Ui, type GameApi } from './ui';
 import { World, type WorldHooks } from './world';
 
@@ -117,7 +117,7 @@ export class Game implements GameApi {
         if (!key) { this.ui.toast(`Precisa de chave: ${it.description.replace('Precisa de uma ', '')}`); this.sfx.play('nomp'); return; }
         p.bag[id]--;
         p.bag[key]--;
-        const got = rollChest(it.tier ?? 0, p.level).map((d) => this.applyDrop(d, false));
+        const got = rollChest(it.tier ?? 0, p.level, p.classId).map((d) => this.applyDrop(d, false));
         this.sfx.play('levelup');
         this.ui.showReward(it.name, got);
         break;
@@ -361,6 +361,8 @@ export class Game implements GameApi {
   chooseClass(id: string): void {
     const changed = this.progress.classId !== id;
     this.progress.classId = id;
+    // cada classe com a sua arma: troca para a melhor arma da nova classe (ou a inicial dela)
+    fitWeapon(this.progress);
     this.world.refreshStats(true);
     saveProgress(this.progress);
     this.sfx.play('levelup');
@@ -428,9 +430,10 @@ export class Game implements GameApi {
       this.progress.gold -= item.price;
     }
     this.progress.owned.push(itemId);
-    this.progress.equipped[item.slot] = itemId;
+    const ok = usableBy(item, this.progress.classId);
+    if (ok) this.progress.equipped[item.slot] = itemId;
     this.world.refreshStats();
-    this.ui.toast(`Comprado e equipado: ${item.name}`);
+    this.ui.toast(ok ? `Comprado e equipado: ${item.name}` : `Comprado: ${item.name}`);
     this.sfx.play('coin');
     saveProgress(this.progress);
   }
@@ -456,7 +459,7 @@ export class Game implements GameApi {
     const e = getItem(itemId);
     if (!p.owned.includes(itemId)) return;
     if (p.equipped[e.slot] === itemId) { this.ui.toast('Desequipe antes de vender'); this.sfx.play('nomp'); return; }
-    if (itemId === 'training_sword') { this.ui.toast('A espada de treino não pode ser vendida'); this.sfx.play('nomp'); return; }
+    if (STARTER_WEAPONS.has(itemId)) { this.ui.toast('A arma inicial não pode ser vendida'); this.sfx.play('nomp'); return; }
     const v = this.sellValue(itemId);
     p.gold += v.gold;
     p.gems += v.gems;
@@ -470,6 +473,12 @@ export class Game implements GameApi {
   equip(itemId: string): void {
     const item = getItem(itemId);
     if (!this.progress.owned.includes(itemId)) return;
+    if (!usableBy(item, this.progress.classId)) {
+      const cls = getClass(this.progress.classId ?? 'warrior').name;
+      this.ui.toast(`${cls} não usa ${WEAPON_KINDS[weaponKindOf(item) ?? 'sword']?.name.toLowerCase() ?? 'esta arma'}`);
+      this.sfx.play('nomp');
+      return;
+    }
     this.progress.equipped[item.slot] = itemId;
     this.world.refreshStats();
     this.sfx.play('ui');

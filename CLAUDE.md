@@ -7,3 +7,5 @@
   versão sem equipamento.
 - Build dos sprites: `python3 -I tools/build_sprites.py && python3 -I tools/build_layered.py`.
 - Publicação: push no branch dispara o GitHub Actions que publica no GitHub Pages.
+- Cada classe usa só a sua arma: Guerreiro espada, Maga cajado, Assassino adaga (`CLASS_WEAPON` em `src/data/gear.ts`).
+  Loja, drops, baús e recompensas só oferecem a arma da classe; equipar arma de outra classe é bloqueado.

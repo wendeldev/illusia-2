@@ -1,6 +1,7 @@
 // Tabelas de recompensa: drops de inimigos e chefes, conteúdo dos baús e escolha de equipamento.
 import { EQUIPMENT, getItem, QUESTS } from '../data';
 import { chestForLevel, keyForLevel } from '../data/items';
+import { STARTER_WEAPONS, usableBy } from '../data/gear';
 import type { EnemyDef, EquipmentDef } from '../types';
 import type { Progress } from './progress';
 import { upgradeMul } from './stats';
@@ -39,14 +40,14 @@ export function gearScore(e: EquipmentDef, mul = 1): number {
 }
 
 /** Equipamento aleatório adequado ao nível (bônus = chefes: mais forte e raro). */
-export function rollGear(level: number, bonus = 0, wingsChance = 0): string | null {
+export function rollGear(level: number, bonus = 0, wingsChance = 0, classId?: string): string | null {
   if (Math.random() < wingsChance) {
     const wings = EQUIPMENT.filter((e) => (e.slot === 'wings' || e.slot === 'wingsFront' || e.slot === 'aura') && (e.rarity ?? 0) <= 2 + bonus);
     return wings.length ? pick(wings).id : null;
   }
   const target = 5 + level * 0.9 * (1 + bonus * 0.25);
   const pool = EQUIPMENT.filter((e) => e.slot !== 'wings' && e.slot !== 'wingsFront' && e.slot !== 'aura' && (e.rarity ?? 0) < 7
-    && e.id !== 'training_sword' && gearScore(e) <= target * 1.25 && gearScore(e) >= target * 0.35);
+    && !STARTER_WEAPONS.has(e.id) && usableBy(e, classId) && gearScore(e) <= target * 1.25 && gearScore(e) >= target * 0.35);
   return pool.length ? pick(pool).id : null;
 }
 
@@ -69,7 +70,7 @@ export function rollEnemyDrops(def: EnemyDef, level: number, luck: number, event
     if (chance(0.015)) out.push({ kind: 'bag', id: pick(SOULS), n: 1 });
     if (chance(0.03)) out.push({ kind: 'bag', id: pick(ORBS), n: 1 });
     if (chance(0.04)) out.push({ kind: 'bag', id: pick(FOOD), n: 1 });
-    if (chance(0.012)) { const g = rollGear(level); if (g) out.push({ kind: 'gear', id: g }); }
+    if (chance(0.012)) { const g = rollGear(level, 0, 0, p.classId); if (g) out.push({ kind: 'gear', id: g }); }
   } else {
     const n = isFinal ? 5 + Math.floor(Math.random() * 4) : 2 + Math.floor(Math.random() * 3);
     out.push({ kind: 'gems', amount: n, icon: pick(GEMS) });
@@ -87,7 +88,7 @@ export function rollEnemyDrops(def: EnemyDef, level: number, luck: number, event
     if (isFinal && chance(0.15)) out.push({ kind: 'bag', id: 'tk_legend', n: 1 });
     if (isFinal && chance(0.05)) out.push({ kind: 'bag', id: 'tk_myth', n: 1 });
     if (isElite && chance(0.05)) out.push({ kind: 'bag', id: 'tk_legend', n: 1 });
-    if (chance(isFinal ? 0.6 : 0.35)) { const g = rollGear(level, isFinal ? 2 : 1, isFinal ? 0.2 : 0.08); if (g) out.push({ kind: 'gear', id: g }); }
+    if (chance(isFinal ? 0.6 : 0.35)) { const g = rollGear(level, isFinal ? 2 : 1, isFinal ? 0.2 : 0.08, p.classId); if (g) out.push({ kind: 'gear', id: g }); }
     if (isElite || isFinal) out.push({ kind: 'bag', id: 'gem_rainbow', n: chance(0.04) ? 1 : 0 });
   }
   if (event && Math.random() < 0.07 * luck) out.push({ kind: 'bag', id: pick(EVENT_ITEMS), n: 1 });
@@ -103,7 +104,7 @@ export function rollEnemyDrops(def: EnemyDef, level: number, luck: number, event
 }
 
 /** Conteúdo de um baú (tier 0 madeira ... 6 angelical). */
-export function rollChest(tier: number, level: number): Drop[] {
+export function rollChest(tier: number, level: number, classId?: string): Drop[] {
   const out: Drop[] = [];
   out.push({ kind: 'gold', amount: Math.round((60 + level * 12) * (1 + tier * 0.8)) });
   out.push({ kind: 'bag', id: pick(MATERIALS_BY_TIER[Math.min(5, tier)]), n: 2 + tier });
@@ -114,7 +115,7 @@ export function rollChest(tier: number, level: number): Drop[] {
   if (Math.random() < 0.2 + tier * 0.1) out.push({ kind: 'bag', id: pick(ORBS), n: 1 + Math.floor(tier / 2) });
   if (Math.random() < 0.1 + tier * 0.08) out.push({ kind: 'bag', id: pick(CARDS), n: 1 });
   if (tier >= 5 && Math.random() < 0.4) out.push({ kind: 'bag', id: pick(RUNES), n: 1 });
-  if (Math.random() < 0.35 + tier * 0.1) { const g = rollGear(level, Math.floor(tier / 2), tier >= 5 ? 0.25 : tier >= 3 ? 0.06 : 0); if (g) out.push({ kind: 'gear', id: g }); }
+  if (Math.random() < 0.35 + tier * 0.1) { const g = rollGear(level, Math.floor(tier / 2), tier >= 5 ? 0.25 : tier >= 3 ? 0.06 : 0, classId); if (g) out.push({ kind: 'gear', id: g }); }
   if (tier === 6) {
     out.push({ kind: 'gems', amount: 10, icon: 'gem_rainbow' });
     out.push({ kind: 'bag', id: pick(EVENT_ITEMS), n: 1 });
@@ -127,6 +128,7 @@ export function rollChest(tier: number, level: number): Drop[] {
 /** Equipa o item se for melhor que o atual no mesmo espaço. Retorna true se equipou. */
 export function autoEquip(p: Progress, id: string): boolean {
   const e = getItem(id);
+  if (!usableBy(e, p.classId)) return false;
   const cur = p.equipped[e.slot];
   if (cur && gearScore(getItem(cur), upgradeMul(p, cur)) >= gearScore(e)) return false;
   p.equipped[e.slot] = id;

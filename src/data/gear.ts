@@ -9,15 +9,25 @@ const MULT = [1, 1.7, 2.8, 4.5, 7, 10.5, 15, 21];
 
 export const WEAPON_KINDS: Record<string, { name: string; atk: number; crit?: number; mp?: number }> = {
   sword: { name: 'Espada', atk: 6 },
-  axe: { name: 'Machado', atk: 7.5 },
-  spear: { name: 'Lança', atk: 6.5, crit: 0.005 },
   dagger: { name: 'Adaga', atk: 5, crit: 0.02 },
   staff: { name: 'Cajado', atk: 5, mp: 18 },
 };
-/** Arma preferida de cada classe: +25% no ataque da arma. */
-export const PREFERRED: Record<string, string[]> = {
-  warrior: ['sword', 'axe', 'spear'], assassin: ['dagger'], mage: ['staff'],
-};
+/** Arma de cada classe (cada classe só usa a sua): Guerreiro espada, Maga cajado, Assassino adaga. */
+export const CLASS_WEAPON: Record<string, string> = { warrior: 'sword', mage: 'staff', assassin: 'dagger' };
+/** Arma da classe: +25% no ataque da arma. */
+export const PREFERRED: Record<string, string[]> = Object.fromEntries(Object.entries(CLASS_WEAPON).map(([c, k]) => [c, [k]]));
+/** Arma inicial de cada classe (não pode ser vendida). */
+export const STARTER_WEAPON: Record<string, string> = { warrior: 'training_sword', mage: 'wp_staff_0', assassin: 'wp_dagger_0' };
+export const STARTER_WEAPONS = new Set(Object.values(STARTER_WEAPON));
+
+/** Tipo da arma (as armas clássicas sem tipo são espadas). */
+export function weaponKindOf(e: { slot: Slot; weaponKind?: string }): string | undefined {
+  return e.slot === 'weapon' ? e.weaponKind ?? 'sword' : undefined;
+}
+/** A classe pode usar o item? (só as armas têm dono: cada classe usa a sua) */
+export function usableBy(e: { slot: Slot; weaponKind?: string }, classId: string | undefined): boolean {
+  return e.slot !== 'weapon' || weaponKindOf(e) === CLASS_WEAPON[classId ?? 'warrior'];
+}
 /** Set de armadura de cada classe. */
 export const SET_OF: Record<string, string> = { warrior: 'warrior', assassin: 'assassin', mage: 'mage' };
 export const SET_NAMES: Record<string, string> = { warrior: 'Guerreiro', assassin: 'Assassino', mage: 'Mago' };
@@ -92,7 +102,7 @@ export function setFor(classId: string | undefined, rarity: number): string[] {
 }
 
 export const SHOP_CATEGORIES: [string, string][] = [
-  ['sword', 'Espadas'], ['axe', 'Machados'], ['spear', 'Lanças'], ['dagger', 'Adagas'], ['staff', 'Cajados'],
+  ['sword', 'Espadas'], ['dagger', 'Adagas'], ['staff', 'Cajados'],
   ['hl', 'Halos'], ['armor', 'Armaduras'], ['arms', 'Braços'], ['pants', 'Calças'], ['cape', 'Capas'],
   ['bt', 'Botas'], ['wb', 'Asas T.'], ['wf', 'Asas F.'], ['au', 'Auras'], ['classic', 'Clássicos'],
 ];

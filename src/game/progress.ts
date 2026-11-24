@@ -1,4 +1,5 @@
-import { CLASSES, hasItem, hasStage, LEGACY_STAGE_IDS } from '../data';
+import { CLASSES, getItem, hasItem, hasStage, LEGACY_STAGE_IDS } from '../data';
+import { STARTER_WEAPON, usableBy } from '../data/gear';
 import { expToNext, legacyExpToNext } from './stats';
 import type { Slot } from '../types';
 
@@ -76,6 +77,12 @@ export function loadProgress(): Progress {
     p.owned = [...new Set(p.owned.map(helm))];
     for (const slot of Object.keys(p.equipped) as Slot[]) { const id = p.equipped[slot]; if (id) p.equipped[slot] = helm(id); }
     p.upgrades = Object.fromEntries(Object.entries(p.upgrades ?? {}).map(([k, v]) => [helm(k), v]));
+    // machados e lanças saíram do jogo (cada classe tem a sua arma): viram espadas da mesma raridade
+    const axe = (id: string) => id.replace(/^wp_(axe|spear)_(\d)$/, 'wp_sword_$2');
+    p.owned = [...new Set(p.owned.map(axe))];
+    for (const slot of Object.keys(p.equipped) as Slot[]) { const id = p.equipped[slot]; if (id) p.equipped[slot] = axe(id); }
+    p.upgrades = Object.fromEntries(Object.entries(p.upgrades ?? {}).map(([k, v]) => [axe(k), v]));
+    if (Array.isArray(p.seen)) p.seen = p.seen.map(axe);
     // descarta itens que não existem mais (conteúdo mudou entre versões)
     p.owned = p.owned.filter(hasItem);
     // saves de antes do selo "novo": tudo o que já tinha conta como visto
@@ -91,11 +98,7 @@ export function loadProgress(): Progress {
       const id = p.equipped[slot];
       if (!id || !p.owned.includes(id)) delete p.equipped[slot];
     }
-    // sem arma (a equipada saiu do jogo): volta para a espada de treino
-    if (!p.equipped.weapon) {
-      if (!p.owned.includes('training_sword')) p.owned.push('training_sword');
-      p.equipped.weapon = 'training_sword';
-    }
+    fitWeapon(p);
     return p;
   } catch {
     return newProgress();
@@ -118,4 +121,18 @@ export function saveProgress(p: Progress): void {
   } catch {
     /* navegador sem armazenamento: o jogo continua, só não salva */
   }
+}
+
+/** A arma equipada tem que ser a da classe: senão equipa a melhor arma da classe que o jogador tem
+ * (ou a arma inicial da classe). Retorna true se trocou. */
+export function fitWeapon(p: Progress): boolean {
+  const cls = p.classId ?? 'warrior';
+  const cur = p.equipped.weapon;
+  if (cur && hasItem(cur) && usableBy(getItem(cur), cls)) return false;
+  const mine = p.owned.filter((id) => hasItem(id) && getItem(id).slot === 'weapon' && usableBy(getItem(id), cls));
+  const best = mine.sort((a, b) => (getItem(b).atk ?? 0) - (getItem(a).atk ?? 0))[0];
+  const starter = STARTER_WEAPON[cls] ?? 'training_sword';
+  if (!best && !p.owned.includes(starter)) p.owned.push(starter);
+  p.equipped.weapon = best ?? starter;
+  return true;
 }

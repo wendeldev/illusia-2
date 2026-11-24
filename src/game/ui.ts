@@ -4,7 +4,7 @@ import type { Music } from '../engine/music';
 import { drawFit, drawSprite, drawSpriteH, drawSub, frameSize, hasSprite, spritesReady, tileAspect } from '../engine/sprites';
 import { glow } from './art/scene3d';
 import { drawDollIdle } from './art/layers';
-import { PREFERRED, RARITY_COLORS, RARITY_NAMES, SET_NAMES, SET_OF, SHOP_CATEGORIES, WEAPON_KINDS, setFor } from '../data/gear';
+import { CLASS_WEAPON, RARITY_COLORS, RARITY_NAMES, SET_NAMES, SET_OF, SHOP_CATEGORIES, STARTER_WEAPON, STARTER_WEAPONS, WEAPON_KINDS, setFor, usableBy } from '../data/gear';
 import { gearScore } from './loot';
 import { DIFFICULTIES, EVENT_PHASES, MYTHIC_BOSSES, rewardRarity, TICKET_OF, type MythicBoss } from '../data/mythic';
 import { rewardText, type QuestBook } from './quests';
@@ -633,6 +633,7 @@ export class Ui {
     text(ctx, `${SLOT_NAMES[item.slot]} · ${describeBonus(item)}`, tx, y + h / 2 + 6, { size: 8, outline: false, color: '#aab4cc', bold: false });
     let label: string, color: string;
     if (equipped) { label = 'Equipado'; color = '#8fe07a'; }
+    else if (!usableBy(item, progress.classId)) { label = 'Outra classe'; color = '#8a8f9a'; }
     else if (owned) { label = 'Equipar'; color = '#9cc4ff'; }
     else if (showPrice && item.priceGems) { label = `${item.priceGems} gemas`; color = progress.gems >= item.priceGems ? '#9fd3ff' : '#e0524f'; }
     else if (showPrice) { label = `${item.price} G`; color = progress.gold >= item.price ? '#ffd36b' : '#e0524f'; }
@@ -643,10 +644,17 @@ export class Ui {
 
   /** Equipamentos à venda na categoria escolhida (sem os que só caem de chefes/eventos). */
   private shopList(m: Extract<Modal, { kind: 'shop' }>): string[] {
-    const cat = SHOP_CATEGORIES[m.cat]?.[0] ?? 'classic';
-    if (cat === 'classic') return (m.npc.shop ?? []).filter((id) => !getItem(id).dropOnly);
+    const cat = this.shopCats()[m.cat]?.[0] ?? 'classic';
+    const cls = this.game.progress.classId;
+    if (cat === 'classic') return (m.npc.shop ?? []).filter((id) => !getItem(id).dropOnly && usableBy(getItem(id), cls));
     const mine = SET_OF[this.game.progress.classId ?? 'warrior'];
     return EQUIPMENT.filter((e) => e.category === cat && !e.dropOnly && (!e.setClass || m.allSets || e.setClass === mine)).map((e) => e.id);
+  }
+
+  /** Categorias da loja: das armas, só a da classe (cada classe usa a sua). */
+  private shopCats(): [string, string][] {
+    const mine = CLASS_WEAPON[this.game.progress.classId ?? 'warrior'];
+    return SHOP_CATEGORIES.filter(([k]) => !(k in WEAPON_KINDS) || k === mine);
   }
 
   /** Melhor poção do tipo que o jogador tem (a mais fraca primeiro, para não desperdiçar). */
@@ -688,7 +696,9 @@ export class Ui {
     if (m.tab === 0) {
       // categorias em 2 linhas
       const per = 8, cw = (w - 20) / per;
-      SHOP_CATEGORIES.forEach(([, label], i) => {
+      const cats = this.shopCats();
+      m.cat = Math.min(m.cat, cats.length - 1);
+      cats.forEach(([, label], i) => {
         const cx = x + 10 + (i % per) * cw, cy = top + Math.floor(i / per) * 20;
         const on = i === m.cat;
         ctx.fillStyle = on ? '#5a4a90' : '#232a40';
@@ -697,7 +707,7 @@ export class Ui {
         this.regions.push({ x: cx, y: cy, w: cw - 3, h: 18, fn: () => { m.cat = i; m.sel = 0; m.scroll = 0; this.game.sfx.play('ui'); } });
       });
       const lt = top + 42;
-      const cat = SHOP_CATEGORIES[m.cat][0];
+      const cat = cats[m.cat][0];
       if (['armor', 'arms', 'pants', 'cape'].includes(cat)) {
         const label = m.allSets ? 'Mostrando: todas as classes' : `Mostrando: set do ${SET_NAMES[SET_OF[progress.classId ?? 'warrior']]}`;
         text(ctx, label + ' (toque para trocar)', x + w - 14, y + 16 + 22, { size: 8, align: 'right', outline: false, color: '#9cc4ff' });
@@ -802,7 +812,9 @@ export class Ui {
     if (selected) glow(ctx, x + s / 2, y + s / 2, s * 0.9, '#ffb840', 0.45);
     this.ui(ctx, e ? `ui_rar_${r}` : 'ui_slot_empty', x, y, s, s);
     if ((e?.rarity ?? 0) >= 7) { ctx.strokeStyle = RARITY_COLORS[7]; ctx.lineWidth = 1.5; ctx.strokeRect(x + 2, y + 2, s - 4, s - 4); }
-    if (e) this.icon(ctx, e.icon ?? 'icon_' + id, x + s / 2, y + s / 2, s * 0.72);
+    const other = !!e && !usableBy(e, this.game.progress.classId);
+    if (e) this.icon(ctx, e.icon ?? 'icon_' + id, x + s / 2, y + s / 2, s * 0.72, other ? 0.35 : 1);
+    if (other) { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x + 2, y + 2, s - 4, s - 4); }
     if (selected) { ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 2; ctx.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1); }
   }
 
@@ -1014,6 +1026,7 @@ export class Ui {
   private compare(id: string): number {
     const { progress } = this.game;
     const e = getItem(id);
+    if (!usableBy(e, progress.classId)) return 0;
     const cur = progress.equipped[e.slot];
     if (!cur) return 1;
     const a = gearScore(e, upgradeMul(progress, id)), b = gearScore(getItem(cur), upgradeMul(progress, cur));
@@ -1077,11 +1090,13 @@ export class Ui {
     const bw = w - 16, bx = x + 8;
     const equipped = progress.equipped[e.slot] === id;
     const b1 = top + h - 64;
-    this.ui(ctx, equipped ? 'ui_btn_unequip' : 'ui_btn_equip', bx, b1, bw, 28);
+    const other = !usableBy(e, progress.classId);
+    this.ui(ctx, equipped ? 'ui_btn_unequip' : 'ui_btn_equip', bx, b1, bw, 28, other ? 0.4 : 1);
+    if (other) text(ctx, `Arma de outra classe`, x + w / 2, b1 - 7, { size: 7, align: 'center', outline: false, color: '#ff9a7a' });
     this.regions.push({ x: bx, y: b1, w: bw, h: 28, fn: () => { if (equipped) this.game.unequip(e.slot); else this.game.equip(id); } });
     const b2 = top + h - 32;
     const v = this.game.sellValue(id);
-    const canSell = !equipped && id !== 'training_sword';
+    const canSell = !equipped && !STARTER_WEAPONS.has(id);
     this.ui(ctx, 'ui_btn_sell', bx, b2, bw * 0.58, 26, canSell ? 1 : 0.4);
     text(ctx, v.gems ? `${v.gems} 💎` : `${v.gold} G`, bx + bw, b2 + 13, { size: 8, align: 'right', outline: false, color: canSell ? '#ffd36b' : '#776' });
     this.regions.push({ x: bx, y: b2, w: bw * 0.58, h: 26, fn: () => { this.game.sell(id); if (!progress.owned.includes(id)) m.sel = null; } });
@@ -1494,7 +1509,7 @@ export class Ui {
       ctx.strokeRect(cx, cy, cw, ch);
       if (spritesReady()) {
         // prévia: o corpo da classe com a arma inicial
-        const weapon = `wp_${(PREFERRED[c.id] ?? ['sword'])[0]}_0`;
+        const weapon = STARTER_WEAPON[c.id] ?? 'training_sword';
         const preview = { ...this.game.progress, classId: c.id, equipped: { weapon }, upgrades: {} };
         drawDollIdle(ctx, preview, cx + cw / 2, cy + 98, 1, sel ? 1.5 : 1.35, t);
       }
