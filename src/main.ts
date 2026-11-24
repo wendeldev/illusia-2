@@ -4,6 +4,7 @@ import { loadSprites } from './engine/sprites';
 import { setupCanvas, worldView } from './engine/view';
 import type { Backdrop3D } from './engine/backdrop3d';
 import { setBackdrop3D } from './game/art/scenery';
+import { doll3d } from './game/art/layers';
 import { Game } from './game/game';
 
 validateContent();
@@ -24,8 +25,11 @@ let backdrop: Backdrop3D | null = null;
 const view = setupCanvas(canvas, use3d);
 if (use3d) {
   // o Three.js só é baixado no modo 3D
-  import('./engine/backdrop3d').then(({ Backdrop3D }) => {
+  import('./engine/backdrop3d').then(({ Backdrop3D, HeroPortrait }) => {
     backdrop = new Backdrop3D(bgCanvas);
+    // telas (inventário, classes, eventos): o mesmo boneco 3D
+    const portrait = new HeroPortrait();
+    doll3d.draw = (ctx, cls, eq, x, y, facing, k, time) => portrait.draw(ctx, cls, eq, x, y, facing, k, time);
     bgCanvas.style.display = 'block';
     setBackdrop3D(true);
   }).catch((err) => console.error('Modo 3D indisponível (sem WebGL?)', err));

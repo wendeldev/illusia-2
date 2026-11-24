@@ -9,6 +9,8 @@ import type { EnemyDef, HumanLook, NpcDef, PortalDef, SkillDef, StageDef } from 
 import { drawHuman, OUTLINE } from './art/human';
 import { drawMonster } from './art/monsters';
 import { glow } from './art/scene3d';
+import type { HeroAnim } from '../engine/hero3d';
+import type { HeroState } from '../engine/backdrop3d';
 import { dollLook, drawDoll, rigFps, rigFrames, rigPose, type DollPose, type RigAnim } from './art/layers';
 import { drawTerrain } from './art/ground';
 import { drawSprite, drawSpriteH, frameCount, hasSprite, spriteHeight, spritesReady } from '../engine/sprites';
@@ -334,7 +336,9 @@ export class World {
   private shakeX = 0;
   private shakeY = 0;
   /** modo 3D: camada onde personagens, monstros, NPCs e objetos são desenhados (vira uma placa na cena 3D) */
-  layer3d: { beginActors(vw: number, vh: number): CanvasRenderingContext2D } | null = null;
+  /** testes: força a pose do boneco 3D */
+  heroDebug: { anim: string; t: number } | null = null;
+  layer3d: { beginActors(vw: number, vh: number): CanvasRenderingContext2D; setHero?(h: HeroState): void } | null = null;
   private hurtFlash = 0;
   /** tempo de jogo nesta fase (estrela de rapidez) */
   elapsed = 0;
@@ -1833,6 +1837,14 @@ export class World {
     } else if (p.moving) { anim = p.dash ? 'run' : 'walk'; i = p.walk; }
     else if (p.landT > 0) { anim = 'land'; i = (1 - p.landT / 0.2) * 4; }
     const pose: DollPose = { ...rigPose(L, anim, i), charge };
+    // progresso para o boneco 3D (0..1 nos golpes, dano, morte e pouso; passos ao andar)
+    const prog = anim === 'death' ? Math.min(1, p.deadAnim * 1.2)
+      : p.castAnim && anim === 'atk3' ? p.castT / p.castDur
+      : p.anim && anim.startsWith('atk') ? p.animT / p.animDur
+      : anim === 'hurt' ? 1 - p.hitStun / HURT_STUN
+      : anim === 'land' ? 1 - p.landT / 0.2
+      : anim === 'walk' || anim === 'run' ? p.walk : this.time;
+    const hero3dT = prog;
     // sombra na superfície embaixo (mesmo pulando)
     const below = this.terrain.surfacesAt(p.x).find((y) => y >= p.y - 1) ?? p.y;
     const lift = below - p.y;
@@ -1853,7 +1865,7 @@ export class World {
     const face = p.climbing ? (Math.floor(p.walk * 0.6) % 2 ? 1 : -1) : p.facing;
     if (p.empowerT > 0) {
       // sombras repetindo o movimento atrás do personagem
-      for (let k = 1; k <= 2; k++) drawDoll(ctx, L, p.x - p.facing * k * 14, p.y + 1, face, 1, { ...pose, alpha: 0.3 / k, flash: true }, this.time);
+      if (!this.layer3d?.setHero) for (let k = 1; k <= 2; k++) drawDoll(ctx, L, p.x - p.facing * k * 14, p.y + 1, face, 1, { ...pose, alpha: 0.3 / k, flash: true }, this.time);
       glow(ctx, p.x, p.y - 22, 40, '#a06bff', 0.3);
     }
     // rastro da arma no golpe
@@ -1868,6 +1880,14 @@ export class World {
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
+    }
+    // modo 3D: o boneco 3D (mesmo tamanho) entra no lugar do desenho 2D
+    if (this.layer3d?.setHero) {
+      this.layer3d.setHero({
+        x: p.x, y: p.y + 1, facing: face, anim: (this.heroDebug?.anim ?? anim) as HeroAnim, t: this.heroDebug?.t ?? hero3dT, time: this.time, flash: p.flash > 0, charge,
+        cls: this.progress.classId ?? 'warrior', equipped: this.progress.equipped,
+      });
+      return;
     }
     drawDoll(ctx, L, p.x, p.y + 1, face, 1, { ...pose, flash: p.flash > 0 }, this.time);
   }

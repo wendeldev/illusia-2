@@ -275,7 +275,11 @@ export function rigPose(L: DollLook, anim: RigAnim, i: number): DollPose {
 }
 
 /** Personagem parado com tudo o que está equipado (telas de equipamento e de eventos). */
+/** Modo 3D: desenha o retrato do boneco 3D no lugar do boneco 2D nas telas (definido por main.ts). */
+export const doll3d: { draw: ((ctx: CanvasRenderingContext2D, cls: string, eq: Progress['equipped'], x: number, y: number, facing: number, k: number, time: number) => void) | null } = { draw: null };
+
 export function drawDollIdle(ctx: CanvasRenderingContext2D, p: Progress, x: number, y: number, facing: number, k: number, time: number): void {
+  if (doll3d.draw) { doll3d.draw(ctx, p.classId ?? 'warrior', p.equipped, x, y, facing, k, time); return; }
   const L = dollLook(p);
   drawDoll(ctx, L, x, y, facing, k, rigPose(L, 'idle', time * rigFps('idle')), time);
 }

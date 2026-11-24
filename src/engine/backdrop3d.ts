@@ -13,6 +13,9 @@ import type { BackdropSpec } from '../game/art/scenery';
 import { PX_TILES, TILE_W } from '../game/art/ground';
 import type { SceneryTheme, TerrainSeg } from '../types';
 import { spriteSource } from './sprites';
+import { Hero3D, type HeroPose } from './hero3d';
+export { HeroPortrait } from './hero3d';
+import type { Slot } from '../types';
 import { VIEW_H, VIEW_W } from './view';
 
 /** Distância da câmera ao plano do jogo (z = 0), em px lógicos. Com ela, o plano z = 0 coincide com a tela. */
@@ -22,6 +25,9 @@ const DIST = (360 / 2) / Math.tan((FOV / 2) * Math.PI / 180);
 const depthOf = (p: number) => -DIST * (1 / p - 1);
 const CAM_REST = 160;
 const MAX_LIGHTS = 3;
+
+/** Jogador em 3D: posição dos pés no mundo, pose e o que veste. */
+export interface HeroState extends HeroPose { x: number; y: number; cls: string; equipped: Partial<Record<Slot, string>> }
 
 export interface BackdropLight { x: number; y: number; color: string; power: number }
 
@@ -86,6 +92,12 @@ export class Backdrop3D {
   private rings: THREE.Mesh[] = [];
   private halos: THREE.Sprite[] = [];
   private tmpColor = new THREE.Color();
+  /** jogador em 3D: cena própria (luz de desenho só nele), desenhada por cima da cena principal */
+  private heroScene = new THREE.Scene();
+  private hero = new Hero3D();
+  private heroState: HeroState | null = null;
+  private heroHemi = new THREE.HemisphereLight(0xffffff, 0x5a4a66, 1.1);
+  private heroSun = new THREE.DirectionalLight(0xffffff, 1.7);
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
@@ -108,6 +120,7 @@ export class Backdrop3D {
       this.scene.add(l);
     }
     this.scene.add(this.terrain);
+    this.heroScene.add(this.hero.root, this.heroHemi, this.heroSun, this.heroSun.target);
     this.actorMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshLambertMaterial({ transparent: true, depthTest: false, depthWrite: false }));
     this.actorMesh.renderOrder = 20;
     this.actorMesh.visible = false;
@@ -421,11 +434,17 @@ export class Backdrop3D {
       this.actorTex = null;
     }
     this.actorView = { w: vw, h: vh, r };
+    this.heroState = null;
     const g = this.actorCtx;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, W, H);
     g.setTransform(r, 0, 0, r, 0, 0);
     return g;
+  }
+
+  /** Jogador deste quadro em 3D (o jogo chama ao desenhar o jogador, no lugar do boneco 2D). */
+  setHero(h: HeroState): void {
+    this.heroState = h;
   }
 
   // ───────────────────────── efeitos ─────────────────────────
@@ -538,6 +557,21 @@ export class Backdrop3D {
       this.actorMesh.position.set(st.camX + av.w / 2, -(st.camY + av.h / 2), 0);
     }
     this.renderer.render(this.scene, this.camera);
+    const h = this.heroState;
+    if (h) {
+      this.hero.setLook(h.cls, h.equipped);
+      this.hero.pose(h);
+      this.hero.root.position.set(h.x, -h.y, -6);
+      // luz do personagem: de cima, um pouco da frente e do lado; tinge com o clima da fase
+      this.heroSun.position.set(h.x - 60, -h.y + 140, 120);
+      this.heroSun.target.position.set(h.x, -h.y + 24, 0);
+      this.heroHemi.color.copy(this.moodTint);
+      this.heroSun.color.copy(this.moodTint);
+      this.renderer.autoClear = false;
+      this.renderer.clearDepth();
+      this.renderer.render(this.heroScene, this.camera);
+      this.renderer.autoClear = true;
+    }
   }
 }
 
