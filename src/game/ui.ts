@@ -1206,12 +1206,10 @@ export class Ui {
     // prévia do personagem com o set (camadas)
     const preview: Progress = { ...progress, equipped: { ...progress.equipped }, upgrades: {} };
     for (const id of ids) preview.equipped[getItem(id).slot] = id;
-    const px = rx + 190, pyy = ry + 124;
+    // (à direita dos ícones, sem cobrir nada; sempre o personagem montado com as peças, nunca arte pronta)
+    const px = rx + ids.length * 38 + 60, pyy = ry + 112;
     glow(ctx, px, pyy - 40, 50, RARITY_COLORS[r], 0.25);
-    drawDollIdle(ctx, preview, px, pyy, 1, 1.5, t);
-    const mont = ({ 4: 'legendary', 6: 'divine', 7: 'celestial' } as Record<number, string>)[r];
-    const mname = [`mont_${cls}_${mont}`].find(hasSprite);
-    if (mname) { this.icon(ctx, mname, rx + 56, ry + 98, 84); text(ctx, 'arte do set', rx + 56, ry + 144, { size: 7, align: 'center', outline: false, color: '#aab4cc', bold: false }); }
+    drawDollIdle(ctx, preview, px, pyy, 1, 1.4, t);
     // entrar
     const ticket = TICKET_OF[b.tier];
     const have = progress.bag[ticket] ?? 0;

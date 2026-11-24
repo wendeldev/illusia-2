@@ -20,34 +20,32 @@ const ANAT = PD as unknown as Record<string, Anatomy[]>;
 
 /** Altura do personagem no jogo (px lógicos). */
 export const DOLL_H = 56;
-/** Até onde o capacete desce na cabeça (fração da altura da cabeça, cabelo incluído). */
-/**
- * Halo (auréola) no espaço da cabeça: flutua logo acima do topo da cabeça de cada quadro, centrado nela.
- * Largura total do desenho em relação à largura da cabeça (o anel simples é estreito; com asas abre mais).
- * Mesma regra de tools/build_layered.py.
- */
-const HALO_W: Record<string, number> = { comum: 0.72, incomum: 0.95, raro: 1.05, epico: 1.05, lendario: 1.05, mitico: 1.05, divino: 1.12, celestial: 1.12 };
 const HALO_FPS = 5;
-/** Altura do centro do anel acima do topo do cabelo (fração da largura do halo). */
-const HALO_LIFT = 0.2;
-/** Elevação extra por classe (cabelo volumoso da Maga e do Assassino). */
-const HALO_LIFT_CLS: Record<string, number> = { mage: 0.16, assassin: 0.16 };
+/** Caixa de todos os halos (px da tela) e o espaço entre o halo e o topo do cabelo. */
+const HALO_BOX = { w: 34, h: 24, gap: -0.5 };
+/** Tamanhos padrão na tela (px), iguais para todas as classes e raridades. */
+const SIZE = {
+  /** comprimento da arma (diagonal do desenho): espada, machado, lança e cajado; adaga */
+  weapon: 42, dagger: 30,
+  /** asas traseiras e frontais (caixa) */
+  wingsW: 48, wingsH: 26, frontW: 30, frontH: 11,
+  /** aura no chão */
+  auraW: 52, auraH: 20,
+};
 
 /** Caixa do halo no quadro do corpo (px do quadro) e o quadro de animação do halo.
- * O anel fica centrado no rosto e logo acima do cabelo, encostando nele (igual nas 3 classes); cada
- * quadro do halo usa a própria proporção (os desenhos têm alturas diferentes). */
-export function haloBox(A: { head: number[]; oval?: number[] }, name: string, time: number, cls = ''): [number, number, number, number, number] {
-  const rar = name.replace('halo_', '');
+ * Todos os halos cabem na mesma caixa (HALO_BOX, px da tela) e ficam logo acima do topo do cabelo, centrados
+ * no rosto — iguais nas 3 classes e nas 8 raridades. `g` = px do quadro por px da tela. */
+export function haloBox(A: { head: number[]; oval?: number[] }, name: string, time: number, g = 1): [number, number, number, number, number] {
   const hf = Math.floor(time * HALO_FPS) % Math.max(1, frameCount(name));
   const f = frameRect(name, hf);
   const [hx0, hy0, hx1] = A.head;
-  const w = (hx1 - hx0) * (HALO_W[rar] ?? 1.05);
-  const h = f ? (w * f[1]) / f[0] : w * 0.6;
-  // centrado no rosto (o cabelo comprido da Maga e o volume do Assassino deslocam a caixa da cabeça)
+  const bw = HALO_BOX.w * g, bh = HALO_BOX.h * g;
+  const k = f ? Math.min(bw / f[0], bh / f[1]) : 1;
+  const w = f ? f[0] * k : bw, h = f ? f[1] * k : bh * 0.5;
   const cx = A.oval ? A.oval[0] : (hx0 + hx1) / 2;
-  // centro do desenho (o anel) um pouco acima do topo do cabelo, balançando de leve
-  const cy = hy0 - w * (HALO_LIFT + (HALO_LIFT_CLS[cls] ?? 0)) + Math.sin(time * 2.4) * 0.8;
-  return [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2, hf];
+  const bottom = hy0 - HALO_BOX.gap * g + Math.sin(time * 2.4) * 0.8;
+  return [cx - w / 2, bottom - h, cx + w / 2, bottom, hf];
 }
 
 export interface DollLook {
@@ -140,6 +138,8 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   const [hl, hr] = A.hands;
   // asas e aura com tamanho fixo (a largura entre as mãos muda a cada quadro da passada)
   const span0 = frames[0].hands[1] - frames[0].hands[0];
+  // px do quadro por px da tela (antes do zoom k): tamanhos padrão iguais para todas as classes
+  const g = frames[0].H / DOLL_H;
   const [hx0, hy0, hx1] = A.hips;
   const cx = X((hx0 + hx1) / 2);
   const neck = Y(A.neck);
@@ -166,7 +166,7 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     ctx.globalCompositeOperation = 'lighter';
     const a = ctx.globalAlpha;
     ctx.globalAlpha = a * (0.7 + Math.sin(time * 5) * 0.15);
-    drawFit(ctx, L.aura, cx - span0 * 1.1 * pulse, Y(fy1) - span0 * 0.75 * pulse, cx + span0 * 1.1 * pulse, Y(fy1) + 3, 'contain', 'bottom');
+    drawFit(ctx, L.aura, cx - SIZE.auraW / 2 * g * pulse, Y(fy1) - SIZE.auraH * g * pulse, cx + SIZE.auraW / 2 * g * pulse, Y(fy1) + 3, 'contain', 'bottom');
     ctx.globalAlpha = a;
     ctx.globalCompositeOperation = prev;
   }
@@ -176,10 +176,10 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   if (L.wings) {
     const flap = 0.8 + Math.abs(Math.sin(time * 3)) * 0.25;
     const wc = cx - 3;
-    if (L.wingsGlow) glow(ctx, wc, neck + 2, span0 * 1.2, '#ffffff', 0.18);
+    if (L.wingsGlow) glow(ctx, wc, neck + 2, SIZE.wingsW * 0.6 * g, '#ffffff', 0.18);
     ctx.save();
     ctx.translate(wc, 0); ctx.scale(flap, 1); ctx.translate(-wc, 0);
-    drawFit(ctx, L.wings, wc - span0 * 1.1, neck - 12, wc + span0 * 1.1, neck + 16, 'contain', 'mid', 0, fl);
+    drawFit(ctx, L.wings, wc - SIZE.wingsW / 2 * g, neck + 2 - SIZE.wingsH / 2 * g, wc + SIZE.wingsW / 2 * g, neck + 2 + SIZE.wingsH / 2 * g, 'contain', 'mid', 0, fl);
     ctx.restore();
   }
   if (L.cape) {
@@ -197,17 +197,24 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   if (L.armor) drawFit(ctx, L.armor, cx - span0 * 0.5, neck - 2, cx + span0 * 0.5, Y(hy0) + 3, 'fill', 'top', 0, fl);
   if (L.arms) drawFit(ctx, L.arms, X(hl) - 1, handY - 6, X(hr) + 1, handY + 2, 'fill', 'top', 0, fl);
   // halo flutuando acima da cabeça (brilho por cima, sem esconder o cabelo)
-  if (L.helmet) {
-    const [h0, h1, h2, h3, hf] = haloBox(A, L.helmet, time, L.cls);
+  // (na queda da morte o halo some aos poucos, em vez de girar com o corpo)
+  const haloA = Math.max(0, Math.cos(pose.rot ?? 0) * 1.6 - 0.6);
+  if (L.helmet && haloA > 0) {
+    const [h0, h1, h2, h3, hf] = haloBox(A, L.helmet, time, g);
     const bx = [X(h0), Y(h1), X(h2), Y(h3)];
+    const a0 = ctx.globalAlpha;
+    ctx.globalAlpha = a0 * haloA;
     glow(ctx, (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2, (bx[2] - bx[0]) * 0.55, L.haloColor, 0.22);
     drawFit(ctx, L.helmet, bx[0], bx[1], bx[2], bx[3], 'fill', 'top', hf, fl);
+    ctx.globalAlpha = a0;
   }
   // arma na mão da frente (pivô no cabo, embaixo à esquerda do desenho)
   const wr = frameRect(L.weapon);
   if (wr) {
-    const wh = A.H * (L.weaponKind === 'dagger' ? 0.38 : 0.5) * (frames[0].H / A.H);
-    const ww = (wr[0] / wr[1]) * wh;
+    // todas as armas com o mesmo comprimento na tela (diagonal do desenho, do cabo à ponta)
+    const len = (L.weaponKind === 'dagger' ? SIZE.dagger : SIZE.weapon) * g;
+    const sc = len / Math.hypot(wr[0], wr[1]);
+    const ww = wr[0] * sc, wh = wr[1] * sc;
     ctx.save();
     ctx.translate(X(hr) - 2 + (pose.thrust ?? 0), handY + 1);
     ctx.rotate(pose.weapon ?? 0);
@@ -221,7 +228,7 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     ctx.globalAlpha = a * 0.85;
     ctx.save();
     ctx.translate(cx, 0); ctx.scale(flap, 1); ctx.translate(-cx, 0);
-    drawFit(ctx, L.wingsFront, cx - 4 - span0 * 0.62, neck - 2, cx - 4 + span0 * 0.62, neck + 9, 'contain', 'mid', 0, fl);
+    drawFit(ctx, L.wingsFront, cx - 4 - SIZE.frontW / 2 * g, neck + 3.5 - SIZE.frontH / 2 * g, cx - 4 + SIZE.frontW / 2 * g, neck + 3.5 + SIZE.frontH / 2 * g, 'contain', 'mid', 0, fl);
     ctx.restore();
     ctx.globalAlpha = a;
   }

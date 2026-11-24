@@ -107,7 +107,10 @@ def paste(canvas, img, x, y):
     canvas.alpha_composite(layer)
 
 
-WEAPON_H = {'dagger': 0.38}
+# comprimento da arma na tela (diagonal do desenho, px) e altura do boneco no jogo — iguais ao jogo (layers.ts)
+WEAPON_LEN = {'dagger': 30}
+DOLL_H = 56
+HALO_BOX = (34, 24, -0.5)   # caixa do halo (px da tela) e espaço até o topo do cabelo
 
 
 class Body:
@@ -157,14 +160,15 @@ class Body:
         if layer in ('body', 'hair', 'face'):
             paste(cv, self.parts[fi][('body', 'hair', 'face').index(layer)], ox, oy)
         elif layer == 'halo':
-            # anel centrado no rosto, logo acima do cabelo (mesma regra do jogo: HALO_LIFT)
+            # anel centrado no rosto, logo acima do cabelo (mesma regra do jogo: HALO_BOX)
             name, frames = piece
             img0 = frames[fr['_i'] % len(frames)]
-            hx0, hy0, hx1, _ = self.anat[fi]['head']
-            w = (hx1 - hx0) * HALO_W.get(name, 1.05)
-            h = w * img0.size[1] / img0.size[0]
+            hy0 = self.anat[fi]['head'][1]
+            g = self.H0 / DOLL_H
+            k = min(HALO_BOX[0] * g / img0.size[0], HALO_BOX[1] * g / img0.size[1])
+            w, h = img0.size[0] * k, img0.size[1] * k
             cx = ox + self.ovals[fi][0]
-            cy = oy + hy0 - w * (HALO_LIFT + HALO_LIFT_CLS.get(self.cls, 0)) + math.sin(fr['_i'] * 1.4) * 0.8
+            cy = oy + hy0 - HALO_BOX[2] * g + math.sin(fr['_i'] * 1.4) * 0.8 - h / 2
             img = img0.resize((max(1, round(w)), max(1, round(h))), NEAREST)
             paste(cv, img, round(cx - w / 2), round(cy - h / 2))
         else:
@@ -175,8 +179,9 @@ class Body:
 
     def weapon_frame(self, kind, wimg, fr, wf):
         hx, hy = self.boxes(fr['f'])['hand']
-        wh = self.H0 * WEAPON_H.get(kind, 0.5)
-        ww = wimg.size[0] / wimg.size[1] * wh
+        g = self.H0 / DOLL_H
+        sc = WEAPON_LEN.get(kind, 42) * g / math.hypot(*wimg.size)
+        ww, wh = wimg.size[0] * sc, wimg.size[1] * sc
         img = wimg.resize((max(1, round(ww)), max(1, round(wh))), NEAREST)
         # pivô no cabo (embaixo à esquerda do desenho)
         local = mul(tr(hx + wf['t'], hy), mul(ro(wf['w']), tr(-img.size[0] * 0.14, -img.size[1] * 0.88)))
@@ -184,10 +189,6 @@ class Body:
 
 
 ORDER = ['cape', 'body', 'face', 'hair', 'pants', 'boots', 'armor', 'gloves', 'weapon', 'halo']
-# largura do halo em relação à largura da cabeça (o anel simples é estreito; com asas abre mais) — igual ao jogo
-HALO_LIFT = 0.2
-HALO_LIFT_CLS = {'mage': 0.16, 'assassin': 0.16}
-HALO_W = {'comum': 0.72, 'incomum': 0.95, 'raro': 1.05, 'epico': 1.05, 'lendario': 1.05, 'mitico': 1.05, 'divino': 1.12, 'celestial': 1.12}
 
 
 def sheet(frames_by_anim):
