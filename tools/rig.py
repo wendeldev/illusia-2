@@ -43,7 +43,26 @@ def new_body_rig():
     }
 
 
+# corpos com as fileiras de combate desenhadas (quadros 32-55: ataque, dano, morte)
+WITH_COMBAT = {'warrior'}
+
+
+def combat_rig():
+    fr = lambda f: {'f': f, 'dx': 0, 'dy': 0, 'sy': 1.0, 'rot': 0}
+    r = new_body_rig()
+    r.update({
+        'atk1': [fr(f) for f in (33, 34, 35, 36, 37, 38)],
+        'atk2': [fr(f) for f in (34, 35, 36, 36, 37, 38)],
+        'atk3': [fr(32 + i) for i in range(8)],
+        'hurt': [fr(f) for f in (41, 42, 43, 44)],
+        'death': [fr(48 + i) for i in range(8)],
+    })
+    return r
+
+
 def body_rig(cls):
+    if cls in WITH_COMBAT:
+        return combat_rig()
     if cls in NEW_BODY:
         return new_body_rig()
     S = STRIDE[cls]

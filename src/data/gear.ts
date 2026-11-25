@@ -26,6 +26,7 @@ export function weaponKindOf(e: { slot: Slot; weaponKind?: string }): string | u
 }
 /** A classe pode usar o item? (só as armas têm dono: cada classe usa a sua) */
 export function usableBy(e: { slot: Slot; weaponKind?: string }, classId: string | undefined): boolean {
+  if (e.slot === 'costume') return (classId ?? 'warrior') === 'warrior';
   return e.slot !== 'weapon' || weaponKindOf(e) === CLASS_WEAPON[classId ?? 'warrior'];
 }
 /** Set de armadura de cada classe. */
@@ -131,6 +132,22 @@ pass({ id: 'au_skull', name: 'Aura de Caveira', slot: 'aura', rarity: 4, categor
 pass({ id: 'au_horns', name: 'Aura de Chifres', slot: 'aura', rarity: 5, category: 'au', atk: round(2 * MULT[5]), crit: 0.02, icon: 'gau_horns', description: 'Chifres de energia ao seu redor (passe de batalha).' });
 pass({ id: 'acc_amulet_pass', name: 'Amuleto Guardião', slot: 'accessory', rarity: 2, def: 12, icon: 'ps_amulet', description: 'Amuleto raro: +12 de defesa (passe de batalha).' });
 pass({ id: 'acc_ring_pass', name: 'Anel Rubro', slot: 'accessory', rarity: 2, atk: 10, icon: 'ps_ring', description: 'Anel raro: +10 de ataque (passe de batalha).' });
+
+// ── trajes do Guerreiro: roupa inteira desenhada (corpo + roupa), cai dos chefes ──
+/** id do traje → [nome, raridade] */
+export const COSTUMES: Record<string, [string, number]> = {
+  palha: ['Traje do Camponês', 1], ovelha: ['Traje de Ovelha', 1], chifres: ['Armadura de Chifres', 2],
+  pistoleiro: ['Traje do Pistoleiro', 3], chama: ['Traje da Guarda da Chama', 3], principe: ['Traje do Príncipe', 4],
+  nuvem: ['Armadura Dourada das Nuvens', 4],
+};
+for (const [t, [name, r]] of Object.entries(COSTUMES)) {
+  const m = MULT[r];
+  out.push({
+    id: `cs_${t}`, name, slot: 'costume', rarity: r, setClass: 'warrior', category: 'costume', price: 0, dropOnly: true,
+    def: round(2 * m), hp: Math.round(25 * m), icon: `pd_warrior_traje_${t}`,
+    description: `Traje do Guerreiro (cai dos chefes). Veste o personagem inteiro.`,
+  });
+}
 
 export const GEAR: EquipmentDef[] = out;
 

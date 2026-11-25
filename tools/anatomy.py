@@ -25,6 +25,11 @@ def anatomy(im):
         y0_, y1_ = best[0], best[-1]
         pts = [(x, y) for x, y in zip(sx, sy) if y0_ <= y <= y1_]
         sx, sy = [p[0] for p in pts], [p[1] for p in pts]
+    if len(sx) < 5:
+        # calça sem cor marcada (Guerreiro novo, calça escura): faixa de 55% a 70% da altura
+        ys_ = [y for y in range(int(H * 0.55), int(H * 0.7)) for x in range(W) if op(x, y)]
+        xs_ = [x for y in range(int(H * 0.55), int(H * 0.7)) for x in range(W) if op(x, y)]
+        sx, sy = (xs_, ys_) if xs_ else ([0, W - 1], [int(H * 0.55), int(H * 0.7)])
     hips = (min(sx), min(sy), max(sx), max(sy))
     # pés: últimas linhas
     fy0 = H - max(3, H // 12)

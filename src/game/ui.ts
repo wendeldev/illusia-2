@@ -942,7 +942,7 @@ export class Ui {
     text(ctx, `Nv. ${progress.level}  ${cls.name}`, x + pw / 2, top + 14, { size: 10, align: 'center', outline: false, color: '#ffd36b' });
     const S = 34, step = 37;
     const LEFT: Slot[] = ['helmet', 'armor', 'gloves', 'pants', 'boots', 'weapon'];
-    const RIGHT: Slot[] = ['cape', 'aura', 'accessory'];
+    const RIGHT: Slot[] = ['costume', 'cape', 'aura', 'accessory'];
     const slotAt = (slot: Slot, sx: number, sy: number) => {
       const id = progress.equipped[slot];
       this.itemCell(ctx, sx, sy, S, id, !!id && m.sel === id);
@@ -981,7 +981,7 @@ export class Ui {
     const FILTERS: [string, (e: EquipmentDef) => boolean][] = [
       ['ui_flt_all', () => true],
       ['ui_flt_weapon', (e) => e.slot === 'weapon'],
-      ['ui_flt_armor', (e) => ['armor', 'gloves', 'pants', 'boots', 'cape'].includes(e.slot)],
+      ['ui_flt_armor', (e) => ['armor', 'gloves', 'pants', 'boots', 'cape', 'costume'].includes(e.slot)],
       ['ui_flt_helmet', (e) => e.slot === 'helmet'],
       ['ui_flt_ring', (e) => e.slot === 'accessory'],
       ['ui_flt_gem', (e) => e.slot === 'aura'],
@@ -1040,7 +1040,7 @@ export class Ui {
   /** Equipamentos do inventário: equipados primeiro, depois por raridade (ou por tipo). */
   private inventoryList(m: Extract<Modal, { kind: 'bag' }>, ok: (e: EquipmentDef) => boolean): string[] {
     const { progress } = this.game;
-    const ORDER: Slot[] = ['weapon', 'helmet', 'armor', 'gloves', 'pants', 'boots', 'cape', 'aura', 'accessory'];
+    const ORDER: Slot[] = ['weapon', 'helmet', 'armor', 'gloves', 'pants', 'boots', 'cape', 'aura', 'accessory', 'costume'];
     const eq = new Set(Object.values(progress.equipped));
     return progress.owned.filter((id) => hasItem(id) && ok(getItem(id))).sort((a, b) => {
       const ea = getItem(a), eb = getItem(b);

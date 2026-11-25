@@ -149,6 +149,15 @@ raridades): personagem 56 px de altura; espada, machado, lança e cajado 42 px d
 aura 52×20; halo cabe numa caixa de 34×24, centrado no rosto e 3 px acima do cabelo. Aura e capa só aparecem
 quando o item foi ganho e equipado (o personagem novo começa só com a espada de treino).
 
+## Guerreiro novo e trajes
+
+O Guerreiro usa o corpo de `assets-src/warrior2/` (`tools/warrior2.py`): 56 quadros desenhados — parado, andar,
+correr, pular, ataque, dano e morte (rig `combat_rig` em `tools/rig.py`). Começa sem roupa; as peças antigas do set
+continuam dando bônus mas não aparecem nele (não encaixam no corpo novo). **Trajes** (`cs_*`, espaço "Traje"): 7 roupas
+inteiras desenhadas (Camponês, Ovelha, Chifres, Pistoleiro, Guarda da Chama, Príncipe, Dourada das Nuvens). Todo chefe
+solta um traje que o jogador ainda não tem; com todos, os repetidos viram ouro (e podem ser vendidos na bolsa). Com
+traje, a coroa (halo) não aparece; a espada continua na mão.
+
 ## Fases de selva (Bosque Sussurrante)
 
 As 10 fases do Bosque Sussurrante usam `generateJungle` (`src/game/terrain.ts`): lagos rasos no chão, morros com

@@ -1,7 +1,7 @@
 // Tabelas de recompensa: drops de inimigos e chefes, conteúdo dos baús e escolha de equipamento.
 import { EQUIPMENT, getItem, QUESTS } from '../data';
 import { chestForLevel, keyForLevel } from '../data/items';
-import { STARTER_WEAPONS, usableBy } from '../data/gear';
+import { COSTUMES, STARTER_WEAPONS, usableBy } from '../data/gear';
 import type { EnemyDef, EquipmentDef } from '../types';
 import type { Progress } from './progress';
 import { upgradeMul } from './stats';
@@ -46,7 +46,7 @@ export function rollGear(level: number, bonus = 0, auraChance = 0, classId?: str
     return auras.length ? pick(auras).id : null;
   }
   const target = 5 + level * 0.9 * (1 + bonus * 0.25);
-  const pool = EQUIPMENT.filter((e) => e.slot !== 'aura' && (e.rarity ?? 0) < 7
+  const pool = EQUIPMENT.filter((e) => e.slot !== 'aura' && e.slot !== 'costume' && (e.rarity ?? 0) < 7
     && !e.passOnly && !STARTER_WEAPONS.has(e.id) && usableBy(e, classId) && gearScore(e) <= target * 1.25 && gearScore(e) >= target * 0.35);
   return pool.length ? pick(pool).id : null;
 }
@@ -90,6 +90,10 @@ export function rollEnemyDrops(def: EnemyDef, level: number, luck: number, event
     if (isElite && chance(0.05)) out.push({ kind: 'bag', id: 'tk_legend', n: 1 });
     if (chance(isFinal ? 0.6 : 0.35)) { const g = rollGear(level, isFinal ? 2 : 1, isFinal ? 0.2 : 0.08, p.classId); if (g) out.push({ kind: 'gear', id: g }); }
     if (isElite || isFinal) out.push({ kind: 'bag', id: 'gem_rainbow', n: chance(0.04) ? 1 : 0 });
+    // traje do Guerreiro: todo chefe solta um, sorteado entre os que ainda não tem (depois de ter todos, repetidos)
+    const all = Object.keys(COSTUMES).map((t) => `cs_${t}`);
+    const missing = all.filter((id) => !p.owned.includes(id));
+    out.push({ kind: 'gear', id: pick(missing.length ? missing : all) });
   }
   if (event && Math.random() < 0.07 * luck) out.push({ kind: 'bag', id: pick(EVENT_ITEMS), n: 1 });
   // itens de missão: só enquanto a missão está ativa (e na região certa)

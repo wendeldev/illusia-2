@@ -53,6 +53,8 @@ export interface DollLook {
   /** halo (auréola) no espaço da cabeça */
   helmet?: string; haloColor: string; armor?: string; arms?: string; pants?: string; cape?: string; boots?: string;
   aura?: string; auraColor: string;
+  /** traje (roupa inteira desenhada, mesmos quadros do corpo): esconde corpo, roupas e halo */
+  costume?: string;
   weapon: string; weaponKind: string; weaponColor: string; weaponRarity: number; weaponUp: number;
 }
 
@@ -102,6 +104,13 @@ function generic(p: Progress, slot: Slot, prefix: string): string | undefined {
   return hasSprite(name) ? name : undefined;
 }
 
+function costumeOf(p: Progress): string | undefined {
+  const id = p.equipped.costume;
+  if (!id || (p.classId ?? 'warrior') !== 'warrior') return undefined;
+  const ic = getItem(id).icon;
+  return ic && hasSprite(ic) ? ic : undefined;
+}
+
 export function dollLook(p: Progress): DollLook {
   const classId = p.classId ?? 'warrior';
   const cls = SET_OF[classId] ?? 'warrior';
@@ -115,6 +124,10 @@ export function dollLook(p: Progress): DollLook {
     helmet: halo(p), haloColor: RARITY_COLORS[Math.max(0, rarityOf(p, 'helmet'))], armor: piece(p, 'armor', cls, 'armor'), arms: piece(p, 'gloves', cls, 'arms'),
     pants: piece(p, 'pants', cls, 'pants'), cape: piece(p, 'cape', cls, 'cape'), boots: generic(p, 'boots', 'gb'),
     aura: generic(p, 'aura', 'gau'),
+    costume: costumeOf(p),
+    // Guerreiro novo: as peças antigas do set não encaixam no corpo novo (os bônus continuam valendo; o visual
+    // de roupa dele vem dos trajes)
+    ...(cls === 'warrior' ? { armor: undefined, arms: undefined, pants: undefined, boots: undefined, cape: undefined } : {}),
     auraColor: RARITY_COLORS[Math.max(0, rarityOf(p, 'aura'))],
     weapon, weaponKind: kind, weaponColor: RARITY_COLORS[wr], weaponRarity: wr,
     weaponUp: p.upgrades?.[wid ?? ''] ?? 0,
@@ -178,7 +191,7 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   if (pose.rot) ctx.rotate(pose.rot);
   if (pose.sy && pose.sy !== 1) ctx.scale(1, pose.sy);
   // capa (balançando)
-  if (L.cape) {
+  if (L.cape && !L.costume) {
     const sway = 1 + Math.sin(time * 4) * 0.06;
     const c0 = cx - 3;
     ctx.save();
@@ -187,15 +200,21 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     ctx.restore();
   }
   // corpo base; com capacete: cabelo cortado pela borda do capacete, rosto e pele, e o capacete por cima
+  const cr = L.costume ? frameRect(L.costume, fi) : null;
+  if (L.costume && cr) {
+    // traje: a roupa inteira desenhada no lugar do corpo (os pés no mesmo ponto)
+    drawFit(ctx, L.costume, -cr[2], -cr[3], cr[0] - cr[2], cr[1] - cr[3], 'fill', 'top', fi, fl);
+  } else {
   drawFit(ctx, L.body, -ax, -ay, fr[0] - ax, fr[1] - ay, 'fill', 'top', fi, fl);
   if (L.pants) drawFit(ctx, L.pants, X(hx0) - 3, Y(hy0) - 1, X(hx1) + 3, Y(fy0) + 1, 'fill', 'top', 0, fl);
   if (L.boots) drawFit(ctx, L.boots, X(fx0) - 1, Y(fy0) - 4, X(fx1) + 1, Y(fy1) + 1, 'fill', 'top', 0, fl);
   if (L.armor) drawFit(ctx, L.armor, cx - span0 * 0.5, neck - 2, cx + span0 * 0.5, Y(hy0) + 3, 'fill', 'top', 0, fl);
   if (L.arms) drawFit(ctx, L.arms, X(hl) - 1, handY - 6, X(hr) + 1, handY + 2, 'fill', 'top', 0, fl);
+  }
   // halo flutuando acima da cabeça (brilho por cima, sem esconder o cabelo)
   // (na queda da morte o halo some aos poucos, em vez de girar com o corpo)
   const haloA = Math.max(0, Math.cos(pose.rot ?? 0) * 1.6 - 0.6);
-  if (L.helmet && haloA > 0) {
+  if (L.helmet && haloA > 0 && !L.costume && !(L.cls === 'warrior' && fi >= 50)) {
     const [h0, h1, h2, h3, hf] = haloBox(A, L.helmet, time, g);
     const bx = [X(h0), Y(h1), X(h2), Y(h3)];
     const a0 = ctx.globalAlpha;
@@ -206,7 +225,8 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   }
   // arma na mão da frente (pivô no cabo, embaixo à esquerda do desenho)
   const wr = frameRect(L.weapon);
-  if (wr) {
+  // caído no chão no fim da morte: sem a arma em pé
+  if (wr && !(L.cls === 'warrior' && fi >= 52)) {
     // todas as armas com o mesmo comprimento na tela (diagonal do desenho, do cabo à ponta)
     const len = (L.weaponKind === 'dagger' ? SIZE.dagger : L.weaponKind === 'sword' ? SIZE.sword : SIZE.weapon) * g;
     const sc = len / Math.hypot(wr[0], wr[1]);

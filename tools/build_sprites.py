@@ -708,6 +708,11 @@ import hero_white as HWH
 BODIES = {c: f for c, f in MY.load_bodies().items() if c in ('warrior', 'assassin', 'mage')}
 # corpo base novo (32 quadros: parado, andar, correr, pular) das classes que já têm a prancha
 NEW_BODY = {c: HWH.load(c) for c in HWH.available()}
+# Guerreiro novo: corpo com 56 quadros (parado, andar, correr, pular, ataque, dano, morte) e os trajes dos chefes
+import warrior2 as W2
+NEW_BODY['warrior'] = W2.load_body()
+for _t, _fr in W2.load_trajes().items():
+    my_items[f'pd_warrior_traje_{_t}'] = (_fr, 1.0)
 for c, fr in NEW_BODY.items():
     BODIES[c] = [im for im, _, _ in fr]
 with open(os.path.join(ROOT, 'src', 'data', 'newbody.json'), 'w') as f:
