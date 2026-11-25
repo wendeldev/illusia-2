@@ -81,8 +81,6 @@ for (let r = 0; r < 8; r++) {
     // halo (auréola): ocupa o espaço da cabeça, o mesmo para todas as classes
     ['hl', 'helmet', 'Halo', 'halo', { def: round(2 * m), hp: Math.round(15 * m), mp: Math.round(5 * m) }],
     ['bt', 'boots', 'Botas', 'gb', { def: round(1 * m), hp: Math.round(12 * m) }],
-    ['wb', 'wings', 'Asas', 'gwb', { atk: round(3 * m), hp: Math.round(20 * m) }],
-    ['wf', 'wingsFront', 'Asas Frontais', 'gwf', { mp: Math.round(15 * m), crit: round(0.008 * Math.sqrt(m) * 100) / 100 }],
     ['au', 'aura', 'Aura', 'gau', { atk: round(2 * m), crit: round(0.006 * Math.sqrt(m) * 100) / 100 }],
   ];
   for (const [pre, slot, name, icon, st] of extra) {
@@ -129,8 +127,6 @@ for (const [skin, sname, r] of [['fire', 'de Fogo', 4], ['cow', 'de Vaca', 5]] a
   }
   pass({ id: `bt_${skin}`, name: `Botas ${sname}`, slot: 'boots', rarity: r, category: 'bt', def: round(1 * m), hp: Math.round(12 * m), icon: `gb_${skin}`, description: `Botas ${sname} do passe de batalha.` });
 }
-pass({ id: 'wb_bluefire', name: 'Asas de Fogo Azul', slot: 'wings', rarity: 4, category: 'wb', atk: round(3 * MULT[4]), hp: Math.round(20 * MULT[4]), icon: 'gwb_bluefire', description: 'Asas em chamas azuis (passe de batalha).' });
-pass({ id: 'wb_blackbig', name: 'Asas Pretas Grandes', slot: 'wings', rarity: 5, category: 'wb', atk: round(3 * MULT[5]), hp: Math.round(20 * MULT[5]), icon: 'gwb_blackbig', description: 'Grandes asas negras (passe de batalha).' });
 pass({ id: 'au_skull', name: 'Aura de Caveira', slot: 'aura', rarity: 4, category: 'au', atk: round(2 * MULT[4]), crit: 0.02, icon: 'gau_skull', description: 'Uma caveira de fogo arde atrás de você (passe de batalha).' });
 pass({ id: 'au_horns', name: 'Aura de Chifres', slot: 'aura', rarity: 5, category: 'au', atk: round(2 * MULT[5]), crit: 0.02, icon: 'gau_horns', description: 'Chifres de energia ao seu redor (passe de batalha).' });
 pass({ id: 'acc_amulet_pass', name: 'Amuleto Guardião', slot: 'accessory', rarity: 2, def: 12, icon: 'ps_amulet', description: 'Amuleto raro: +12 de defesa (passe de batalha).' });
@@ -148,5 +144,5 @@ export function setFor(classId: string | undefined, rarity: number): string[] {
 export const SHOP_CATEGORIES: [string, string][] = [
   ['sword', 'Espadas'], ['dagger', 'Adagas'], ['staff', 'Cajados'],
   ['hl', 'Halos'], ['armor', 'Armaduras'], ['arms', 'Braços'], ['pants', 'Calças'], ['cape', 'Capas'],
-  ['bt', 'Botas'], ['wb', 'Asas T.'], ['wf', 'Asas F.'], ['au', 'Auras'], ['classic', 'Clássicos'],
+  ['bt', 'Botas'], ['au', 'Auras'], ['classic', 'Clássicos'],
 ];

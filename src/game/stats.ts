@@ -47,10 +47,8 @@ export const SLOT_NAMES: Record<Slot, string> = {
   accessory: 'Acessório',
   gloves: 'Braços',
   boots: 'Botas',
-  wings: 'Asas traseiras',
   pants: 'Calças',
   cape: 'Capa',
-  wingsFront: 'Asas frontais',
   aura: 'Aura',
 };
 

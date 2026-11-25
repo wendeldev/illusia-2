@@ -1,7 +1,7 @@
 // Personagem em camadas ("layered sprites"), como na prancha de camadas: corpo base sem equipamento
 // e cada peça vestida por cima, no lugar certo do corpo (a anatomia de cada quadro vem de
-// tools/anatomy.py → src/data/paperdoll.json). Ordem: aura, asas traseiras, capa, corpo, calças,
-// botas, armadura, braços, capacete, arma na mão e asas frontais.
+// tools/anatomy.py → src/data/paperdoll.json). Ordem: aura, capa, corpo, calças,
+// botas, armadura, braços, halo e arma na mão.
 import { getItem } from '../../data';
 import { PREFERRED, RARITY_COLORS, RARITY_KEYS, SET_OF } from '../../data/gear';
 import PD from '../../data/paperdoll.json';
@@ -22,17 +22,13 @@ const ANAT = PD as unknown as Record<string, Anatomy[]>;
 export const DOLL_H = 56;
 const HALO_FPS = 5;
 /** Caixa de todos os halos (px da tela) e o espaço entre o halo e o topo do cabelo. */
-const HALO_BOX = { w: 34, h: 24, gap: -0.5 };
+const HALO_BOX = { w: 34, h: 24, gap: 3 };
 /** Auras em formato (passe): tamanho na tela (px) e altura do centro (fração do corpo, a partir do topo). */
 const AURA_SHAPED: Record<string, { size: number; y: number }> = { gau_skull: { size: 72, y: 0.22 }, gau_horns: { size: 58, y: 0.2 } };
-/** Asas maiores que o padrão (as "Asas Pretas Grandes" do passe). */
-const WINGS_SCALE: Record<string, number> = { gwb_blackbig: 1.3 };
 /** Tamanhos padrão na tela (px), iguais para todas as classes e raridades. */
 const SIZE = {
   /** comprimento da arma (diagonal do desenho): espada, machado, lança e cajado; adaga */
   weapon: 42, dagger: 30,
-  /** asas traseiras e frontais (caixa) */
-  wingsW: 48, wingsH: 26, frontW: 30, frontH: 11,
   /** aura no chão */
   auraW: 52, auraH: 20,
 };
@@ -56,7 +52,7 @@ export interface DollLook {
   body: string; cls: string;
   /** halo (auréola) no espaço da cabeça */
   helmet?: string; haloColor: string; armor?: string; arms?: string; pants?: string; cape?: string; boots?: string;
-  wings?: string; wingsFront?: string; aura?: string; auraColor: string; wingsGlow: boolean;
+  aura?: string; auraColor: string;
   weapon: string; weaponKind: string; weaponColor: string; weaponRarity: number; weaponUp: number;
 }
 
@@ -102,7 +98,6 @@ function generic(p: Progress, slot: Slot, prefix: string): string | undefined {
   const e = getItem(id);
   const ic = e.icon ?? '';
   if (ic.startsWith(prefix + '_') && hasSprite(ic)) return ic;
-  if (slot === 'wings' && hasSprite(ic)) return ic; // asas antigas: o próprio desenho
   const name = `${prefix}_${RARITY_KEYS[Math.min(7, e.rarity ?? 0)]}`;
   return hasSprite(name) ? name : undefined;
 }
@@ -119,9 +114,8 @@ export function dollLook(p: Progress): DollLook {
     body: `pd_${cls}`, cls,
     helmet: halo(p), haloColor: RARITY_COLORS[Math.max(0, rarityOf(p, 'helmet'))], armor: piece(p, 'armor', cls, 'armor'), arms: piece(p, 'gloves', cls, 'arms'),
     pants: piece(p, 'pants', cls, 'pants'), cape: piece(p, 'cape', cls, 'cape'), boots: generic(p, 'boots', 'gb'),
-    wings: generic(p, 'wings', 'gwb'), wingsFront: generic(p, 'wingsFront', 'gwf'), aura: generic(p, 'aura', 'gau'),
+    aura: generic(p, 'aura', 'gau'),
     auraColor: RARITY_COLORS[Math.max(0, rarityOf(p, 'aura'))],
-    wingsGlow: p.equipped.wings === 'wings_angel' || p.equipped.wings === 'wings_white' || rarityOf(p, 'wings') >= 5,
     weapon, weaponKind: kind, weaponColor: RARITY_COLORS[wr], weaponRarity: wr,
     weaponUp: p.upgrades?.[wid ?? ''] ?? 0,
   };
@@ -183,17 +177,7 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   }
   if (pose.rot) ctx.rotate(pose.rot);
   if (pose.sy && pose.sy !== 1) ctx.scale(1, pose.sy);
-  // asas traseiras (batendo) e capa (balançando)
-  if (L.wings) {
-    const flap = 0.8 + Math.abs(Math.sin(time * 3)) * 0.25;
-    const wc = cx - 3;
-    if (L.wingsGlow) glow(ctx, wc, neck + 2, SIZE.wingsW * 0.6 * g, '#ffffff', 0.18);
-    ctx.save();
-    ctx.translate(wc, 0); ctx.scale(flap, 1); ctx.translate(-wc, 0);
-    const wk = WINGS_SCALE[L.wings] ?? 1;
-    drawFit(ctx, L.wings, wc - SIZE.wingsW / 2 * g * wk, neck + 2 - SIZE.wingsH / 2 * g * wk, wc + SIZE.wingsW / 2 * g * wk, neck + 2 + SIZE.wingsH / 2 * g * wk, 'contain', 'mid', 0, fl);
-    ctx.restore();
-  }
+  // capa (balançando)
   if (L.cape) {
     const sway = 1 + Math.sin(time * 4) * 0.06;
     const c0 = cx - 3;
@@ -233,16 +217,6 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     drawFit(ctx, L.weapon, -ww * 0.14, -wh * 0.88, ww * 0.86, wh * 0.12, 'fill', 'top', 0, fl);
     if (pose.charge) glow(ctx, ww * 0.7, -wh * 0.75, 18 * pose.charge, L.weaponColor, 0.5 * pose.charge);
     ctx.restore();
-  }
-  if (L.wingsFront) {
-    const flap = 0.85 + Math.abs(Math.sin(time * 3 + 1)) * 0.2;
-    const a = ctx.globalAlpha;
-    ctx.globalAlpha = a * 0.85;
-    ctx.save();
-    ctx.translate(cx, 0); ctx.scale(flap, 1); ctx.translate(-cx, 0);
-    drawFit(ctx, L.wingsFront, cx - 4 - SIZE.frontW / 2 * g, neck + 3.5 - SIZE.frontH / 2 * g, cx - 4 + SIZE.frontW / 2 * g, neck + 3.5 + SIZE.frontH / 2 * g, 'contain', 'mid', 0, fl);
-    ctx.restore();
-    ctx.globalAlpha = a;
   }
   ctx.restore();
 }

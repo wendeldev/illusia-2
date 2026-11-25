@@ -40,10 +40,5 @@ export const EQUIPMENT: EquipmentDef[] = [
   { id: 'iron_gauntlets', name: 'Manoplas de Ferro', slot: 'gloves', atk: 8, def: 3, price: 1100, description: 'Socos que doem.', icon: 'it_glove_iron', rarity: 1 },
   { id: 'rune_gauntlets', name: 'Manoplas Rúnicas', slot: 'gloves', atk: 16, crit: 0.05, mp: 30, price: 0, description: 'Runas brilham a cada golpe.', icon: 'it_glove_rune', rarity: 2, dropOnly: true },
   { id: 'dragon_gauntlets', name: 'Garras de Dragão', slot: 'gloves', atk: 30, crit: 0.08, price: 0, description: 'Forjadas com escamas de dragão.', icon: 'it_glove_dragon', rarity: 4, dropOnly: true },
-  // Asas (aparecem nas costas do personagem)
-  { id: 'wings_white', name: 'Asas Brancas', slot: 'wings', hp: 60, mp: 20, price: 0, description: 'Asas de pena branca.', icon: 'it_wing_white', rarity: 2, dropOnly: true },
-  { id: 'wings_bat', name: 'Asas Sombrias', slot: 'wings', atk: 12, crit: 0.05, price: 0, description: 'Asas de morcego das trevas.', icon: 'it_wing_bat', rarity: 3, dropOnly: true },
-  { id: 'wings_fire', name: 'Asas de Fogo', slot: 'wings', atk: 20, hp: 120, price: 0, description: 'Queimam o ar a cada batida.', icon: 'it_wing_fire', rarity: 3, dropOnly: true },
-  { id: 'wings_angel', name: 'Asas Angelicais', slot: 'wings', atk: 25, def: 15, hp: 200, mp: 60, crit: 0.05, price: 0, description: 'Asas de um anjo guardião.', icon: 'it_wing_angel', rarity: 4, dropOnly: true },
   ...GEAR,
 ];

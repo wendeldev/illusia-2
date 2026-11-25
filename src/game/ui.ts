@@ -942,11 +942,11 @@ export class Ui {
     text(ctx, `Nv. ${progress.level}  ${cls.name}`, x + pw / 2, top + 14, { size: 10, align: 'center', outline: false, color: '#ffd36b' });
     const S = 34, step = 37;
     const LEFT: Slot[] = ['helmet', 'armor', 'gloves', 'pants', 'boots', 'weapon'];
-    const RIGHT: Slot[] = ['wings', 'wingsFront', 'cape', 'aura', 'accessory'];
+    const RIGHT: Slot[] = ['cape', 'aura', 'accessory'];
     const slotAt = (slot: Slot, sx: number, sy: number) => {
       const id = progress.equipped[slot];
       this.itemCell(ctx, sx, sy, S, id, !!id && m.sel === id);
-      if (!id) text(ctx, slot === 'wingsFront' ? 'Asas F.' : slot === 'wings' ? 'Asas' : SLOT_NAMES[slot], sx + S / 2, sy + S / 2, { size: 6, align: 'center', outline: false, color: '#8a7a6a' });
+      if (!id) text(ctx, SLOT_NAMES[slot], sx + S / 2, sy + S / 2, { size: 6, align: 'center', outline: false, color: '#8a7a6a' });
       this.regions.push({ x: sx, y: sy, w: S, h: S, fn: () => { if (id) { m.sel = id; this.markSeen(id); } this.game.sfx.play('ui'); } });
     };
     LEFT.forEach((s, i) => slotAt(s, x + 6, top + 28 + i * step));
@@ -984,7 +984,6 @@ export class Ui {
       ['ui_flt_armor', (e) => ['armor', 'gloves', 'pants', 'boots', 'cape'].includes(e.slot)],
       ['ui_flt_helmet', (e) => e.slot === 'helmet'],
       ['ui_flt_ring', (e) => e.slot === 'accessory'],
-      ['ui_flt_wings', (e) => e.slot === 'wings' || e.slot === 'wingsFront'],
       ['ui_flt_gem', (e) => e.slot === 'aura'],
     ];
     const fw = Math.min(36, (gw - 12) / FILTERS.length);
@@ -1041,7 +1040,7 @@ export class Ui {
   /** Equipamentos do inventário: equipados primeiro, depois por raridade (ou por tipo). */
   private inventoryList(m: Extract<Modal, { kind: 'bag' }>, ok: (e: EquipmentDef) => boolean): string[] {
     const { progress } = this.game;
-    const ORDER: Slot[] = ['weapon', 'helmet', 'armor', 'gloves', 'pants', 'boots', 'cape', 'wings', 'wingsFront', 'aura', 'accessory'];
+    const ORDER: Slot[] = ['weapon', 'helmet', 'armor', 'gloves', 'pants', 'boots', 'cape', 'aura', 'accessory'];
     const eq = new Set(Object.values(progress.equipped));
     return progress.owned.filter((id) => hasItem(id) && ok(getItem(id))).sort((a, b) => {
       const ea = getItem(a), eb = getItem(b);

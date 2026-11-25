@@ -146,7 +146,7 @@ Espada de Treino, Cajado Comum, Adaga Comum). Machados e lanças saíram do jogo
 
 **Tamanhos padrão** (`SIZE` e `HALO_BOX` em `src/game/art/layers.ts`, em px da tela, iguais nas 3 classes e nas 8
 raridades): personagem 56 px de altura; espada, machado, lança e cajado 42 px de comprimento (adaga 30); asas traseiras
-48×26 e frontais 30×11; aura 52×20; halo cabe numa caixa de 34×24, logo acima do cabelo. Asas, aura e capa só aparecem
+aura 52×20; halo cabe numa caixa de 34×24, centrado no rosto e 3 px acima do cabelo. Aura e capa só aparecem
 quando o item foi ganho e equipado (o personagem novo começa só com a espada de treino).
 
 ## Fases de selva (Bosque Sussurrante)

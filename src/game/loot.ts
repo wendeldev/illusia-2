@@ -40,13 +40,13 @@ export function gearScore(e: EquipmentDef, mul = 1): number {
 }
 
 /** Equipamento aleatório adequado ao nível (bônus = chefes: mais forte e raro). */
-export function rollGear(level: number, bonus = 0, wingsChance = 0, classId?: string): string | null {
-  if (Math.random() < wingsChance) {
-    const wings = EQUIPMENT.filter((e) => (e.slot === 'wings' || e.slot === 'wingsFront' || e.slot === 'aura') && !e.passOnly && (e.rarity ?? 0) <= 2 + bonus);
-    return wings.length ? pick(wings).id : null;
+export function rollGear(level: number, bonus = 0, auraChance = 0, classId?: string): string | null {
+  if (Math.random() < auraChance) {
+    const auras = EQUIPMENT.filter((e) => e.slot === 'aura' && !e.passOnly && (e.rarity ?? 0) <= 2 + bonus);
+    return auras.length ? pick(auras).id : null;
   }
   const target = 5 + level * 0.9 * (1 + bonus * 0.25);
-  const pool = EQUIPMENT.filter((e) => e.slot !== 'wings' && e.slot !== 'wingsFront' && e.slot !== 'aura' && (e.rarity ?? 0) < 7
+  const pool = EQUIPMENT.filter((e) => e.slot !== 'aura' && (e.rarity ?? 0) < 7
     && !e.passOnly && !STARTER_WEAPONS.has(e.id) && usableBy(e, classId) && gearScore(e) <= target * 1.25 && gearScore(e) >= target * 0.35);
   return pool.length ? pick(pool).id : null;
 }

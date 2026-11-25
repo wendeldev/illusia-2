@@ -110,7 +110,7 @@ def paste(canvas, img, x, y):
 # comprimento da arma na tela (diagonal do desenho, px) e altura do boneco no jogo — iguais ao jogo (layers.ts)
 WEAPON_LEN = {'dagger': 30}
 DOLL_H = 56
-HALO_BOX = (34, 24, -0.5)   # caixa do halo (px da tela) e espaço até o topo do cabelo
+HALO_BOX = (34, 24, 3)   # caixa do halo (px da tela) e espaço até o topo do cabelo
 
 
 class Body:
