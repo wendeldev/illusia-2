@@ -101,7 +101,7 @@ Prancha `assets-src/sheet-items.png` (recortada por `tools/item_cells.py`). Regr
 - **Coleção**: álbum de coletáveis e itens de evento, com bônus de ataque e vida.
 - **Ferreira**: abas Equipamentos, Materiais (poções, chaves, materiais, tíquetes) e Aprimorar (+1 a +10).
 - **Arena dos Chefes** (mapa do mundo): gasta um tíquete, enfrenta um chefe no seu nível e dá gemas e baús.
-- **Novos espaços**: luvas, botas e asas. As asas aparecem nas costas e a arma +4 ou mais brilha.
+- **Novos espaços**: luvas e botas; a arma +4 ou mais brilha. (As asas saíram do jogo.)
 
 ## Eventos: chefes Lendários e Míticos
 
@@ -118,14 +118,14 @@ Dados em `src/data/mythic.ts`; prancha em `assets-src/sheet-mythic-*.png` (`tool
 ## Equipamento em camadas e raridades
 
 8 raridades: Comum, Incomum, Raro, Épico, Lendário, Mítico, Divino (e Celestial, só de eventos). Espaços:
-arma, halo, armadura, braços, calças, botas, capa, asas traseiras, asas frontais, aura e acessório.
+arma, halo, armadura, braços, calças, botas, capa, aura e acessório.
 O personagem é um boneco em camadas ("layered sprites", `src/game/art/layers.ts`): o corpo base sem
-equipamento da prancha (`pd_<classe>`) e, por cima, cada peça equipada no lugar do corpo: aura, asas traseiras,
-capa, calças, botas, armadura, braços, arma na mão, asas frontais e o halo flutuando acima da cabeça. A posição de cabeça, pescoço,
+equipamento da prancha (`pd_<classe>`) e, por cima, cada peça equipada no lugar do corpo: aura,
+capa, calças, botas, armadura, braços, arma na mão e o halo flutuando acima da cabeça. A posição de cabeça, pescoço,
 quadril, mãos e pés de cada quadro é medida por `tools/anatomy.py` (`src/data/paperdoll.json`). Golpes e poderes
 movem a arma e o corpo. Itens antigos aparecem com a peça do set da classe na mesma raridade. Sets (armadura, braços, calças e capa): 3 peças = +6%, 4 peças = +15% (mais com raridade; 1,5× no set da própria
 classe). Arma preferida da classe: +25% no ataque da arma. A loja tem categorias (espadas, machados, lanças,
-adagas, cajados, halos, armaduras, braços, calças, capas, botas, asas, auras); Mítico e Divino
+adagas, cajados, halos, armaduras, braços, calças, capas, botas, auras); Mítico e Divino
 custam gemas. Catálogo gerado em `src/data/gear.ts`.
 
 ## Corpos das classes
@@ -133,9 +133,9 @@ custam gemas. Catálogo gerado em `src/data/gear.ts`.
 **Regra: o personagem sempre veste o que está equipado.** Cada classe tem só um corpo base sem equipamento
 (Guerreiro `assets-src/sheet-hero-white.png`, Maga `sheet-body-mage.png`, Assassino `sheet-body-assassin.png`; 4×8: parado,
 andar, correr e pular, recortados por `tools/hero_white.py`), e todas as peças equipadas (halo, armadura, luvas, calças,
-botas, capa, asas, aura e arma — da loja, de chefes, de inimigos ou de eventos) são desenhadas por cima, em camadas, em
+botas, capa, aura e arma — da loja, de chefes, de inimigos ou de eventos) são desenhadas por cima, em camadas, em
 todos os quadros (anatomia em `src/data/paperdoll.json`). Ataque, dano e morte usam o rig de `tools/rig.py` sobre o mesmo
-corpo. Pranchas com o personagem já vestido (armadura, halo, asas ou arma desenhados) **não** entram no jogo como visual:
+corpo. Pranchas com o personagem já vestido (armadura, halo ou arma desenhados) **não** entram no jogo como visual:
 ficam só como referência em `assets-src/*-sets/` e `assets-src/*-combat/`. Uma prancha nova de personagem ou skin deve ser
 o corpo sem equipamento.
 
@@ -145,7 +145,7 @@ aparece apagada na bolsa e não pode ser equipada. Ao trocar de classe, equipa a
 Espada de Treino, Cajado Comum, Adaga Comum). Machados e lanças saíram do jogo (saves antigos: viram espadas da mesma raridade).
 
 **Tamanhos padrão** (`SIZE` e `HALO_BOX` em `src/game/art/layers.ts`, em px da tela, iguais nas 3 classes e nas 8
-raridades): personagem 56 px de altura; espada, machado, lança e cajado 42 px de comprimento (adaga 30); asas traseiras
+raridades): personagem 56 px de altura; espada, machado, lança e cajado 42 px de comprimento (adaga 30);
 aura 52×20; halo cabe numa caixa de 34×24, centrado no rosto e 3 px acima do cabelo. Aura e capa só aparecem
 quando o item foi ganho e equipado (o personagem novo começa só com a espada de treino).
 
@@ -162,10 +162,10 @@ da tela (`src/game/art/jungle.ts`). Tudo com a arte que o jogo já tinha, nos mo
 Botão **Passe** (abaixo de Eventos) ou tecla **P**. Recompensas por nível do personagem (`src/data/pass.ts`), com os
 ícones da prancha `assets-src/sheet-pass.png` (`tools/pass_cells.py`):
 - **Grátis:** resgata quando o personagem chega no nível (consumíveis NV2–6, 500 XP NV3–10, materiais raros NV7, item
-  raro NV8, tíquetes NV12–13, anel +10 ataque NV14, amuleto +12 defesa NV15, aura de caveira NV25, asas de fogo azul e
+  raro NV8, tíquetes NV12–13, anel +10 ataque NV14, amuleto +12 defesa NV15, aura de caveira NV25, materiais raros e
   botas/luvas de fogo NV26, armadura de fogo NV27, armas de luz branca e neon negra NV40, arma neon violeta NV45).
-- **Com gemas:** exige o nível e custa gemas por recompensa (500 XP NV3–10, tíquetes NV12–13, aura de chifre NV25, asas
-  pretas grandes e botas/luvas de vaca NV26, macacão de vaca NV27, arma neon verde NV40, arma neon esmeralda NV45).
+- **Com gemas:** exige o nível e custa gemas por recompensa (500 XP NV3–10, tíquetes NV12–13, aura de chifre NV25, tíquete
+  mítico e botas/luvas de vaca NV26, macacão de vaca NV27, arma neon verde NV40, arma neon esmeralda NV45).
 - Armas e peças são da classe do jogador (espada, cajado ou adaga; armadura e luvas do set da classe). As peças vestíveis
   são feitas das peças do jogo (`tools/pass_skins.py`), então encaixam no corpo como as outras. Itens do passe não
   aparecem na loja nem nos drops (`passOnly`). Resgatados ficam em `progress.passClaimed`.
@@ -174,7 +174,7 @@ Botão **Passe** (abaixo de Eventos) ou tecla **P**. Recompensas por nível do p
 
 Bolsa (🎒 ou G) no visual da prancha `assets-src/sheet-inventory.png` (recortada por `tools/ui_cells.py`):
 abas Equipamento, Itens, Materiais, Cartas/Orbes e Coleção. Em Equipamento: o personagem com os 11 espaços,
-o inventário com filtros (tudo, armas, armaduras, halos, acessórios, asas, auras), bordas por raridade, selos
+o inventário com filtros (tudo, armas, armaduras, halos, acessórios, auras), bordas por raridade, selos
 **E** (equipado) e **N** (novo), setas verde/vermelha comparando com o equipado, páginas e Organizar
 (por raridade ou por tipo). O painel de detalhes mostra os atributos com a diferença para o item equipado e os
 botões Equipar/Desequipar e Vender (metade do preço). Toque duplo num item também equipa.
