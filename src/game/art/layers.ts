@@ -170,23 +170,20 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   ctx.scale(facing * s, s);
   ctx.translate(pose.dx ?? 0, pose.dy ?? 0);
   ctx.imageSmoothingEnabled = s < 1;
-  if (L.aura) {
-    glow(ctx, cx, -A.H * 0.4, A.H * 0.8, L.auraColor, 0.16);
-    const pulse = 1 + Math.sin(time * 3) * 0.06;
-    const prev = ctx.globalCompositeOperation;
-    ctx.globalCompositeOperation = 'lighter';
-    const a = ctx.globalAlpha;
-    ctx.globalAlpha = a * (0.7 + Math.sin(time * 5) * 0.15);
-    const shaped = AURA_SHAPED[L.aura];
+  // aura: centrada nos pés do personagem (x = 0), em perspectiva — metade de trás antes do corpo, da frente depois
+  const auraOn = !!L.aura && Math.abs(pose.rot ?? 0) < 0.3;
+  if (auraOn) {
+    const shaped = AURA_SHAPED[L.aura!];
     if (shaped) {
       // aura em formato (caveira, chifres): desenho atrás do corpo, na altura do peito/cabeça
+      const pulse = 1 + Math.sin(time * 3) * 0.06;
       const sz = shaped.size * g * pulse, ay0 = Y(A.H * shaped.y);
-      drawFit(ctx, L.aura, cx - sz / 2, ay0 - sz / 2, cx + sz / 2, ay0 + sz / 2, 'contain', 'mid');
-    } else {
-      drawFit(ctx, L.aura, cx - SIZE.auraW / 2 * g * pulse, Y(fy1) - SIZE.auraH * g * pulse, cx + SIZE.auraW / 2 * g * pulse, Y(fy1) + 3, 'contain', 'bottom');
+      const prev = ctx.globalCompositeOperation;
+      ctx.globalCompositeOperation = 'lighter';
+      drawFit(ctx, L.aura!, -sz / 2, ay0 - sz / 2, sz / 2, ay0 + sz / 2, 'contain', 'mid');
+      ctx.globalCompositeOperation = prev;
     }
-    ctx.globalAlpha = a;
-    ctx.globalCompositeOperation = prev;
+    auraFx(ctx, 0, 0, SIZE.auraW * g, A.H, L.auraColor, time, 'back');
   }
   if (pose.rot) ctx.rotate(pose.rot);
   if (pose.sy && pose.sy !== 1) ctx.scale(1, pose.sy);
@@ -238,6 +235,14 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
     if (pose.charge) glow(ctx, ww * 0.7, -wh * 0.75, 18 * pose.charge, L.weaponColor, 0.5 * pose.charge);
     ctx.restore();
   }
+  if (auraOn) {
+    // a frente do anel e as faíscas passam na frente do corpo (desfaz a rotação/achatamento do corpo)
+    ctx.save();
+    if (pose.sy && pose.sy !== 1) ctx.scale(1, 1 / pose.sy);
+    if (pose.rot) ctx.rotate(-pose.rot);
+    auraFx(ctx, 0, 0, SIZE.auraW * g, A.H, L.auraColor, time, 'front');
+    ctx.restore();
+  }
   ctx.restore();
 }
 
@@ -272,4 +277,67 @@ export function rigPose(L: DollLook, anim: RigAnim, i: number): DollPose {
 export function drawDollIdle(ctx: CanvasRenderingContext2D, p: Progress, x: number, y: number, facing: number, k: number, time: number): void {
   const L = dollLook(p);
   drawDoll(ctx, L, x, y, facing, k, rigPose(L, 'idle', time * rigFps('idle')), time);
+}
+
+/** Aura em 3D: disco de luz no chão em perspectiva, dois anéis de runas girando, colunas de luz e faíscas subindo.
+ * 'back' = metade de trás (antes do corpo); 'front' = metade da frente (depois do corpo). */
+function auraFx(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, t: number, part: 'back' | 'front'): void {
+  const rx = w / 2, ry = rx * 0.32;
+  const prev = ctx.globalCompositeOperation;
+  const a0 = ctx.globalAlpha;
+  ctx.globalCompositeOperation = 'lighter';
+  const pulse = 0.85 + Math.sin(t * 3) * 0.15;
+  // meia elipse (de trás: ângulos π..2π, de frente: 0..π)
+  const arc = (r: number, lw: number, alpha: number, dash: number[], rot: number) => {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, ry / rx);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = a0 * alpha;
+    ctx.lineWidth = lw;
+    ctx.setLineDash(dash);
+    ctx.lineDashOffset = -rot * r;
+    ctx.beginPath();
+    if (part === 'back') ctx.arc(0, 0, r, Math.PI, Math.PI * 2);
+    else ctx.arc(0, 0, r, 0, Math.PI);
+    ctx.stroke();
+    ctx.restore();
+  };
+  if (part === 'back') {
+    // disco de luz no chão
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, ry / rx);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx * 1.15);
+    g.addColorStop(0, color); g.addColorStop(0.55, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = a0 * 0.4 * pulse;
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, rx * 1.15, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // coluna de luz subindo
+    const cg = ctx.createLinearGradient(0, y, 0, y - h * 1.1);
+    cg.addColorStop(0, color); cg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = a0 * 0.24 * pulse;
+    ctx.fillStyle = cg;
+    ctx.fillRect(x - rx * 0.75, y - h * 1.1, rx * 1.5, h * 1.1);
+  }
+  // anéis de runas (o de dentro gira ao contrário)
+  arc(rx * 0.95, 2.2, 1, [6, 3, 1, 3], t * 1.2);
+  arc(rx * 1.02, 4, 0.25 * pulse, [], 0);
+  arc(rx * 0.68, 1.4, 0.8, [2, 4], -t * 2);
+  // faíscas subindo em espiral (as de trás ficam mais fracas)
+  for (let k = 0; k < 22; k++) {
+    const life = (t * 0.55 + k / 22) % 1;
+    const ang = k * 2.4 + t * 1.5;
+    const front = Math.sin(ang) > 0;
+    if (front !== (part === 'front')) continue;
+    const px = x + Math.cos(ang) * rx * (0.85 - life * 0.35);
+    const py = y + Math.sin(ang) * ry * (0.85 - life * 0.35) - life * h * 0.95;
+    ctx.globalAlpha = a0 * (1 - life) * (front ? 0.95 : 0.55);
+    ctx.fillStyle = k % 3 ? color : '#ffffff';
+    const sz = (2 + (k % 3) * 0.6) * (1 - life * 0.5);
+    ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+  }
+  ctx.globalAlpha = a0;
+  ctx.globalCompositeOperation = prev;
 }
