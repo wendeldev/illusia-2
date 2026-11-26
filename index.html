@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#141a33">
+  <title>Ecos de Aurora</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="stage">
+    <canvas id="game"></canvas>
+
+    <div id="touch" aria-hidden="true">
+      <div class="dpad">
+        <button data-action="up" class="b-up">▲</button>
+        <button data-action="left" class="b-left">◀</button>
+        <button data-action="right" class="b-right">▶</button>
+        <button data-action="down" class="b-down">▼</button>
+      </div>
+      <div class="t-actions">
+        <button data-action="skill1" class="b-s1">1</button>
+        <button data-action="skill2" class="b-s2">2</button>
+        <button data-action="skill3" class="b-s3">3</button>
+        <button data-action="dash" class="b-dash">Dash</button>
+        <button data-action="jump" class="b-jump">Pulo</button>
+        <button data-action="attack" class="b-atk">⚔</button>
+      </div>
+      <div class="t-top">
+        <button data-action="potion" class="b-pot hp">♥</button>
+        <button data-action="potion2" class="b-pot mp">✦</button>
+        <button data-action="menu" class="b-menu">☰</button>
+      </div>
+    </div>
+
+    <div id="overlay" hidden></div>
+  </main>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
