@@ -61,3 +61,48 @@ export function wrapText(ctx: CanvasRenderingContext2D, str: string, maxW: numbe
   if (line) lines.push(line);
   return lines;
 }
+
+/** Barra polida: moldura escura, degradê, brilho no topo e marcas de 25%. */
+export function fancyBar(
+  ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, ratio: number, c1: string, c2: string,
+): void {
+  const r = Math.max(0, Math.min(1, ratio));
+  ctx.fillStyle = '#0b0710';
+  ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(x, y, w, h);
+  if (r > 0) {
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, c1); g.addColorStop(1, c2);
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w * r, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(x, y, w * r, Math.max(1, h * 0.3));
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  for (let k = 1; k < 4; k++) ctx.fillRect(Math.round(x + (w * k) / 4), y, 1, h);
+  ctx.strokeStyle = '#c99a3c';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - 1.5, y - 1.5, w + 3, h + 3);
+}
+
+/** Fita dourada de título (painéis e anúncios). */
+export function ribbon(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number, label: string, size = 13): void {
+  const x = cx - w / 2, y = cy - h / 2;
+  ctx.fillStyle = '#5a1a1e';
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    const ex = s < 0 ? x + 6 : x + w - 6;
+    ctx.moveTo(ex, y + 4); ctx.lineTo(ex + s * 18, y + 4); ctx.lineTo(ex + s * 12, y + h / 2 + 2); ctx.lineTo(ex + s * 18, y + h); ctx.lineTo(ex, y + h);
+    ctx.closePath(); ctx.fill();
+  }
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, '#b8323a'); g.addColorStop(1, '#7a1c24');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#f0c060'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fillRect(x + 1, y + 1, w - 2, h * 0.35);
+  text(ctx, label, cx, cy + 1, { size, align: 'center', color: '#fff4d0' });
+}

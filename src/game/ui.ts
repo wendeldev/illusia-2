@@ -18,7 +18,7 @@ import { countStars, DAMAGE_LIMIT, drawStar, drawStars, formatTime, type StageRe
 import type { Input, TouchButton } from '../engine/input';
 import { VIEW_H, VIEW_W } from '../engine/view';
 import type { NpcDef, SceneryTheme } from '../types';
-import { bar, circle, text, wrapText } from './draw';
+import { bar, circle, fancyBar, ribbon, text, wrapText } from './draw';
 import type { Progress } from './progress';
 import { describeBonus, expToNext, SLOT_NAMES } from './stats';
 import { levelColor, type World } from './world';
@@ -68,7 +68,8 @@ type Modal =
   | { kind: 'events'; sel: number; diff: number }
   | { kind: 'menu'; sel: number; scroll: number }
   | { kind: 'map'; region: number; sel: number }
-  | { kind: 'dead' };
+  | { kind: 'dead' }
+  | { kind: 'title'; t: number };
 
 interface Region {
   x: number;
@@ -218,6 +219,17 @@ export class Ui {
   }
 
   /** Tela de escolha de classe. `first` = primeiro jogo (não dá para fechar sem escolher). */
+  /** Tela de título (abertura do jogo). */
+  openTitle(): void {
+    this.modal = { kind: 'title', t: 0 };
+  }
+
+  /** Anúncio grande do nome da fase e escurecimento rápido ao trocar de fase. */
+  announceStage(name: string, sub = ''): void {
+    this.stageIntro = { name, sub, t: 0 };
+    this.fade = 1;
+  }
+
   openClasses(first = false): void {
     const cur = CLASSES.findIndex((c) => c.id === this.game.progress.classId);
     this.modal = { kind: 'classes', sel: Math.max(0, cur), first };
@@ -354,6 +366,13 @@ export class Ui {
         if (back) this.modal = { kind: 'menu', sel: 0, scroll: 0 };
         break;
       }
+      case 'title':
+        m.t += dt;
+        if ((confirm || input.taps.length) && m.t > 0.6) {
+          this.game.sfx.play('levelup');
+          if (!this.game.progress.classId) this.openClasses(true); else this.close();
+        }
+        break;
       case 'classes':
         if (left) m.sel = (m.sel + CLASSES.length - 1) % CLASSES.length;
         if (right) m.sel = (m.sel + 1) % CLASSES.length;
@@ -394,7 +413,11 @@ export class Ui {
   render(ctx: CanvasRenderingContext2D): void {
     layoutButtons();
     this.regions = [];
+    const now = performance.now() / 1000, dt = Math.min(0.05, now - (this.lastT || now));
+    this.lastT = now;
+    if (this.modal?.kind === 'title') { this.drawTitle(ctx, this.modal); this.drawFade(ctx, dt); return; }
     this.drawHud(ctx);
+    this.drawIntro(ctx, dt);
     if (!this.modal) this.drawControls(ctx);
     this.toasts.forEach((t, i) => {
       ctx.globalAlpha = Math.min(1, t.life * 2);
@@ -402,7 +425,8 @@ export class Ui {
       ctx.globalAlpha = 1;
     });
     const m = this.modal;
-    if (!m) return;
+    if (!m) { this.drawFade(ctx, dt); return; }
+    this.drawFade(ctx, dt);
     switch (m.kind) {
       case 'dialog': return this.drawDialog(ctx, m);
       case 'shop': return this.drawShop(ctx, m);
@@ -425,19 +449,41 @@ export class Ui {
   private drawHud(ctx: CanvasRenderingContext2D): void {
     const { world, progress } = this.game;
     const p = world.player;
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(6, 6, 176, 50);
-    text(ctx, `Nv ${progress.level}`, 12, 19, { size: 12, color: '#ffe9a8' });
-    bar(ctx, 52, 12, 124, 10, p.hp / p.maxHp, '#e0524f');
-    text(ctx, `${Math.ceil(p.hp)}/${p.maxHp}`, 114, 17, { size: 8, align: 'center' });
-    bar(ctx, 52, 26, 124, 8, p.mp / p.maxMp, '#4f8fe0');
-    text(ctx, `${Math.floor(p.mp)}/${p.maxMp}`, 114, 30, { size: 7, align: 'center' });
-    bar(ctx, 12, 42, 164, 4, progress.exp / expToNext(progress.level), '#8fe07a');
-    text(ctx, `${progress.gold} G`, 12, 66, { size: 11, color: '#ffd36b' });
-    drawSpriteH(ctx, 'it_gem_blue', 82, 73, 13);
-    text(ctx, `${progress.gems}`, 92, 66, { size: 11, color: '#9fd3ff' });
+    // placa do personagem: medalhão com o nível, barras de vida/MP/EXP polidas e moedas em fichas
+    const pg = ctx.createLinearGradient(0, 4, 0, 58);
+    pg.addColorStop(0, 'rgba(38,30,58,0.88)'); pg.addColorStop(1, 'rgba(16,12,26,0.88)');
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.moveTo(30, 6); ctx.lineTo(196, 6); ctx.lineTo(188, 52); ctx.lineTo(30, 52); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#c99a3c'; ctx.lineWidth = 1; ctx.stroke();
+    const low = p.hp / p.maxHp < 0.3;
+    glow(ctx, 28, 29, 26, low ? '#ff4040' : '#ffcf70', low ? 0.3 + Math.sin(performance.now() / 150) * 0.15 : 0.18);
+    circle(ctx, 28, 29, 20, '#6b4a1c');
+    circle(ctx, 28, 29, 18, '#e0b04f');
+    const mg = ctx.createRadialGradient(24, 24, 2, 28, 29, 17);
+    mg.addColorStop(0, '#3e2f60'); mg.addColorStop(1, '#17112a');
+    ctx.fillStyle = mg;
+    ctx.beginPath(); ctx.arc(28, 29, 16, 0, Math.PI * 2); ctx.fill();
+    text(ctx, 'NV', 28, 21, { size: 7, align: 'center', color: '#e0b04f', outline: false });
+    text(ctx, `${progress.level}`, 28, 33, { size: 15, align: 'center', color: '#ffffff' });
+    fancyBar(ctx, 54, 12, 128, 11, p.hp / p.maxHp, '#ff7a6a', '#b8242c');
+    text(ctx, `${Math.ceil(p.hp)} / ${p.maxHp}`, 118, 18, { size: 8, align: 'center' });
+    fancyBar(ctx, 54, 28, 118, 8, p.mp / p.maxMp, '#7ab8ff', '#2856b8');
+    text(ctx, `${Math.floor(p.mp)} / ${p.maxMp}`, 113, 32, { size: 7, align: 'center' });
+    fancyBar(ctx, 54, 42, 108, 4, progress.exp / expToNext(progress.level), '#c8ff8a', '#3f9a3a');
+    // fichas de ouro e gemas
+    const chip = (x: number, w: number, icon: string, label: string, color: string) => {
+      ctx.fillStyle = 'rgba(16,12,26,0.85)';
+      ctx.fillRect(x, 58, w, 16);
+      ctx.strokeStyle = '#6b4a1c'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, 58.5, w - 1, 15);
+      drawSpriteH(ctx, icon, x + 9, 73, 13);
+      text(ctx, label, x + 19, 66, { size: 10, color });
+    };
+    chip(8, 70, 'it_coin', `${progress.gold}`, '#ffd36b');
+    chip(82, 48, 'it_gem_blue', `${progress.gems}`, '#9fd3ff');
     // bônus temporários (sequência de abates)
-    let bx = 116;
+    let bx = 136;
     for (const [k, t] of Object.entries(world.buffs)) {
       const b = BUFFS[k];
       if (!b) continue;
@@ -499,10 +545,19 @@ export class Ui {
     qb.active().slice(0, 3).forEach((q, i) => {
       const ready = qb.isReady(q);
       const label = ready ? `✔ ${q.title} · ${qb.giverName(q)}` : `📜 ${q.title} ${qb.count(q)}/${qb.target(q)}`;
-      text(ctx, label, 12, 92 + i * 14, { size: 9, color: ready ? '#8fe07a' : '#e8ecf4' });
+      text(ctx, label, 12, 94 + i * 14, { size: 9, color: ready ? '#8fe07a' : '#e8ecf4' });
     });
 
-    if (!run || !world.stage.id.startsWith('ev_')) text(ctx, world.stage.name, VIEW_W / 2, 16, { size: 12, align: 'center' });
+    if (!run || !world.stage.id.startsWith('ev_')) {
+      const nw = Math.max(120, world.stage.name.length * 7 + 30);
+      const ng = ctx.createLinearGradient(VIEW_W / 2 - nw / 2, 0, VIEW_W / 2 + nw / 2, 0);
+      ng.addColorStop(0, 'rgba(16,12,26,0)'); ng.addColorStop(0.2, 'rgba(16,12,26,0.75)'); ng.addColorStop(0.8, 'rgba(16,12,26,0.75)'); ng.addColorStop(1, 'rgba(16,12,26,0)');
+      ctx.fillStyle = ng;
+      ctx.fillRect(VIEW_W / 2 - nw / 2, 5, nw, 20);
+      ctx.fillStyle = 'rgba(224,176,79,0.7)';
+      ctx.fillRect(VIEW_W / 2 - nw * 0.3, 24, nw * 0.6, 1);
+      text(ctx, world.stage.name, VIEW_W / 2, 15, { size: 12, align: 'center', color: '#ffe9a8' });
+    }
     // cronômetro e dano da fase (metas das estrelas)
     const par = world.stage.parTime;
     if (par) {
@@ -516,8 +571,8 @@ export class Ui {
     }
     const boss = world.boss;
     if (boss) {
-      text(ctx, `${boss.def.name} · Nv ${boss.level}${boss.enraged ? ' (furioso!)' : ''}`, VIEW_W / 2, 32, { size: 11, align: 'center', color: boss.enraged ? '#ff6b6b' : '#ffb3c4' });
-      bar(ctx, VIEW_W / 2 - 130, 40, 260, 8, boss.hp / boss.maxHp, boss.enraged ? '#e03030' : '#c4466b');
+      text(ctx, `☠ ${boss.def.name} · Nv ${boss.level}${boss.enraged ? ' (furioso!)' : ''}`, VIEW_W / 2, 34, { size: 11, align: 'center', color: boss.enraged ? '#ff6b6b' : '#ffb3c4' });
+      fancyBar(ctx, VIEW_W / 2 - 140, 42, 280, 9, boss.hp / boss.maxHp, boss.enraged ? '#ff5a3a' : '#ff6a9a', boss.enraged ? '#a01010' : '#8a1a4a');
     }
 
     // botão de menu também clicável com mouse
@@ -533,8 +588,12 @@ export class Ui {
     const input = this.input;
     const { world, progress } = this.game;
     if (!input.touchMode) {
+      const age = world.elapsed;
+      if (age > 12) return;
+      ctx.globalAlpha = Math.min(1, (12 - age) / 2);
       text(ctx, 'Andar: A/D · Pular: Espaço · Escada: W/S · Atacar: J · Poderes: K L I O · Falar: E · Menu: M · Bolsa: G · Eventos: N · Passe: P', VIEW_W / 2, VIEW_H - 10,
         { size: 10, align: 'center', color: 'rgba(255,255,255,0.85)' });
+      ctx.globalAlpha = 1;
       return;
     }
     const j = input.joystick;
@@ -611,19 +670,106 @@ export class Ui {
     }
   }
 
+  private stageIntro: { name: string; sub: string; t: number } | null = null;
+  private fade = 0;
+  private lastT = 0;
+
+  /** Escurece e clareia ao trocar de fase. */
+  private drawFade(ctx: CanvasRenderingContext2D, dt: number): void {
+    if (this.fade <= 0) return;
+    ctx.fillStyle = `rgba(6,4,10,${Math.min(1, this.fade)})`;
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    this.fade = Math.max(0, this.fade - dt * 2.2);
+  }
+
+  /** Nome da fase em destaque por alguns segundos ao entrar. */
+  private drawIntro(ctx: CanvasRenderingContext2D, dt: number): void {
+    const s = this.stageIntro;
+    if (!s) return;
+    s.t += dt;
+    if (s.t > 3.2) { this.stageIntro = null; return; }
+    const a = Math.min(1, s.t * 3, (3.2 - s.t) * 2);
+    const slide = (1 - Math.min(1, s.t * 3)) * 20;
+    ctx.save();
+    ctx.globalAlpha = a;
+    const cy = VIEW_H * 0.3;
+    const g = ctx.createLinearGradient(0, 0, VIEW_W, 0);
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.25, 'rgba(0,0,0,0.55)'); g.addColorStop(0.75, 'rgba(0,0,0,0.55)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, cy - 26, VIEW_W, s.sub ? 62 : 48);
+    ctx.fillStyle = '#e0b04f';
+    ctx.fillRect(VIEW_W * 0.2, cy - 26, VIEW_W * 0.6, 1);
+    ctx.fillRect(VIEW_W * 0.2, cy + (s.sub ? 35 : 21), VIEW_W * 0.6, 1);
+    text(ctx, s.name, VIEW_W / 2 + slide, cy, { size: 22, align: 'center', color: '#ffe9a8' });
+    if (s.sub) text(ctx, s.sub, VIEW_W / 2 - slide, cy + 22, { size: 11, align: 'center', color: '#d8dceb', bold: false });
+    ctx.restore();
+  }
+
+  /** Tela de título: o mundo ao fundo, logo e "toque para começar". */
+  private drawTitle(ctx: CanvasRenderingContext2D, m: Extract<Modal, { kind: 'title' }>): void {
+    const t = m.t;
+    const g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+    g.addColorStop(0, 'rgba(10,6,24,0.8)'); g.addColorStop(0.5, 'rgba(10,6,24,0.62)'); g.addColorStop(1, 'rgba(10,6,24,0.88)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    // vinheta
+    const vg = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.3, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.7);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.6)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    this.regions.push({ x: 0, y: 0, w: VIEW_W, h: VIEW_H, fn: () => {} });
+    const cx = VIEW_W / 2, cy = VIEW_H * 0.36 + Math.sin(t * 1.4) * 3;
+    glow(ctx, cx, cy, 190, '#ffcf70', 0.18 + Math.sin(t * 2) * 0.04);
+    // brilhos subindo
+    for (let k = 0; k < 26; k++) {
+      const px = (k * 97.3 + Math.sin(k) * 40) % VIEW_W, py = VIEW_H - ((t * (14 + (k % 5) * 6) + k * 53) % (VIEW_H + 20));
+      ctx.globalAlpha = 0.35 + 0.35 * Math.sin(t * 3 + k);
+      ctx.fillStyle = k % 3 ? '#ffe9a8' : '#9fd3ff';
+      ctx.fillRect(px, py, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+    text(ctx, 'CRÔNICAS DE', cx, cy - 30, { size: 14, align: 'center', color: '#e8d8b0' });
+    text(ctx, 'LUMEN', cx + 2, cy + 4, { size: 54, align: 'center', color: '#5a2a10' });
+    text(ctx, 'LUMEN', cx, cy + 2, { size: 54, align: 'center', color: '#ffd36b' });
+    ctx.fillStyle = '#e0b04f';
+    ctx.fillRect(cx - 120, cy + 34, 240, 1.5);
+    text(ctx, 'Uma aventura de ação e fantasia', cx, cy + 46, { size: 11, align: 'center', color: '#d8dceb', bold: false });
+    const blink = 0.55 + Math.sin(t * 4) * 0.45;
+    ctx.globalAlpha = Math.min(1, t * 2) * blink;
+    ribbon(ctx, cx, VIEW_H * 0.74, 230, 26, this.input.touchMode ? 'Toque para começar' : 'Clique ou aperte J para começar', 12);
+    ctx.globalAlpha = 1;
+    text(ctx, 'v1.0', VIEW_W - 8, VIEW_H - 8, { size: 8, align: 'right', color: 'rgba(255,255,255,0.5)', outline: false });
+  }
+
   private panel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, title: string, closable = true): void {
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillStyle = 'rgba(4,2,10,0.62)';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     this.regions.push({ x: 0, y: 0, w: VIEW_W, h: VIEW_H, fn: () => {} }); // bloqueia cliques atrás
-    ctx.fillStyle = '#1e2638';
+    // sombra, fundo em degradê e moldura dourada dupla com cantos
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(x + 4, y + 5, w, h);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#26203a'); g.addColorStop(1, '#14101f');
+    ctx.fillStyle = g;
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#5a6a90';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, w, h);
-    text(ctx, title, x + 12, y + 16, { size: 13, color: '#ffe9a8' });
+    // faixa do título
+    const tg = ctx.createLinearGradient(0, y, 0, y + 30);
+    tg.addColorStop(0, '#3a2a52'); tg.addColorStop(1, '#251b38');
+    ctx.fillStyle = tg;
+    ctx.fillRect(x + 2, y + 2, w - 4, 28);
+    ctx.fillStyle = '#e0b04f';
+    ctx.fillRect(x + 2, y + 30, w - 4, 1);
+    ctx.strokeStyle = '#6b4a1c'; ctx.lineWidth = 3; ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+    ctx.strokeStyle = '#e0b04f'; ctx.lineWidth = 1; ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+    ctx.fillStyle = '#ffd36b';
+    for (const [cx, cy] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]) { ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI / 4); ctx.fillRect(-3.5, -3.5, 7, 7); ctx.restore(); }
+    text(ctx, title, x + 14, y + 16, { size: 13, color: '#ffe9a8' });
     if (closable) {
-      text(ctx, '✕', x + w - 16, y + 16, { size: 14, align: 'center' });
-      this.regions.push({ x: x + w - 34, y, w: 34, h: 32, fn: () => this.close() });
+      const bx = x + w - 30, by = y + 5;
+      ctx.fillStyle = '#7a1c24'; ctx.fillRect(bx, by, 22, 20);
+      ctx.strokeStyle = '#f0c060'; ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, 21, 19);
+      text(ctx, '✕', bx + 11, by + 11, { size: 12, align: 'center' });
+      this.regions.push({ x: x + w - 38, y, w: 38, h: 32, fn: () => this.close() });
     }
   }
 
@@ -1688,10 +1834,20 @@ export class Ui {
   }
 
   private drawDead(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = 'rgba(40,0,0,0.6)';
+    const t = performance.now() / 1000;
+    const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, 20, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.6);
+    g.addColorStop(0, 'rgba(40,0,8,0.55)'); g.addColorStop(1, 'rgba(10,0,4,0.88)');
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     this.regions.push({ x: 0, y: 0, w: VIEW_W, h: VIEW_H, fn: () => this.game.returnToTown() });
-    text(ctx, 'Você foi derrotado', VIEW_W / 2, VIEW_H / 2 - 12, { size: 24, align: 'center', color: '#ff9b9b' });
-    text(ctx, 'Toque na tela ou aperte J para voltar à vila', VIEW_W / 2, VIEW_H / 2 + 18, { size: 12, align: 'center' });
+    const cy = VIEW_H / 2 - 20;
+    ctx.fillStyle = '#e05a5a';
+    ctx.fillRect(VIEW_W / 2 - 150, cy + 22, 300, 1);
+    text(ctx, 'DERROTADO', VIEW_W / 2 + 2, cy + 2, { size: 32, align: 'center', color: '#3a0008' });
+    text(ctx, 'DERROTADO', VIEW_W / 2, cy, { size: 32, align: 'center', color: '#ff7070' });
+    text(ctx, 'Sua jornada não termina aqui.', VIEW_W / 2, cy + 36, { size: 11, align: 'center', color: '#e8d8d8', bold: false });
+    ctx.globalAlpha = 0.6 + Math.sin(t * 4) * 0.4;
+    ribbon(ctx, VIEW_W / 2, cy + 74, 230, 24, this.input.touchMode ? 'Toque para voltar à vila' : 'Clique ou aperte J para voltar à vila', 11);
+    ctx.globalAlpha = 1;
   }
 }

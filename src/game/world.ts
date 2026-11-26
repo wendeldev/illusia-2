@@ -2052,8 +2052,13 @@ export class World {
     const top = gy - enemyBox(e).top + 6;
     if (e.state === 'windup') text(ctx, '!', e.x, gy - top - 6, { size: 16, align: 'center', color: '#ff5050' });
     if (e.state === 'ability') text(ctx, '!!', e.x, gy - top - 8, { size: 20, align: 'center', color: '#ff3030' });
-    if (!e.def.boss && e.hp < e.maxHp) bar(ctx, e.x - 16, gy + 6, 32, 4, e.hp / e.maxHp, '#ff5f5f');
-    if (!e.def.boss) text(ctx, `Nv ${e.level}`, e.x, gy + 16, { size: 8, align: 'center', color: levelColor(e.level, this.progress.level) });
+    // vida e nível só do monstro ferido ou perto do jogador (grupos não ficam com etiquetas empilhadas)
+    if (!e.def.boss && (e.hp < e.maxHp || Math.abs(e.x - this.player.x) < 90)) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(e.x - 17, gy + 5, 34, 6);
+      bar(ctx, e.x - 16, gy + 6, 32, 4, e.hp / e.maxHp, e.hp / e.maxHp < 0.35 ? '#ff9a3a' : '#ff5f5f', 'rgba(60,10,10,0.8)');
+      text(ctx, `${e.level}`, e.x - 22, gy + 9, { size: 7, align: 'right', color: levelColor(e.level, this.progress.level) });
+    }
   }
 
   private drawPlayer(ctx: CanvasRenderingContext2D): void {

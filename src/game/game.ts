@@ -353,8 +353,9 @@ export class Game implements GameApi {
   constructor(private input: Input) {
     this.ui = new Ui(this, input);
     this.world = this.makeWorld(START_STAGE);
-    // primeiro jogo (ou save de antes das classes): escolher a classe
-    if (!this.progress.classId) this.ui.openClasses(true);
+    // abertura: tela de título (ela leva à escolha da classe no primeiro jogo); ?debug pula direto
+    if (!new URLSearchParams(location.search).has('debug')) this.ui.openTitle();
+    else if (!this.progress.classId) this.ui.openClasses(true);
   }
 
   save(): void {
@@ -406,6 +407,8 @@ export class Game implements GameApi {
     if (this.pendingStage) {
       this.world = this.makeWorld(this.pendingStage.id, this.pendingStage.keep, this.pendingStage.stage);
       this.pendingStage = null;
+      const st = this.world.stage;
+      this.ui.announceStage(st.name, st.level ? `Monstros nível ${st.level}` : st.id === START_STAGE ? 'Descanse, compre e prepare-se' : '');
       saveProgress(this.progress);
     }
     this.input.endFrame();
