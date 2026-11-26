@@ -96,12 +96,22 @@ export function drawHUD(ctx, g) {
     ctx.globalAlpha = 1;
   }
 
+  // Modo desafio
+  const ar = g.arena;
+  if (ar) {
+    const label = ar.mode === 'defesa' ? 'Defesa do Cristal' : 'Desafio das Ondas';
+    text(ctx, `${label} • Onda ${ar.wave}`, VIEW_W / 2, 78, { size: 12, align: 'center', color: '#ffd84a' });
+    const info = ar.over ? 'Fim! Saia pelo portal à esquerda' : ar.breakT > 0 ? `Próxima onda em ${Math.ceil(ar.breakT / 60)}s` : `Inimigos restantes: ${ar.alive + ar.toSpawn}`;
+    text(ctx, info, VIEW_W / 2, 91, { size: 10, align: 'center', color: '#dde', bold: false });
+    if (ar.crystal) bar(ctx, VIEW_W / 2 - 90, 97, 180, 7, ar.crystal.hp / ar.crystal.maxHp, '#7fd0ff');
+  }
+
   // Chefe
   const b = g.boss;
   if (b && b.alive && g.bossIntro) {
-    const w = 300, x = (VIEW_W - w) / 2;
-    text(ctx, b.d.name, VIEW_W / 2, 78, { size: 11, align: 'center', color: '#ffd0d0' });
-    bar(ctx, x, 84, w, 9, b.hp / b.maxHp, b.phase === 2 ? '#ff6b3d' : '#e0484f');
+    const w = 300, x = (VIEW_W - w) / 2, oy = g.arena ? 38 : 0;
+    text(ctx, b.d.name, VIEW_W / 2, 78 + oy, { size: 11, align: 'center', color: '#ffd0d0' });
+    bar(ctx, x, 84 + oy, w, 9, b.hp / b.maxHp, b.phase === 2 ? '#ff6b3d' : '#e0484f');
   }
 
   // Avisos

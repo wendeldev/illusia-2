@@ -9,6 +9,8 @@ import { moveBody } from './physics.js';
 import { computeStats, expToNext } from './stats.js';
 import { drawBackground, drawMap, drawFog, drawHero, drawNPC, drawEnemy, drawProjectile, drawDrop, VIEW_W, VIEW_H } from './render.js';
 import { drawHUD } from './hud.js';
+import { Arena } from './arena.js';
+import { drawCrystal } from './render.js';
 import { clamp, rand, randi, sign, overlap, cx, cy } from '../engine/util.js';
 import { sfx } from '../engine/audio.js';
 
@@ -61,7 +63,8 @@ export class Game {
   // ---------- Mapas ----------
   loadMap(id, x = null) {
     const m = MAPS[id];
-    this.mapId = id; this.save.map = id;
+    this.mapId = id; this.save.map = m.noSave ? 'vila' : id;
+    this.arena = null;
     this.map = {
       ...m,
       solids: m.solids.map(([x, y, w, h]) => ({ x, y, w, h })),
@@ -78,6 +81,11 @@ export class Game {
     this.banner = { text: m.name, sub: m.levels || (m.safe ? 'Zona segura' : ''), t: 170 };
     this.updateNpcMarkers();
     this.persist();
+  }
+
+  startArena(mode) {
+    this.loadMap('arena');
+    this.arena = new Arena(this, mode);
   }
 
   spawnFrom(sp) {
@@ -120,6 +128,7 @@ export class Game {
       if (++sp.timer > 600) { sp.timer = 0; this.spawnFrom(sp); }
     }
 
+    if (this.arena) this.arena.update();
     this.updateProjectiles();
     this.updateDrops();
     this.fx.update();
@@ -166,6 +175,7 @@ export class Game {
     drawMap(ctx, this.map, this.frame);
     for (const n of this.map.npcs || []) drawNPC(ctx, n, this.frame, n === this.nearNPC);
     for (const d of this.drops) drawDrop(ctx, d, this.frame);
+    if (this.arena?.crystal) drawCrystal(ctx, this.arena.crystal);
     for (const e of this.enemies) drawEnemy(ctx, e);
     drawHero(ctx, this.player, this.save.cls);
     for (const pr of this.projectiles) drawProjectile(ctx, pr);
@@ -216,7 +226,8 @@ export class Game {
     e.hurt(dmg, dir, spec.knock ?? 2, spec.stun ?? 12, spec.freeze);
     this.fx.number(cx(e), e.y - 4, crit ? `${dmg}!` : `${dmg}`, crit ? '#ffd84a' : '#ffffff', crit);
     this.fx.sparks(cx(e), cy(e), dir, crit ? '#ffd84a' : '#ffffff');
-    this.hitstop = Math.max(this.hitstop, crit ? 5 : 3);
+    // pausa de impacto maior no golpe final do combo e em críticos
+    this.hitstop = Math.max(this.hitstop, ((spec.knock ?? 0) >= 5 ? 6 : 3) + (crit ? 2 : 0));
     if (spec.shake) this.shake(spec.shake);
     this.combo++; this.comboTimer = 130;
     if (this.combo > this.save.stats.maxCombo) this.save.stats.maxCombo = this.combo;
@@ -449,6 +460,7 @@ export class Game {
 
   // ---------- Morte ----------
   onPlayerDeath() {
+    if (this.arena) this.arena.finish('Você caiu!');
     this.save.stats.deaths++;
     this.resetCombo();
   }

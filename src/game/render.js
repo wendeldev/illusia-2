@@ -9,6 +9,7 @@ const THEMES = {
   vila: { sky: ['#ffb88a', '#ffe2b8'], far: '#e8a88a', mid: '#b98a7a', ground: '#7a5a3a', top: '#8fc96a', plat: '#a0703f', deco: 'houses' },
   campos: { sky: ['#7cc4ff', '#d8f1ff'], far: '#a6d8a0', mid: '#7cbf6a', ground: '#8a6a3f', top: '#f0c84a', plat: '#b8864a', deco: 'wheat' },
   bosque: { sky: ['#4a6b7a', '#a8c8c0'], far: '#5b7f6f', mid: '#3c5e4c', ground: '#3e3428', top: '#4f8f4a', plat: '#6b4f33', deco: 'trees', fog: true },
+  arena: { sky: ['#3b1f4a', '#e07a5f'], far: '#7a3b52', mid: '#5a2c40', ground: '#5c4433', top: '#c9a66b', plat: '#8a6a4a', deco: 'pillars' },
   ruinas: { sky: ['#1e1838', '#4a3e78'], far: '#3a3466', mid: '#2c2850', ground: '#2a2640', top: '#6fc3d9', plat: '#5a5a8a', deco: 'crystals' },
 };
 
@@ -56,6 +57,12 @@ export function drawBackground(ctx, map, camX, t) {
       const x = i * 90 - off + hash(i) * 40, h = 60 + hash(i + 5) * 90;
       ctx.beginPath(); ctx.moveTo(x, 300); ctx.lineTo(x + 14, 300 - h); ctx.lineTo(x + 30, 300 - h * 0.7); ctx.lineTo(x + 40, 300); ctx.fill();
     }
+  } else if (th.deco === 'pillars') {
+    for (let i = Math.floor(off / 110) - 1; i < (off + VIEW_W) / 110 + 1; i++) {
+      const x = i * 110 - off;
+      ctx.fillRect(x, 140, 26, 160); ctx.fillRect(x - 6, 132, 38, 10);
+    }
+    ctx.fillRect(0, 128, VIEW_W, 6);
   } else if (th.deco === 'houses') {
     for (let i = Math.floor(off / 160) - 1; i < (off + VIEW_W) / 160 + 1; i++) {
       const x = i * 160 - off + hash(i) * 40, h = 50 + hash(i + 2) * 30;
@@ -216,6 +223,20 @@ export function drawNPC(ctx, npc, t, near) {
   ctx.font = '10px system-ui, sans-serif'; ctx.textAlign = 'center';
   ctx.fillStyle = near ? '#fff' : 'rgba(255,255,255,0.75)';
   ctx.fillText(d.name, x, y + 14);
+}
+
+export function drawCrystal(ctx, c) {
+  const x = c.x + c.w / 2, y = c.y + c.h;
+  shadow(ctx, x, y, 18);
+  const glow = c.hp / c.maxHp;
+  ctx.save();
+  ctx.shadowColor = '#7fd0ff'; ctx.shadowBlur = 10 + Math.sin(c.anim * 0.08) * 6;
+  ctx.fillStyle = c.flash > 0 && c.flash % 2 ? '#ffffff' : `hsl(${195 - (1 - glow) * 190}, 80%, ${55 + glow * 15}%)`;
+  ctx.beginPath(); ctx.moveTo(x, c.y - Math.sin(c.anim * 0.05) * 2); ctx.lineTo(x + 15, c.y + 22); ctx.lineTo(x + 8, y); ctx.lineTo(x - 8, y); ctx.lineTo(x - 15, c.y + 22); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(x - 3, c.y + 12, 3, 18);
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - 20, c.y - 12, 40, 4);
+  ctx.fillStyle = '#7fd0ff'; ctx.fillRect(x - 20, c.y - 12, 40 * glow, 4);
 }
 
 export function drawEnemy(ctx, e) {

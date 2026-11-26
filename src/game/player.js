@@ -18,6 +18,7 @@ export class Player {
     this.inv = 0; this.dashCd = 0; this.cds = [0, 0, 0];
     this.buffs = []; this.shield = 0; this.dropTimer = 0;
     this.skill = null;
+    this.coyote = 0; this.jumpBuffer = 0;
   }
 
   get cls() { return CLASSES[this.game.save.cls]; }
@@ -49,6 +50,7 @@ export class Player {
     if (inp.wasPressed('dash')) this.tryDash();
     for (let i = 0; i < 3; i++) if (inp.wasPressed('skill' + (i + 1))) this.trySkill(i);
     if (inp.wasPressed('jump')) this.tryJump(inp.isDown('down'));
+    else if (this.jumpBuffer > 0) this.jumpBuffer--;
     if (inp.wasPressed('potion')) g.usePotion('pocao_vida');
     if (inp.wasPressed('potion2')) g.usePotion('pocao_mana');
 
@@ -85,7 +87,11 @@ export class Player {
     if (!inp.isDown('jump') && this.vy < -3 && this.state === 'air') this.vy *= 0.85;
 
     moveBody(this, g.map, gravity);
-    if (this.onGround) this.jumps = 0;
+    if (this.onGround) {
+      this.jumps = 0; this.coyote = 6;
+      // buffer: pulo apertado pouco antes de tocar o chão é executado ao aterrissar
+      if (this.jumpBuffer > 0 && !this.busy) { this.jumpBuffer = 0; this.tryJump(false); }
+    } else if (this.coyote > 0) this.coyote--;
 
     if (this.y > 420) { // caiu do mapa
       this.place(g.map.spawnX);
@@ -101,8 +107,12 @@ export class Player {
       this.dropTimer = 14; this.y += 2; this.onGround = false; this.state = 'air';
       return;
     }
-    if (this.onGround || this.jumps < 2) {
-      const first = this.onGround;
+    // coyote time: ainda dá para pular normalmente logo após sair de uma beirada
+    const grounded = this.onGround || (this.coyote > 0 && this.jumps === 0 && this.vy >= 0);
+    if (!grounded && this.jumps >= 2) { this.jumpBuffer = 8; return; }
+    if (grounded || this.jumps < 2) {
+      const first = grounded;
+      this.coyote = 0;
       this.vy = first ? -8.2 : -7.2;
       this.jumps = first ? 1 : 2;
       if (this.state === 'attack') this.state = 'air';

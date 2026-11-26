@@ -12,14 +12,19 @@ export class Enemy {
     this.y = groundYBelow(game.map, x + d.w / 2) - d.h;
     if (d.ai === 'flyer') { this.y -= 70 + randi(0, 40); this.homeY = this.y; }
     this.vx = 0; this.vy = 0; this.face = -1;
-    this.hp = d.hp; this.maxHp = d.hp;
+    this.hp = d.hp; this.maxHp = d.hp; this.atk = d.atk;
     this.state = 'idle'; this.t = randi(20, 80); this.cool = randi(30, 90);
     this.stun = 0; this.frozen = 0; this.flash = 0; this.anim = randi(0, 100);
     this.alive = true; this.dead = 0;
     this.phase = 1; this.summoned = 0;
   }
 
-  get player() { return this.game.player; }
+  // Alvo: o jogador, ou o Cristal no modo Defesa quando ele estiver mais perto.
+  get player() {
+    const g = this.game, p = g.player, c = g.arena?.crystal;
+    if (!c || !c.alive || !this.arena) return p;
+    return Math.abs(cx(c) - cx(this)) < Math.abs(cx(p) - cx(this)) || p.state === 'dead' ? c : p;
+  }
 
   update() {
     const g = this.game, p = this.player, d = this.d;
@@ -39,7 +44,7 @@ export class Enemy {
 
     const dx = cx(p) - cx(this), dy = cy(p) - cy(this);
     const adx = Math.abs(dx), ady = Math.abs(dy);
-    const aggro = p.state !== 'dead' && adx < d.aggro && ady < 90;
+    const aggro = p.state !== 'dead' && ((adx < d.aggro && ady < 90) || this.arena);
 
     switch (d.ai) {
       case 'walker': this.walker(dx, adx, ady, aggro); break;
@@ -55,10 +60,10 @@ export class Enemy {
     if (this.y > 420) this.alive = false;
 
     // dano por contato
-    if (p.state !== 'dead' && overlap(this, p)) {
-      const mult = this.state === 'lunge' || this.state === 'charge' ? 1.3 : 1;
-      p.hurt(d.atk * mult, sign(dx));
-    }
+    const mult = this.state === 'lunge' || this.state === 'charge' ? 1.3 : 1;
+    const hero = g.player, crystal = g.arena?.crystal;
+    if (hero.state !== 'dead' && overlap(this, hero)) hero.hurt(this.atk * mult, sign(cx(hero) - cx(this)));
+    if (crystal && crystal.alive && this.arena && overlap(this, crystal)) crystal.hurt(this.atk * mult);
   }
 
   turnAtEdges() {
@@ -129,6 +134,7 @@ export class Enemy {
       this.vy = (ty / (dist || 1)) * d.speed * 1.4;
       if (dist < 10) { this.state = 'idle'; this.cool = randi(60, 110); }
     } else {
+      if (this.arena) this.homeX += sign(dx) * 0.8;
       const tx = this.homeX + Math.sin(this.anim * 0.02) * 60 - this.x;
       const ty = this.homeY + Math.sin(this.anim * 0.07) * 14 - this.y;
       this.vx = tx * 0.03; this.vy = ty * 0.06;
@@ -151,7 +157,7 @@ export class Enemy {
         const sp = 3.4;
         this.game.spawnProjectile({
           x: cx(this) + this.face * 10, y: this.y + 8, vx: this.face * sp, vy: Math.max(-1.5, Math.min(1.5, dy / 60)),
-          r: 5, color: '#9be36a', life: 120, owner: 'enemy', dmg: this.d.atk, kind: 'seed',
+          r: 5, color: '#9be36a', life: 120, owner: 'enemy', dmg: this.atk, kind: 'seed',
         });
         sfx('magic');
       }
@@ -186,7 +192,7 @@ export class Enemy {
           g.shake(10); sfx('boom');
           g.fx.quake(cx(this), this.y + this.h, 120, '#9fe6ff');
           for (const dir of [-1, 1]) {
-            g.spawnProjectile({ x: cx(this) + dir * 30, y: this.y + this.h - 18, vx: dir * 4.2, vy: 0, r: 9, color: '#9fe6ff', life: 90, owner: 'enemy', dmg: d.atk, kind: 'wave' });
+            g.spawnProjectile({ x: cx(this) + dir * 30, y: this.y + this.h - 18, vx: dir * 4.2, vy: 0, r: 9, color: '#9fe6ff', life: 90, owner: 'enemy', dmg: this.atk, kind: 'wave' });
           }
           this.endAttack(enraged);
         }
@@ -198,7 +204,7 @@ export class Enemy {
           const n = enraged ? 5 : 3;
           for (let i = 0; i < n; i++) {
             const tvx = (dx / 60) * (0.7 + i * 0.18);
-            g.spawnProjectile({ x: cx(this), y: this.y + 10, vx: Math.max(-6, Math.min(6, tvx)), vy: -6 - i * 0.4, r: 6, color: '#c9f2ff', life: 140, owner: 'enemy', dmg: d.atk * 0.8, gravity: 0.22, kind: 'shard' });
+            g.spawnProjectile({ x: cx(this), y: this.y + 10, vx: Math.max(-6, Math.min(6, tvx)), vy: -6 - i * 0.4, r: 6, color: '#c9f2ff', life: 140, owner: 'enemy', dmg: this.atk * 0.8, gravity: 0.22, kind: 'shard' });
           }
           this.endAttack(enraged);
         }

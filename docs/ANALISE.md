@@ -41,5 +41,31 @@ versionamos o APK nem os arquivos extraídos.
 | NPCs, missões em cadeia, loja | ✅ |
 | Conquistas, contador de combo com bônus de dano | ✅ |
 | Salvamento local, controles de toque e teclado | ✅ |
-| Modo arena por ondas, refino/soquetes, mais zonas | ⏳ próximos passos |
+| Desafio das Ondas (inspirado no modo Rush) e Defesa do Cristal (inspirado no modo Defense) | ✅ |
+| Coyote time, buffer de pulo, pausa de impacto maior no golpe final | ✅ |
+| Refino/soquetes, mais zonas, modo Missão, PvP assíncrono | ⏳ próximos passos |
 | Empacotar para Android (Capacitor) | ⏳ próximos passos |
+
+## Referências da internet
+O que as fontes dizem e como influenciou o projeto:
+
+- **Modos e conteúdo do Illusia 2:** quatro mundos temáticos (Comida, Aventura, Brinquedos e Esperança)
+  e quatro modos além da história: PvP assíncrono, Rush, Defense e Mission. Daqui vieram o
+  *Desafio das Ondas* e a *Defesa do Cristal* (nossa versão, com regras próprias).
+  Fontes: [Android Police](https://www.androidpolice.com/2012/06/18/gamevil-releases-illusia-2-save-the-dream-world-with-new-gameplay-modes-characters-and-more-customization-than-ever/),
+  [Droid Gamers](https://www.droidgamers.com/news/gamevil-drops-another-rpg-onto-android-called-illusia-2/)
+- **O que a crítica disse:** elogios ao visual e ao charme, ressalvas à jogabilidade. A 148Apps
+  chamou o jogo de "rough cut" e a Pocket Gamer disse que não é o RPG mais refinado, mas um dos
+  mais charmosos. Prioridade do nosso projeto: **controle e sensação de combate**.
+  Fontes: [148Apps](https://www.148apps.com/reviews/illusia-2-review/),
+  [Pocket Gamer](https://www.pocketgamer.com/illusia-2/review/),
+  [Gamezebo](https://www.gamezebo.com/reviews/illusia-2-review/)
+- **Sensação de combate (game feel):** a pausa de impacto (hitstop) deve congelar atacante e alvo
+  juntos (aqui congela o mundo inteiro); empilhar efeitos pequenos (flash, knockback, tremor,
+  partículas, som, antecipação); usar buffer de comandos e coyote time; dar mais peso ao golpe final do combo.
+  Fontes: [guia de "juice" em combate 2D](https://freegamesprites.com/es/news/game-feel-2d-combat-juice-tricks),
+  [checklist de game feel (Godot)](https://forum.godotengine.org/t/game-feel-checklist-for-godot-4-hit-stop-trauma-shake-coyote-time-and-more/145340),
+  [combate em 9 Monkeys of Shaolin (Unreal)](https://www.unrealengine.com/tech-blog/9-monkeys-of-shaolin-developer-sobaka-studio-shares-how-to-create-a-satisfying-combat-system),
+  [Pichlmair & Johansen, levantamento sobre game feel](https://arxiv.org/pdf/2011.09201)
+- **Controles de toque:** menos botões, e maiores, reduzem toques acidentais. Ainda a aplicar.
+  Fonte: [devlog sobre controles mobile](https://itch.io/devlog/446955/for-fun-designing-bossgames-mobile-controls.amp)

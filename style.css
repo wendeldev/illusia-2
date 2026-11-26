@@ -97,3 +97,5 @@ body.touch .hint { display: none; }
   .grid2 { grid-template-columns: 1fr; }
   .panel { padding: 14px; }
 }
+button:disabled { opacity: 0.5; cursor: default; }
+.col button small { margin-top: 2px; }

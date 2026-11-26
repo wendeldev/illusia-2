@@ -202,6 +202,14 @@ export class UI {
       } else if (active) {
         text = `${QUESTS[active].title}: ${g.questProgress(active)}/${QUESTS[active].count}. Estou contando com você!`;
       }
+      if (npc.role === 'arena') {
+        const st = g.save.stats;
+        buttons += `<p class="reward">Recordes: ${st.bestWave || 0} ondas • ${st.bestDefense || 0} defesas</p>`;
+        buttons += `<button data-act="arena" data-arg="ondas">Desafio das Ondas<small>Sobreviva a ondas cada vez mais fortes. Chefe a cada 5 ondas.</small></button>`;
+        buttons += g.save.level >= 3
+          ? `<button data-act="arena" data-arg="defesa">Defesa do Cristal<small>Impeça que os monstros destruam o Cristal no centro da arena.</small></button>`
+          : `<button disabled>Defesa do Cristal<small>Disponível a partir do Nv. 3</small></button>`;
+      }
       if (npc.role === 'shop') {
         buttons += Object.entries(CONSUMABLES).map(([id, c]) => `<button data-act="buy" data-arg="${id}">Comprar ${esc(c.name)} (${c.price} ouro)</button>`).join('');
         buttons += `<button data-act="sellcommon">Vender todos os itens comuns</button>`;
@@ -275,6 +283,7 @@ export class UI {
         this.openDialog(this.npc, total ? `Negócio fechado! Aqui estão ${total} de ouro.` : 'Você não tem itens comuns para vender.');
         break;
       }
+      case 'arena': this.hide(); g.startArena(arg); break;
       case 'respawn': this.hide(); g.respawn(); break;
     }
   }

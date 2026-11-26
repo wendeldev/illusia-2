@@ -14,6 +14,8 @@ python3 -m http.server 8000   # ou: npx serve .
 J atacar (repita para combo) • L dash (J durante o dash = golpe especial) •
 U / I / O habilidades • Q / E poções • ↑ conversar/portal • Esc menu
 
+**Modos de desafio:** fale com o Capitão Davi na vila para o *Desafio das Ondas* e a *Defesa do Cristal*.
+
 **Celular:** controles na tela; jogue com o aparelho na horizontal.
 
 ## Estrutura
@@ -29,7 +31,7 @@ docs/ANALISE.md        análise do APK de referência
 Para adicionar conteúdo, normalmente basta editar os arquivos em `src/data/`.
 
 ## Próximos passos sugeridos
-- Modo arena por ondas e mais zonas/chefes
+- Mais zonas/chefes, modo Missão e PvP assíncrono
 - Refino e soquetes de equipamento
 - Sprites desenhados (hoje a arte é vetorial gerada por código)
 - Empacotar como app Android com Capacitor

@@ -8,7 +8,7 @@ export const MAPS = {
     solids: [[0, FLOOR, 1400, 60]],
     platforms: [[470, 236, 110], [640, 196, 130]],
     portals: [{ x: 1350, to: 'campos', toX: 70, label: 'Campos Dourados' }],
-    npcs: [{ id: 'mirela', x: 330 }, { id: 'tobias', x: 760 }, { id: 'brina', x: 1010 }],
+    npcs: [{ id: 'mirela', x: 330 }, { id: 'tobias', x: 760 }, { id: 'brina', x: 1010 }, { id: 'davi', x: 1200 }],
     spawns: [],
   },
   campos: {
@@ -40,6 +40,13 @@ export const MAPS = {
       { type: 'javali', x: 1900 }, { type: 'javali', x: 2650 }, { type: 'vespa', x: 900 }, { type: 'vespa', x: 2000 },
     ],
   },
+  arena: {
+    name: 'Coliseu do Crepúsculo', theme: 'arena', width: 960, levels: 'Modo desafio', spawnX: 480, noSave: true,
+    solids: [[0, FLOOR, 960, 60]],
+    platforms: [[150, 226, 150], [660, 226, 150], [405, 166, 150]],
+    portals: [{ x: 30, to: 'vila', toX: 1150, label: 'Sair para a Vila' }],
+    spawns: [],
+  },
   ruinas: {
     name: 'Ruínas de Cristal', theme: 'ruinas', width: 1700, levels: 'Chefe • Nv. 8+', spawnX: 70,
     solids: [[0, FLOOR, 1700, 60], [420, 250, 60, 50]],
@@ -52,6 +59,7 @@ export const MAPS = {
 export const NPCS = {
   mirela: { name: 'Anciã Mirela', color: '#8e6fc1', hair: '#e6e6e6', role: 'quest', idle: 'A aurora sempre volta. Basta alguém ter coragem de esperar por ela.' },
   tobias: { name: 'Padeiro Tobias', color: '#d9893b', hair: '#3a2615', role: 'quest', idle: 'Pão quentinho para quem protege a vila!' },
+  davi: { name: 'Capitão Davi', color: '#a33b3b', hair: '#d9d9d9', role: 'arena', idle: 'O Coliseu testa a coragem de quem quer ficar mais forte.' },
   brina: { name: 'Brina, a Mercadora', color: '#3fa37a', hair: '#c2412f', role: 'shop', idle: 'Poções fresquinhas! Também compro o que você não usa.' },
 };
 
@@ -90,5 +98,8 @@ export const HONORS = [
   { id: 'dash50', name: 'Pés Ligeiros', desc: '50 ataques em dash', check: (s) => s.stats.dashAttacks >= 50, gold: 80 },
   { id: 'lvl5', name: 'Aventureiro', desc: 'Alcance o nível 5', check: (s) => s.level >= 5, gold: 100 },
   { id: 'lvl10', name: 'Herói da Aurora', desc: 'Alcance o nível 10', check: (s) => s.level >= 10, gold: 400 },
+  { id: 'wave5', name: 'Gladiador', desc: 'Vença 5 ondas no Desafio das Ondas', check: (s) => (s.stats.bestWave || 0) >= 5, gold: 150 },
+  { id: 'wave15', name: 'Lenda do Coliseu', desc: 'Vença 15 ondas no Desafio das Ondas', check: (s) => (s.stats.bestWave || 0) >= 15, gold: 600 },
+  { id: 'def5', name: 'Guardião do Cristal', desc: 'Defenda o Cristal por 5 ondas', check: (s) => (s.stats.bestDefense || 0) >= 5, gold: 200 },
   { id: 'boss', name: 'Quebra-Cristais', desc: 'Derrote o Golem de Cristal', check: (s) => s.stats.bosses >= 1, gold: 300 },
 ];
