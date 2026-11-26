@@ -83,12 +83,12 @@ def load_trajes():
 
 def hand_point(im):
     """Punho da frente (lado direito, virado para a direita): o pixel de pele mais à direita na faixa do tronco
-    (40%–85% da altura, abaixo do rosto). Devolve (x, y) em px do quadro, ou None."""
+    (60%–88% da altura, abaixo do queixo). Devolve (x, y) em px do quadro, ou None."""
     a = np.asarray(im).astype(int)
     H, W = a.shape[:2]
     r, g, b, al = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
     skin = (al > 0) & (r > 190) & (g > 120) & (b > 80) & (r > g + 15) & (g > b) & (r - b < 140)
-    y0, y1 = int(H * 0.4), int(H * 0.85)
+    y0, y1 = int(H * 0.6), int(H * 0.88)
     ys, xs = np.nonzero(skin[y0:y1])
     if len(xs) < 3:
         return None

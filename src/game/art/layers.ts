@@ -28,7 +28,7 @@ const AURA_SHAPED: Record<string, { size: number; y: number }> = { gau_skull: { 
 /** Tamanhos padrão na tela (px), iguais para todas as classes e raridades. */
 const SIZE = {
   /** comprimento da arma (diagonal do desenho): espada, machado, lança e cajado; adaga */
-  weapon: 42, dagger: 30,
+  weapon: 42, dagger: 30, sword: 30,
   /** aura no chão */
   auraW: 52, auraH: 20,
 };
@@ -228,7 +228,7 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   // caído no chão no fim da morte: sem a arma em pé
   if (wr && !(L.cls === 'warrior' && fi >= 52)) {
     // todas as armas com o mesmo comprimento na tela (diagonal do desenho, do cabo à ponta)
-    const len = (L.weaponKind === 'dagger' ? SIZE.dagger : SIZE.weapon) * g;
+    const len = (L.weaponKind === 'dagger' ? SIZE.dagger : L.cls === 'warrior' ? SIZE.sword : SIZE.weapon) * g;
     const sc = len / Math.hypot(wr[0], wr[1]);
     const ww = wr[0] * sc, wh = wr[1] * sc;
     ctx.save();
