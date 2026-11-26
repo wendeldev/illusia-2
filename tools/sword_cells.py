@@ -17,4 +17,15 @@ def load():
     for r, rar in enumerate(ROWS):
         im = S.crop((0, r * CELL, CELL, (r + 1) * CELL)).transpose(Image.FLIP_LEFT_RIGHT)
         out[rar] = im.crop(im.getchannel('A').getbbox())
+    # espada Incomum desenhada à parte (em pé, cabo embaixo): inclina 45° para a direita e reduz ao tamanho das outras
+    inc = os.path.join(ROOT, 'assets-src', 'sword-incomum.png')
+    if os.path.exists(inc):
+        im = Image.open(inc).convert('RGBA')
+        im = im.crop(im.getchannel('A').getbbox())
+        k = 34 / im.size[1]
+        im = im.resize((max(1, round(im.size[0] * k)), 34), Image.LANCZOS)
+        im = im.rotate(-45, resample=Image.BICUBIC, expand=True)
+        a = im.getchannel('A').point(lambda v: 255 if v > 110 else 0)
+        im.putalpha(a)
+        out['incomum'] = im.crop(im.getchannel('A').getbbox())
     return out

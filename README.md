@@ -157,6 +157,9 @@ continuam dando bônus mas não aparecem nele (não encaixam no corpo novo). **T
 inteiras desenhadas (Camponês, Ovelha, Chifres, Pistoleiro, Guarda da Chama, Príncipe, Dourada das Nuvens). Todo chefe
 solta um traje que o jogador ainda não tem; com todos, os repetidos viram ouro (e podem ser vendidos na bolsa). Com
 traje, a coroa (halo) não aparece; a espada continua na mão.
+**Escudo** (`sh_<raridade>`, espaço Escudo, só Guerreiro; começa com o Escudo Comum): aparece na mão de trás, por cima
+de qualquer traje, recolorido por raridade (desenho de `assets-src/warrior2/shield.png`). A espada Incomum usa
+`assets-src/sword-incomum.png`.
 
 ## Fases de selva (Bosque Sussurrante)
 

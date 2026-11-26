@@ -53,8 +53,8 @@ export function newProgress(): Progress {
     level: 1,
     exp: 0,
     gold: 60,
-    owned: ['training_sword'],
-    equipped: { weapon: 'training_sword' },
+    owned: ['training_sword', 'sh_0'],
+    equipped: { weapon: 'training_sword', shield: 'sh_0' },
     cleared: [],
     quests: {},
     stars: {},
@@ -102,6 +102,7 @@ export function loadProgress(): Progress {
       if (!id || !p.owned.includes(id)) delete p.equipped[slot];
     }
     fitWeapon(p);
+    fitShield(p);
     return p;
   } catch {
     return newProgress();
@@ -138,4 +139,11 @@ export function fitWeapon(p: Progress): boolean {
   if (!best && !p.owned.includes(starter)) p.owned.push(starter);
   p.equipped.weapon = best ?? starter;
   return true;
+}
+
+/** Guerreiro começa com o Escudo Comum (outras classes não usam escudo). */
+export function fitShield(p: Progress): void {
+  if ((p.classId ?? 'warrior') !== 'warrior') { delete p.equipped.shield; return; }
+  if (!p.owned.includes('sh_0')) p.owned.push('sh_0');
+  if (!p.equipped.shield) p.equipped.shield = 'sh_0';
 }

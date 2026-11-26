@@ -29,6 +29,8 @@ const AURA_SHAPED: Record<string, { size: number; y: number }> = { gau_skull: { 
 const SIZE = {
   /** comprimento da arma (diagonal do desenho): espada, machado, lança e cajado; adaga */
   weapon: 42, dagger: 30, sword: 32,
+  /** escudo do Guerreiro (altura) */
+  shield: 14,
   /** aura no chão */
   auraW: 52, auraH: 20,
 };
@@ -55,6 +57,8 @@ export interface DollLook {
   aura?: string; auraColor: string;
   /** traje (roupa inteira desenhada, mesmos quadros do corpo): esconde corpo, roupas e halo */
   costume?: string;
+  /** escudo na mão de trás (Guerreiro) */
+  shield?: string;
   weapon: string; weaponKind: string; weaponColor: string; weaponRarity: number; weaponUp: number;
 }
 
@@ -125,6 +129,7 @@ export function dollLook(p: Progress): DollLook {
     pants: piece(p, 'pants', cls, 'pants'), cape: piece(p, 'cape', cls, 'cape'), boots: generic(p, 'boots', 'gb'),
     aura: generic(p, 'aura', 'gau'),
     costume: costumeOf(p),
+    shield: cls === 'warrior' ? generic(p, 'shield', 'gsh') : undefined,
     // Guerreiro novo: as peças antigas do set não encaixam no corpo novo (os bônus continuam valendo; o visual
     // de roupa dele vem dos trajes)
     ...(cls === 'warrior' ? { armor: undefined, arms: undefined, pants: undefined, boots: undefined, cape: undefined } : {}),
@@ -210,6 +215,13 @@ export function drawDoll(ctx: CanvasRenderingContext2D, L: DollLook, x: number, 
   if (L.boots) drawFit(ctx, L.boots, X(fx0) - 1, Y(fy0) - 4, X(fx1) + 1, Y(fy1) + 1, 'fill', 'top', 0, fl);
   if (L.armor) drawFit(ctx, L.armor, cx - span0 * 0.5, neck - 2, cx + span0 * 0.5, Y(hy0) + 3, 'fill', 'top', 0, fl);
   if (L.arms) drawFit(ctx, L.arms, X(hl) - 1, handY - 6, X(hr) + 1, handY + 2, 'fill', 'top', 0, fl);
+  }
+  // escudo na frente do peito, preso ao braço de trás (some no chão, no fim da morte)
+  if (L.shield && !(L.cls === 'warrior' && fi >= 50)) {
+    const sh = SIZE.shield * g, sw = sh * 0.88;
+    // na altura da cintura, um pouco à frente do corpo (não cobre o rosto)
+    const sx = cx + span0 * 0.35, sy = Y(A.hips[1]) + sh * 0.15;
+    drawFit(ctx, L.shield, sx - sw / 2, sy - sh / 2, sx + sw / 2, sy + sh / 2, 'contain', 'mid', 0, fl);
   }
   // halo flutuando acima da cabeça (brilho por cima, sem esconder o cabelo)
   // (na queda da morte o halo some aos poucos, em vez de girar com o corpo)

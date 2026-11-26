@@ -51,6 +51,7 @@ export const SLOT_NAMES: Record<Slot, string> = {
   cape: 'Capa',
   aura: 'Aura',
   costume: 'Traje',
+  shield: 'Escudo',
 };
 
 /** EXP para passar do nível `level` para o seguinte (curva pensada para o jogador acompanhar o nível dos monstros). */
