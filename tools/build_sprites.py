@@ -715,6 +715,8 @@ for cls, frs in BODIES.items():
     else:
         put(f'pd_{cls}', frs)
     PD[cls] = [AN.anatomy(im) for im in frs]
+    if cls == 'warrior':
+        W2.smooth_hands(frs, PD[cls])
     neck0 = PD[cls][0]['neck']
     for im, an in zip(frs, PD[cls]):
         an['oval'] = [round(v, 1) for v in SH.face_oval(im, {**an, 'neck': neck0})]

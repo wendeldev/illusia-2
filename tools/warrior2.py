@@ -79,3 +79,36 @@ def load_body():
 
 def load_trajes():
     return {t: _frames(_cells(os.path.join(DIR, f'traje-{t}.png'), 7)) for t in TRAJES}
+
+
+def hand_point(im):
+    """Punho da frente (lado direito, virado para a direita): o pixel de pele mais à direita na faixa do tronco
+    (40%–85% da altura, abaixo do rosto). Devolve (x, y) em px do quadro, ou None."""
+    a = np.asarray(im).astype(int)
+    H, W = a.shape[:2]
+    r, g, b, al = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
+    skin = (al > 0) & (r > 190) & (g > 120) & (b > 80) & (r > g + 15) & (g > b) & (r - b < 140)
+    y0, y1 = int(H * 0.4), int(H * 0.85)
+    ys, xs = np.nonzero(skin[y0:y1])
+    if len(xs) < 3:
+        return None
+    xr = xs.max()
+    sel = xs >= xr - 3
+    return float(np.mean(xs[sel])), float(np.mean(ys[sel]) + y0)
+
+
+def smooth_hands(frames, anat):
+    """Mão da frente estável: pele detectada em cada quadro; no parado (quadros 0-7) usa a mediana da fileira,
+    nas outras fileiras corrige só os saltos (mais de 4 px da mediana da fileira)."""
+    pts = [hand_point(im) for im in frames]
+    for r0 in range(0, len(frames), 8):
+        row = [p for p in pts[r0:r0 + 8] if p]
+        if not row:
+            continue
+        mx = float(np.median([p[0] for p in row])); my = float(np.median([p[1] for p in row]))
+        for i in range(r0, min(r0 + 8, len(frames))):
+            p = pts[i]
+            if r0 == 0 or p is None or abs(p[0] - mx) > 6 or abs(p[1] - my) > 6:
+                p = (mx, my) if r0 == 0 or p is None else p
+            anat[i]['hands'] = [anat[i]['hands'][0], round(p[0], 1) + 2]
+            anat[i]['hand_y'] = round(p[1], 1)
