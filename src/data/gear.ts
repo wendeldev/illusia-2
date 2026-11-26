@@ -26,7 +26,7 @@ export function weaponKindOf(e: { slot: Slot; weaponKind?: string }): string | u
 }
 /** A classe pode usar o item? (só as armas têm dono: cada classe usa a sua) */
 export function usableBy(e: { slot: Slot; weaponKind?: string }, classId: string | undefined): boolean {
-  if (e.slot === 'costume' || e.slot === 'shield') return (classId ?? 'warrior') === 'warrior';
+  if (e.slot === 'costume') return (classId ?? 'warrior') === 'warrior';
   return e.slot !== 'weapon' || weaponKindOf(e) === CLASS_WEAPON[classId ?? 'warrior'];
 }
 /** Set de armadura de cada classe. */
@@ -82,8 +82,6 @@ for (let r = 0; r < 8; r++) {
     // halo (auréola): ocupa o espaço da cabeça, o mesmo para todas as classes
     ['hl', 'helmet', 'Halo', 'halo', { def: round(2 * m), hp: Math.round(15 * m), mp: Math.round(5 * m) }],
     ['bt', 'boots', 'Botas', 'gb', { def: round(1 * m), hp: Math.round(12 * m) }],
-    // escudo: só o Guerreiro (na mão de trás, por cima de qualquer traje)
-    ['sh', 'shield', 'Escudo', 'gsh', { def: round(2.5 * m), hp: Math.round(15 * m) }],
     ['au', 'aura', 'Aura', 'gau', { atk: round(2 * m), crit: round(0.006 * Math.sqrt(m) * 100) / 100 }],
   ];
   for (const [pre, slot, name, icon, st] of extra) {
@@ -163,5 +161,5 @@ export function setFor(classId: string | undefined, rarity: number): string[] {
 export const SHOP_CATEGORIES: [string, string][] = [
   ['sword', 'Espadas'], ['dagger', 'Adagas'], ['staff', 'Cajados'],
   ['hl', 'Halos'], ['armor', 'Armaduras'], ['arms', 'Braços'], ['pants', 'Calças'], ['cape', 'Capas'],
-  ['bt', 'Botas'], ['sh', 'Escudos'], ['au', 'Auras'], ['classic', 'Clássicos'],
+  ['bt', 'Botas'], ['au', 'Auras'], ['classic', 'Clássicos'],
 ];

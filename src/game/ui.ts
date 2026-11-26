@@ -685,8 +685,7 @@ export class Ui {
   /** Categorias da loja: das armas, só a da classe (cada classe usa a sua). */
   private shopCats(): [string, string][] {
     const mine = CLASS_WEAPON[this.game.progress.classId ?? 'warrior'];
-    const warrior = (this.game.progress.classId ?? 'warrior') === 'warrior';
-    return SHOP_CATEGORIES.filter(([k]) => (!(k in WEAPON_KINDS) || k === mine) && (k !== 'sh' || warrior));
+    return SHOP_CATEGORIES.filter(([k]) => !(k in WEAPON_KINDS) || k === mine);
   }
 
   /** Melhor poção do tipo que o jogador tem (a mais fraca primeiro, para não desperdiçar). */
@@ -942,7 +941,7 @@ export class Ui {
     ctx.strokeStyle = '#8a6420'; ctx.lineWidth = 1; ctx.strokeRect(x + 30.5, top + 6.5, pw - 61, 15);
     text(ctx, `Nv. ${progress.level}  ${cls.name}`, x + pw / 2, top + 14, { size: 10, align: 'center', outline: false, color: '#ffd36b' });
     const S = 34, step = 37;
-    const LEFT: Slot[] = ['helmet', 'armor', 'gloves', 'pants', 'boots', 'weapon', 'shield'];
+    const LEFT: Slot[] = ['helmet', 'armor', 'gloves', 'pants', 'boots', 'weapon'];
     const RIGHT: Slot[] = ['costume', 'cape', 'aura', 'accessory'];
     const slotAt = (slot: Slot, sx: number, sy: number) => {
       const id = progress.equipped[slot];
@@ -982,7 +981,7 @@ export class Ui {
     const FILTERS: [string, (e: EquipmentDef) => boolean][] = [
       ['ui_flt_all', () => true],
       ['ui_flt_weapon', (e) => e.slot === 'weapon'],
-      ['ui_flt_armor', (e) => ['armor', 'gloves', 'pants', 'boots', 'cape', 'costume', 'shield'].includes(e.slot)],
+      ['ui_flt_armor', (e) => ['armor', 'gloves', 'pants', 'boots', 'cape', 'costume'].includes(e.slot)],
       ['ui_flt_helmet', (e) => e.slot === 'helmet'],
       ['ui_flt_ring', (e) => e.slot === 'accessory'],
       ['ui_flt_gem', (e) => e.slot === 'aura'],
@@ -1041,7 +1040,7 @@ export class Ui {
   /** Equipamentos do inventário: equipados primeiro, depois por raridade (ou por tipo). */
   private inventoryList(m: Extract<Modal, { kind: 'bag' }>, ok: (e: EquipmentDef) => boolean): string[] {
     const { progress } = this.game;
-    const ORDER: Slot[] = ['weapon', 'helmet', 'armor', 'gloves', 'pants', 'boots', 'cape', 'aura', 'accessory', 'costume', 'shield'];
+    const ORDER: Slot[] = ['weapon', 'helmet', 'armor', 'gloves', 'pants', 'boots', 'cape', 'aura', 'accessory', 'costume'];
     const eq = new Set(Object.values(progress.equipped));
     return progress.owned.filter((id) => hasItem(id) && ok(getItem(id))).sort((a, b) => {
       const ea = getItem(a), eb = getItem(b);

@@ -12,7 +12,7 @@ import { WORLD_ZOOM, worldView } from '../engine/view';
 import { Music } from '../engine/music';
 import { QuestBook, rewardText } from './quests';
 import { starBits, type StageResult } from './stars';
-import { fitShield, fitWeapon, loadProgress, saveProgress, type Progress } from './progress';
+import { fitWeapon, loadProgress, saveProgress, type Progress } from './progress';
 import { PASS } from '../data/pass';
 import { CLASS_WEAPON } from '../data/gear';
 import { rollGear } from './loot';
@@ -366,7 +366,6 @@ export class Game implements GameApi {
     this.progress.classId = id;
     // cada classe com a sua arma: troca para a melhor arma da nova classe (ou a inicial dela)
     fitWeapon(this.progress);
-    fitShield(this.progress);
     this.world.refreshStats(true);
     saveProgress(this.progress);
     this.sfx.play('levelup');

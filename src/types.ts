@@ -1,7 +1,7 @@
 // Tipos de conteúdo. Fases, poderes, equipamentos, inimigos e NPCs são DADOS (src/data/),
 // então dá para criar conteúdo novo sem mexer no motor.
 
-export type Slot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'pants' | 'boots' | 'cape' | 'accessory' | 'aura' | 'costume' | 'shield';
+export type Slot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'pants' | 'boots' | 'cape' | 'accessory' | 'aura' | 'costume';
 
 export interface StatBonus {
   atk?: number;

@@ -679,19 +679,6 @@ for (kind, r), im in MY.load_weapons().items():
     put(f'gw_{kind}_{r}', [im])
     if r == 'divino':
         put(f'gw_{kind}_celestial', [recolor(im, *RAR_HUE[7])])
-# espadas novas do Guerreiro (prancha própria): substituem as da prancha de equipamentos
-import sword_cells as SWC
-_sw = SWC.load()
-for r, im in _sw.items():
-    put(f'gw_sword_{r}', [im])
-put('gw_sword_mitico', [recolor(_sw['lendario'], 1.0, 1.2, 1.0)])
-# escudo do Guerreiro (recortado da prancha de referência) nas 8 raridades
-_sh = _I.open(os.path.join(ROOT, 'assets-src', 'warrior2', 'shield.png')).convert('RGBA')
-for _ri, _r in enumerate(RAR):
-    _h = RAR_HUE[_ri]
-    put(f'gsh_{_r}', [_sh if _ri == 0 or _h is None else recolor(_sh, *_h)])
-put('gw_sword_divino', [recolor(_sw['lendario'], 1.13, 0.55, 1.35)])
-put('gw_sword_celestial', [recolor(_sw['lendario'], *RAR_HUE[7])])
 for (cls, r, piece), im in MY.load_sets().items():
     if cls not in ('warrior', 'assassin', 'mage') or piece == 'helmet':
         continue   # só as classes do jogo; o espaço da cabeça é o halo
